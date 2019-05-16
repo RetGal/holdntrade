@@ -503,8 +503,6 @@ if __name__ == '__main__':
     filename = input('Filename with API Keys: ')
     
     exchange = connect_to_exchange(filename)
-        
-    print(exchange.fetch_balance())
 
     print('connecting to exchange')
 
