@@ -515,12 +515,8 @@ if __name__ == '__main__':
         balance = get_balance()
         amount = round(balance / divider * price)
         first_amount = round(balance / 2 * price)
-        
-        if amount < int(threshold):
-            #send-email / restart
-            pass
 
-        elif loop:
+        if loop:
             trade_executed(price, amount)
             sell_executed(price, amount)
 
