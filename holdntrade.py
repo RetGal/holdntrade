@@ -9,6 +9,7 @@ SATOSHI_FACTOR = 0.00000001
 
 # ------------------------------------------------------------------------------
 
+threshold = 25
 sell_price = 0
 long_price = 0
 curr_order = None
@@ -515,7 +516,7 @@ if __name__ == '__main__':
         amount = round(balance / divider * price)
         first_amount = round(balance / 2 * price)
         
-        if amount < threshold:
+        if amount < int(threshold):
             #send-email / restart
             pass
 
