@@ -255,7 +255,7 @@ def get_current_price():
     
     output: last bid price
     """
-    # time.sleep(1)
+    time.sleep(1)
     try:
         d = exchange.fetch_ticker(PAIR)
 
@@ -526,8 +526,6 @@ if __name__ == '__main__':
             print('-------------------------------')
             print(what_time_is_it())
             print('Created Buy Order over {}'.format(first_amount))
-
-        time.sleep(1)
 
 #
 # V1.4
