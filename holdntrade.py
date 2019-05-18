@@ -528,5 +528,5 @@ if __name__ == '__main__':
             print('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.4
+# V1.5
 #
