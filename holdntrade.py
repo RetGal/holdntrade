@@ -255,7 +255,7 @@ def get_current_price():
     
     output: last bid price
     """
-    time.sleep(1)
+    time.sleep(10) # Test DDOS exception
     try:
         d = exchange.fetch_ticker(PAIR)
 
