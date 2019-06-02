@@ -8,3 +8,4 @@ test = "True"
 # bot properties
 change = 0.005
 divider = 5
+order_btc_min = 0.0025

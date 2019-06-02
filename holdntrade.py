@@ -4,7 +4,6 @@ import inspect
 import os
 import sys
 import time
-
 import ccxt
 
 PAIR = 'BTC/USD'
@@ -58,7 +57,7 @@ def trade_executed(price: float, amount: int, change: float):
     print('-------------------------------')
     print(what_time_is_it())
     if order == 'open':
-        print('Open Buy Order! amount: int: {} @ {}'.format(curr_order_size, long_price))
+        print('Open Buy Order! Amount: {} @ {}'.format(curr_order_size, long_price))
         print('Current Price: {}'.format(price))
     elif order == 'closed':
         print('starting follow up')
@@ -104,14 +103,15 @@ def create_sell_order(change: float):
     global sell_price
 
     try:
-        order = exchange.create_order(PAIR, 'limit', 'sell', curr_order_size, sell_price)
-        curr_sell.append(order['info']['orderID'])
+        if not is_order_below_limit(curr_order_size, sell_price):
+            order = exchange.create_order(PAIR, 'limit', 'sell', curr_order_size, sell_price)
+            curr_sell.append(order['info']['orderID'])
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in 5 seconds...')
         time.sleep(5)
         sell_price = round(get_current_price() * (1 + change))
-        return create_sell_order()
+        return create_sell_order(change)
 
 
 def create_divided_sell_order(divider: float, change: float):
@@ -126,14 +126,16 @@ def create_divided_sell_order(divider: float, change: float):
     try:
         used_bal = get_used_balance()
         amount = round(used_bal / divider)
-        order = exchange.create_order(PAIR, 'limit', 'sell', amount, sell_price)
-        curr_sell.append(order['info']['orderID'])
+
+        if not is_order_below_limit(amount, sell_price):
+            order = exchange.create_order(PAIR, 'limit', 'sell', amount, sell_price)
+            curr_sell.append(order['info']['orderID'])
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in 5 seconds...')
         time.sleep(5)
         sell_price = round(get_current_price() * (1 + change))
-        return create_divided_sell_order()
+        return create_divided_sell_order(divider, change)
 
 
 def fetch_sell_orders(order):
@@ -196,6 +198,7 @@ def create_buy_order(price: float, amount: int, change: float):
     global sell_price
     global curr_order
     global curr_order_size
+    global order_btc_min
 
     long_price = round(price * (1 - change))
     sell_price = round(price * (1 + change))
@@ -203,8 +206,9 @@ def create_buy_order(price: float, amount: int, change: float):
     cur_btc_price = get_current_price()
 
     try:
-        order = exchange.create_order(PAIR, 'limit', 'buy', amount, long_price)
-        curr_order = order
+        if not is_order_below_limit(amount, long_price):
+            order = exchange.create_order(PAIR, 'limit', 'buy', amount, long_price)
+            curr_order = order
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in 5 seconds...')
         time.sleep(5)
@@ -235,7 +239,7 @@ def create_first_order(price: float, amount: int, change: float):
         print('Got an error', type(error).__name__, error.args, ', retrying in 5 seconds...')
         time.sleep(5)
 
-        return create_first_order(update_price(cur_btc_price, price), amount)
+        return create_first_order(update_price(cur_btc_price, price), amount, change)
 
 
 def get_balance():
@@ -316,12 +320,13 @@ def update_price(origin_price: float, price: float):
     return (get_current_price() / origin_price) * price
 
 
-def init_orders(change: float, divider: int):
+def init_orders(change: float, divider: int, force_close: bool):
     """
     initialize existing orders or remove all pending ones
     output True if loaded and False if first order necessary
     :param change:
     :param divider:
+    :param force_close:
     :return:
     """
     global curr_order
@@ -344,7 +349,8 @@ def init_orders(change: float, divider: int):
 
         # Handle open orders
         if len(exchange.fetch_open_orders(PAIR, since=None, limit=None, params={})):
-            init = input('There are open orders! Would you like to load them? (y/n)')
+            if not force_close:
+                init = input('There are open orders! Would you like to load them? (y/n)')
 
             open_orders = exchange.fetch_open_orders(symbol=PAIR, since=None, limit=None, params={})
             for o in open_orders:
@@ -359,7 +365,7 @@ def init_orders(change: float, divider: int):
             print("no. of buy orders : {0}".format(len(buy_orders)))
             print("no. of sell orders: {0}".format(len(sell_orders)))
 
-            if init.lower() == 'y' or init.lower() == 'yes':
+            if not force_close or init.lower() in ['y', 'yes']:
                 sell_orders = sorted(sell_orders, key=lambda o: o['price'], reverse=True)
 
                 for o in sell_orders:
@@ -374,7 +380,7 @@ def init_orders(change: float, divider: int):
                 # All sell orders executed
                 if 0 == len(sell_orders):
                     sell_price = round(get_current_price() * (1 + change))
-                    create_sell_order()
+                    create_sell_order(change)
 
                 # All buy orders executed
                 elif 0 == len(buy_orders):
@@ -387,8 +393,9 @@ def init_orders(change: float, divider: int):
             else:
                 print('Unrealised PNL: {0:.8f} BTC'.format(
                     get_unrealised_pnl(XBTC_SYMBOL) * SATOSHI_FACTOR))
-                cancel = input('All existing orders will be canceled! Are you sure (y/n)?')
-                if cancel.lower() == 'y' or cancel.lower() == 'yes':
+                if not force_close:
+                    cancel = input('All existing orders will be canceled! Are you sure (y/n)?')
+                if force_close or cancel.lower() in ['y', 'yes']:
                     cancel_orders(open_orders)
                     close_position(XBTC_SYMBOL)
                 else:
@@ -399,7 +406,7 @@ def init_orders(change: float, divider: int):
             if get_open_position(XBTC_SYMBOL) is not None:
                 msg = 'There is an open BTC position!\nUnrealised PNL: {0:.8f} BTC\nWould you like to close it? (y/n)'
                 init = input(msg.format(get_unrealised_pnl(XBTC_SYMBOL) * SATOSHI_FACTOR))
-                if init.lower() == 'y' or init.lower() == 'yes':
+                if init.lower() in ['y', 'yes']:
                     close_position(XBTC_SYMBOL)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
@@ -429,7 +436,7 @@ def cancel_orders(orders):
         return cancel_orders(orders)
 
 
-def close_position(symbol):
+def close_position(symbol: str):
     """
     Close any open position
     """
@@ -443,7 +450,7 @@ def close_position(symbol):
         return close_position(symbol)
 
 
-def get_open_position(symbol):
+def get_open_position(symbol: str):
     """
     Get all open positions
     :return: positions
@@ -461,7 +468,7 @@ def get_open_position(symbol):
         return get_open_position(symbol)
 
 
-def get_unrealised_pnl(symbol):
+def get_unrealised_pnl(symbol: str):
     """
     Returns the unrealised pnl for the requested currency
     :param symbol:
@@ -505,7 +512,17 @@ def connect_to_exchange(conf: ExchangeConfig):
     return exchange
 
 
-def __exit__(msg):
+def is_order_below_limit(amount: int, price: float):
+
+    global order_btc_min
+
+    if amount / price < order_btc_min:
+        print('Per order volume below limit', amount / price)
+        return True
+    return False
+
+
+def __exit__(msg: str):
     print(msg + '\nbot will stop in 5s.')
     time.sleep(5)
     sys.exit()
@@ -520,10 +537,9 @@ if __name__ == '__main__':
 
     conf = ExchangeConfig(filename)
     exchange = connect_to_exchange(conf)
+    order_btc_min = conf.order_btc_min
 
-    print('connecting to exchange')
-
-    loop = init_orders(conf.change, conf.divider)
+    loop = init_orders(conf.change, conf.divider, False)
 
     while True:
         price = get_current_price()
@@ -532,12 +548,16 @@ if __name__ == '__main__':
         amount = round(balance / conf.divider * price)
         first_amount = round(balance / 2 * price)
 
+        if is_order_below_limit(amount, price):
+            print('Resetting all Orders')
+            init_orders(conf.change, conf.divider, True)
+
         if loop:
             trade_executed(price, amount, conf.change)
             sell_executed(price, amount, conf.divider, conf.change)
 
         else:
-            create_first_order(price, first_amount)
+            create_first_order(price, first_amount, conf.change)
             loop = True
             print('-------------------------------')
             print(what_time_is_it())
