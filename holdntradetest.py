@@ -5,7 +5,7 @@ import ccxt
 from unittest import mock
 
 
-class holdntradetest(unittest.TestCase):
+class HoldntradeTest(unittest.TestCase):
 
     def test_connect_to_exchange_params_bitmex(self):
         conf = holdntrade.ExchangeConfig
