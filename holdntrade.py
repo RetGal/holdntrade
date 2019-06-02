@@ -1,3 +1,5 @@
+#!/usr/bin/python
+import configparser
 import inspect
 import sys
 import time
@@ -21,6 +23,24 @@ n = 0
 
 
 # ------------------------------------------------------------------------------
+
+class ExchangeConfig:
+    """
+    Holds the configuration read from separate .txt file.
+    """
+    def __init__(self, filename: str):
+
+        config = configparser.RawConfigParser()
+        config.read(filename + ".txt")
+
+        try:
+            props = dict(config.items('config'))
+            self.api_key = props['api_key'].strip('"')
+            self.api_secret = props['api_secret'].strip('"')
+            self.test = bool(props['test'].strip('"').lower() == 'true')
+        except (configparser.NoSectionError, KeyError):
+            raise SystemExit('invalid configuration for ' + filename)
+
 
 def trade_executed(price, amount):
     """
@@ -457,33 +477,25 @@ def get_unrealised_pnl(symbol):
         return get_unrealised_pnl(symbol)
 
 
-def connect_to_exchange(filename):
+def connect_to_exchange(conf: ExchangeConfig):
     """
-    Imports the api_keys and secret from seperate .txt file aswell as the information if it should connect to the testnet or not.
-    connects to the exchange.
-    :param filename:
+    Connects to the exchange.
+    :param conf: ExchangeConfig
     :return: exchange
     """
-    keys_file = open(filename + ".txt")
-    lines = keys_file.readlines()
-    api_key = lines[0].split('"')[1]
-    api_secret = lines[1].split('"')[1]
-    test = lines[3].split('"')[1]
+    exchange = ccxt.bitmex({
+        'enableRateLimit': True,
+        'apiKey': conf.api_key,
+        'secret': conf.api_secret,
+    })
 
-    if test == 'True':
-        exchange = ccxt.bitmex({
-            'enableRateLimit': True,
-            'apiKey': api_key,
-            'secret': api_secret,
-        })
+    if hasattr(conf, 'test') & conf.test:
         if 'test' in exchange.urls:
             exchange.urls['api'] = exchange.urls['test']
-    else:
-        exchange = ccxt.bitmex({
-            'enableRateLimit': True,
-            'apiKey': api_key,
-            'secret': api_secret,
-        })
+        else:
+            raise SystemExit('test not supported by ' + conf.exchange)
+
+    print('connecting to', conf.exchange)
     return exchange
 
 
@@ -502,7 +514,8 @@ if __name__ == '__main__':
     divider = int(input("Define the divider to calculate the amount per trade (5): "))
     filename = input('Filename with API Keys: ')
 
-    exchange = connect_to_exchange(filename)
+    conf = ExchangeConfig(filename)
+    exchange = connect_to_exchange(conf)
 
     print('connecting to exchange')
 
