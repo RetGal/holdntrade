@@ -42,10 +42,10 @@ class ExchangeConfig:
             raise SystemExit('invalid configuration for ' + filename)
 
 
-def trade_executed(price, amount):
+def trade_executed(price: float, amount: int):
     """
     Check if the most recent buy order has been executed.
-    
+
     input: current price and amount to trade (Current Balance / divider)
     output: if the most recent buy order is still open,
     the output is print statements containing the amount were trying to buy for which price.
@@ -56,7 +56,7 @@ def trade_executed(price, amount):
     print('-------------------------------')
     print(what_time_is_it())
     if order == 'open':
-        print('Open Buy Order! Amount: {} @ {}'.format(curr_order_size, long_price))
+        print('Open Buy Order! amount: int: {} @ {}'.format(curr_order_size, long_price))
         print('Current Price: {}'.format(price))
     elif order == 'closed':
         print('starting follow up')
@@ -67,10 +67,10 @@ def trade_executed(price, amount):
         print('You should not be here\nOrder state: ' + order)
 
 
-def sell_executed(price, amount):
+def sell_executed(price: float, amount: int):
     """
     Check if any of the open sell orders has been executed.
-    
+
     input: current price and amount to trade (Current Balance / divider)
     output: loop through all open sell orders and check if one has been executed. If no, exit with print statement.
     Else if it has been executed, remove the order from the list of open orders,
@@ -96,7 +96,7 @@ def create_sell_order():
     """
     loop that starts after buy order is executed and sends sell order to exchange
     aswell as appends the orderID to the sell_orders list.
-    
+
     """
     global curr_sell
     global sell_price
@@ -116,7 +116,7 @@ def create_divided_sell_order():
     """
     loop that starts after buy order is executed and sends sell order to exchange
     aswell as appends the orderID to the sell_orders list.
-    
+
     """
     global curr_sell
     global sell_price
@@ -137,9 +137,9 @@ def create_divided_sell_order():
 def fetch_sell_orders(order):
     """
     fetch sell orders
-    
+
     input: Order ID
-    output: Status of the passed order with the passed orderID. 
+    output: Status of the passed order with the passed orderID.
     """
     try:
         fo = exchange.fetchOrder(order)['status']
@@ -154,8 +154,8 @@ def fetch_sell_orders(order):
 
 def fetch_order():
     """
-    fetches the status of the current buy order 
-    
+    fetches the status of the current buy order
+
     output: status of order (open, closed)
     """
     try:
@@ -182,10 +182,10 @@ def cancel_order():
         return cancel_order()
 
 
-def create_buy_order(price, amount):
+def create_buy_order(price: float, amount: int):
     """
     creates a buy order and sets the values as global ones. Used by other functions.
-    
+
     input: current price of BTC and 1/divider of balance.
     output: calculate the price to get long (price + change) and to get short (price - change).
     In addition set the current orderID and current order size as global values.
@@ -209,9 +209,9 @@ def create_buy_order(price, amount):
         return create_buy_order(update_price(cur_btc_price, price), amount)
 
 
-def create_first_order(price, amount):
+def create_first_order(price: float, amount: int):
     """
-    creation of first order. Similar to createorder(price, amount) but with different price to go long. 
+    creation of first order. Similar to createorder(price, amount) but with different price to go long.
     Calculated in raw USD, its the current price - the value of first_c
     """
     global long_price
@@ -239,7 +239,7 @@ def create_first_order(price, amount):
 def get_balance():
     """
     fetch the free balance in btc.
-    
+
     output: balance
     """
     try:
@@ -256,7 +256,7 @@ def get_balance():
 def get_used_balance():
     """
     fetch the used balance in btc.
-    
+
     output: balance
     """
     try:
@@ -273,7 +273,7 @@ def get_used_balance():
 def get_current_price():
     """
     fetch the current BTC price
-    
+
     output: last bid price
     """
     time.sleep(10)  # Test DDOS exception
@@ -304,7 +304,7 @@ def what_time_is_it():
         return human
 
 
-def update_price(origin_price, price):
+def update_price(origin_price: float, price: float):
     """
     update the price by considering the old and current price
     :param origin_price:
@@ -314,7 +314,7 @@ def update_price(origin_price, price):
     return (get_current_price() / origin_price) * price
 
 
-def init_orders(change, divider):
+def init_orders(change: float, divider: int):
     """
     initialize existing orders or remove all pending ones
     output True if loaded and False if first order necessary
@@ -493,9 +493,9 @@ def connect_to_exchange(conf: ExchangeConfig):
         if 'test' in exchange.urls:
             exchange.urls['api'] = exchange.urls['test']
         else:
-            raise SystemExit('test not supported by ' + conf.exchange)
+            raise SystemExit('test not supported by ' + exchange)
 
-    print('connecting to', conf.exchange)
+    print('connecting to', exchange)
     return exchange
 
 
