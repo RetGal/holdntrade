@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import configparser
 import inspect
+import os
 import sys
 import time
 
@@ -12,7 +13,6 @@ SATOSHI_FACTOR = 0.00000001
 
 # ------------------------------------------------------------------------------
 
-threshold = 25
 sell_price = 0
 long_price = 0
 curr_order = None
@@ -20,7 +20,6 @@ curr_sell = []
 curr_order_size = 0
 loop = False
 n = 0
-
 
 # ------------------------------------------------------------------------------
 
@@ -35,14 +34,17 @@ class ExchangeConfig:
 
         try:
             props = dict(config.items('config'))
+            self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
             self.test = bool(props['test'].strip('"').lower() == 'true')
+            self.change = float(props['change'].strip('"'))
+            self.divider = int(props['divider'].strip('"'))
         except (configparser.NoSectionError, KeyError):
             raise SystemExit('invalid configuration for ' + filename)
 
 
-def trade_executed(price: float, amount: int):
+def trade_executed(price: float, amount: int, change: float):
     """
     Check if the most recent buy order has been executed.
 
@@ -60,14 +62,14 @@ def trade_executed(price: float, amount: int):
         print('Current Price: {}'.format(price))
     elif order == 'closed':
         print('starting follow up')
-        create_buy_order(price, amount)
-        create_sell_order()
+        create_buy_order(price, amount, change)
+        create_sell_order(change)
         print('Trade executed!')
     else:
         print('You should not be here\nOrder state: ' + order)
 
 
-def sell_executed(price: float, amount: int):
+def sell_executed(price: float, amount: int, divider: int, change: float):
     """
     Check if any of the open sell orders has been executed.
 
@@ -85,17 +87,17 @@ def sell_executed(price: float, amount: int):
             print('Sell still ' + status)
         elif status == 'closed':
             if len(curr_sell) == 1:
-                create_divided_sell_order()
+                create_divided_sell_order(divider, change)
             curr_sell.remove(o)
             cancel_order()
-            create_buy_order(price, amount)
+            create_buy_order(price, amount, change)
             print('Sell executed')
 
 
-def create_sell_order():
+def create_sell_order(change: float):
     """
     loop that starts after buy order is executed and sends sell order to exchange
-    aswell as appends the orderID to the sell_orders list.
+    as well as appends the orderID to the sell_orders list.
 
     """
     global curr_sell
@@ -112,10 +114,10 @@ def create_sell_order():
         return create_sell_order()
 
 
-def create_divided_sell_order():
+def create_divided_sell_order(divider: float, change: float):
     """
     loop that starts after buy order is executed and sends sell order to exchange
-    aswell as appends the orderID to the sell_orders list.
+    as well as appends the orderID to the sell_orders list.
 
     """
     global curr_sell
@@ -182,7 +184,7 @@ def cancel_order():
         return cancel_order()
 
 
-def create_buy_order(price: float, amount: int):
+def create_buy_order(price: float, amount: int, change: float):
     """
     creates a buy order and sets the values as global ones. Used by other functions.
 
@@ -206,10 +208,10 @@ def create_buy_order(price: float, amount: int):
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in 5 seconds...')
         time.sleep(5)
-        return create_buy_order(update_price(cur_btc_price, price), amount)
+        return create_buy_order(update_price(cur_btc_price, price), amount, change)
 
 
-def create_first_order(price: float, amount: int):
+def create_first_order(price: float, amount: int, change: float):
     """
     creation of first order. Similar to createorder(price, amount) but with different price to go long.
     Calculated in raw USD, its the current price - the value of first_c
@@ -376,7 +378,7 @@ def init_orders(change: float, divider: int):
 
                 # All buy orders executed
                 elif 0 == len(buy_orders):
-                    create_buy_order(get_current_price(), round(get_balance() / divider * get_current_price()))
+                    create_buy_order(get_current_price(), round(get_balance() / divider * get_current_price()), change)
 
                 print('initialization complete')
                 # No "create first order" necessary
@@ -483,7 +485,11 @@ def connect_to_exchange(conf: ExchangeConfig):
     :param conf: ExchangeConfig
     :return: exchange
     """
-    exchange = ccxt.bitmex({
+    exchanges = {'bitmex': ccxt.bitmex,
+                 'kraken': ccxt.kraken,
+                 'liquid': ccxt.liquid}
+
+    exchange = exchanges[conf.exchange]({
         'enableRateLimit': True,
         'apiKey': conf.api_key,
         'secret': conf.api_secret,
@@ -493,9 +499,9 @@ def connect_to_exchange(conf: ExchangeConfig):
         if 'test' in exchange.urls:
             exchange.urls['api'] = exchange.urls['test']
         else:
-            raise SystemExit('test not supported by ' + exchange)
+            raise SystemExit('test not supported by ' + conf.exchange)
 
-    print('connecting to', exchange)
+    print('connecting to', conf.exchange)
     return exchange
 
 
@@ -510,27 +516,25 @@ if __name__ == '__main__':
     print('Starting Hold n Trade Bot')
     if sys.version_info[0] != 3:
         exit('Wrong python version!\nVersion 3.xx is needed')
-    change = float(input("Define the change to enter a trade (0.005): "))
-    divider = int(input("Define the divider to calculate the amount per trade (5): "))
-    filename = input('Filename with API Keys: ')
+    filename = os.path.basename(input('Filename with API Keys (config): ') or 'config')
 
     conf = ExchangeConfig(filename)
     exchange = connect_to_exchange(conf)
 
     print('connecting to exchange')
 
-    loop = init_orders(change, divider)
+    loop = init_orders(conf.change, conf.divider)
 
     while True:
         price = get_current_price()
 
         balance = get_balance()
-        amount = round(balance / divider * price)
+        amount = round(balance / conf.divider * price)
         first_amount = round(balance / 2 * price)
 
         if loop:
-            trade_executed(price, amount)
-            sell_executed(price, amount)
+            trade_executed(price, amount, conf.change)
+            sell_executed(price, amount, conf.divider, conf.change)
 
         else:
             create_first_order(price, first_amount)

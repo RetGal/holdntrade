@@ -1,4 +1,10 @@
 [config]
+# exchange properties
+exchange = "EXCHANGE_NAME"
 api_key = "YOUR_KEY"
 api_secret = "YOUR_SECRET"
 test = "True"
+
+# bot properties
+change = 0.005
+divider = 5
