@@ -1,6 +1,7 @@
 import inspect
 import sys
 import time
+
 import ccxt
 
 PAIR = 'BTC/USD'
@@ -20,7 +21,7 @@ n = 0
 
 
 # ------------------------------------------------------------------------------
-        
+
 def trade_executed(price, amount):
     """
     Check if the most recent buy order has been executed.
@@ -255,7 +256,7 @@ def get_current_price():
     
     output: last bid price
     """
-    time.sleep(10) # Test DDOS exception
+    time.sleep(10)  # Test DDOS exception
     try:
         d = exchange.fetch_ticker(PAIR)
 
@@ -290,14 +291,13 @@ def update_price(origin_price, price):
     :param price:
     :return: price
     """
-    return (get_current_price() / origin_price)*price
+    return (get_current_price() / origin_price) * price
 
 
 def init_orders(change, divider):
     """
     initialize existing orders or remove all pending ones
     output True if loaded and False if first order necessary
-    :param carg:
     :param change:
     :param divider:
     :return:
@@ -310,7 +310,6 @@ def init_orders(change, divider):
 
     buy_orders = []
     sell_orders = []
-    init = ''
 
     try:
 
@@ -456,7 +455,7 @@ def get_unrealised_pnl(symbol):
         print('Got an error', type(error).__name__, error.args, ', retrying in 5 seconds...')
         time.sleep(5)
         return get_unrealised_pnl(symbol)
-    
+
 
 def connect_to_exchange(filename):
     """
@@ -465,25 +464,25 @@ def connect_to_exchange(filename):
     :param filename:
     :return: exchange
     """
-    keys_file = open(filename+".txt")
+    keys_file = open(filename + ".txt")
     lines = keys_file.readlines()
     api_key = lines[0].split('"')[1]
     api_secret = lines[1].split('"')[1]
     test = lines[3].split('"')[1]
-    
+
     if test == 'True':
         exchange = ccxt.bitmex({
-        'enableRateLimit': True,
-        'apiKey': api_key,
-        'secret': api_secret,
+            'enableRateLimit': True,
+            'apiKey': api_key,
+            'secret': api_secret,
         })
         if 'test' in exchange.urls:
             exchange.urls['api'] = exchange.urls['test']
     else:
         exchange = ccxt.bitmex({
-        'enableRateLimit': True,
-        'apiKey': api_key,
-        'secret': api_secret,
+            'enableRateLimit': True,
+            'apiKey': api_key,
+            'secret': api_secret,
         })
     return exchange
 
@@ -502,7 +501,7 @@ if __name__ == '__main__':
     change = float(input("Define the change to enter a trade (0.005): "))
     divider = int(input("Define the divider to calculate the amount per trade (5): "))
     filename = input('Filename with API Keys: ')
-    
+
     exchange = connect_to_exchange(filename)
 
     print('connecting to exchange')
