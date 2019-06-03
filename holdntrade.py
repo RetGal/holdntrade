@@ -342,7 +342,7 @@ def init_orders(change: float, divider: int, force_close: bool):
     sell_orders = []
 
     try:
-
+        init = ''
         # Stop function
         if len(sys.argv) > 1 and sys.argv[1] == '-s':
             pnl = get_unrealised_pnl(XBTC_SYMBOL)
@@ -525,7 +525,7 @@ def is_order_below_limit(amount: int, price: float):
     global order_btc_min
 
     if amount / price < order_btc_min:
-        print('Per order volume below limit', amount / price)
+        print('Per order volume below limit:', amount / price)
         return True
     return False
 
@@ -572,5 +572,5 @@ if __name__ == '__main__':
             print('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.6.2 tested min order
+# V1.6.3 fixed order reset
 #
