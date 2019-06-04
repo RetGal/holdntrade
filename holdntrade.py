@@ -81,6 +81,7 @@ def sell_executed(price: float, amount: int, divider: int, change: float):
     cancel it on Bitmex and create a new buy order.
     """
     global curr_sell
+    global curr_order
 
     for o in curr_sell:
         time.sleep(0.5)
@@ -91,7 +92,7 @@ def sell_executed(price: float, amount: int, divider: int, change: float):
             if len(curr_sell) == 1:
                 create_divided_sell_order(divider, change)
             curr_sell.remove(o)
-            cancel_order()
+            curr_order = cancel_order(curr_order)
             create_buy_order(price, amount, change)
             print('Sell executed')
 
@@ -148,6 +149,9 @@ def fetch_sell_orders(order):
     input: Order ID
     output: Status of the passed order with the passed orderID.
     """
+    if not hasattr(order, 'info'):
+        return 'invalid'
+
     try:
         fo = exchange.fetchOrder(order)['status']
 
@@ -176,17 +180,20 @@ def fetch_order():
         return fo
 
 
-def cancel_order():
+def cancel_order(order):
     """
     cancels the current order
     """
     try:
-        exchange.cancel_order(curr_order['info']['orderID'])
+        if hasattr(order, 'info'):
+            print('cancel order', order['info']['orderID'])
+            exchange.cancel_order(order['info']['orderID'])
+        return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
         sleep_for(4, 6)
-        return cancel_order()
+        return cancel_order(order)
 
 
 def create_buy_order(price: float, amount: int, change: float):
@@ -572,5 +579,5 @@ if __name__ == '__main__':
             print('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.6.3 fixed order reset
+# V1.6.4 fixed fetch/cancel order
 #
