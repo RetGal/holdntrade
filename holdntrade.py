@@ -401,8 +401,8 @@ def init_orders(change: float, divider: int, force_close: bool):
                 return True
 
             else:
-                print('Unrealised PNL: {0:.8f} BTC'.format(
-                    get_unrealised_pnl(XBTC_SYMBOL) * SATOSHI_FACTOR))
+                print('Unrealised PNL: {0:.8f} BTC'.format(get_unrealised_pnl(XBTC_SYMBOL) * SATOSHI_FACTOR))
+                cancel = ''
                 if not force_close:
                     cancel = input('All existing orders will be canceled! Are you sure (y/n)?')
                 if force_close or cancel.lower() in ['y', 'yes']:
@@ -569,8 +569,11 @@ if __name__ == '__main__':
 
         if loop:
             trade_executed(price, amount, conf.change)
-            sell_executed(price, amount, conf.divider, conf.change)
-
+            if len(curr_sell) > 0:
+                sell_executed(price, amount, conf.divider, conf.change)
+            else:
+                print('No sell orders - resetting all Orders')
+                init_orders(conf.change, conf.divider, True)
         else:
             create_first_order(price, first_amount, conf.change)
             loop = True
@@ -579,5 +582,5 @@ if __name__ == '__main__':
             print('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.6.4 fixed fetch/cancel order
+# V1.6.5 reset if sold out
 #
