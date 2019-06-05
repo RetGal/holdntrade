@@ -83,15 +83,15 @@ def sell_executed(price: float, amount: int, divider: int, change: float):
     global curr_sell
     global curr_order
 
-    for o in curr_sell:
+    for orderId in curr_sell:
         time.sleep(0.5)
-        status = fetch_sell_orders(o)
+        status = fetch_sell_orders(orderId)
         if status == 'open':
             print('Sell still ' + status)
         elif status == 'closed':
             if len(curr_sell) == 1:
                 create_divided_sell_order(divider, change)
-            curr_sell.remove(o)
+            curr_sell.remove(orderId)
             curr_order = cancel_order(curr_order)
             create_buy_order(price, amount, change)
             print('Sell executed')
@@ -142,23 +142,20 @@ def create_divided_sell_order(divider: float, change: float):
         return create_divided_sell_order(divider, change)
 
 
-def fetch_sell_orders(order):
+def fetch_sell_orders(orderId: str):
     """
     fetch sell orders
 
     input: Order ID
     output: Status of the passed order with the passed orderID.
     """
-    if not hasattr(order, 'info'):
-        return 'invalid'
-
     try:
-        fo = exchange.fetchOrder(order)['status']
+        fo = exchange.fetchOrder(orderId)['status']
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
         sleep_for(4, 6)
-        return fetch_sell_orders(order)
+        return fetch_sell_orders(orderId)
     else:
         return fo
 
@@ -582,5 +579,5 @@ if __name__ == '__main__':
             print('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.6.6 fixed reset if sold out
+# V1.6.7 fixed sell order removal
 #
