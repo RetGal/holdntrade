@@ -568,8 +568,8 @@ if __name__ == '__main__':
             init_orders(conf.change, conf.divider, True)
 
         if loop:
-            trade_executed(price, amount, conf.change)
             if len(curr_sell) > 0:
+                trade_executed(price, amount, conf.change)
                 sell_executed(price, amount, conf.divider, conf.change)
             else:
                 print('No sell orders - resetting all Orders')
@@ -582,5 +582,5 @@ if __name__ == '__main__':
             print('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.6.5 reset if sold out
+# V1.6.6 fixed reset if sold out
 #
