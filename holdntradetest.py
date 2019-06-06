@@ -1,8 +1,10 @@
-import holdntrade
-import unittest
 import time
-import ccxt
+import unittest
 from unittest import mock
+
+import ccxt
+
+import holdntrade
 
 
 class HoldntradeTest(unittest.TestCase):
@@ -95,8 +97,8 @@ class HoldntradeTest(unittest.TestCase):
 
         self.assertFalse(holdntrade.is_order_below_limit(amount, price))
 
-    @mock.patch.object(ccxt.bitmex, 'create_order')
-    def test_create_sell_order_should_not_create_order_if_order_is_below_limit(self, mock_create_order):
+    @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
+    def test_create_sell_order_should_not_create_order_if_order_is_below_limit(self, mock_create_limit_sell_order):
         holdntrade.sell_price = 8000
         holdntrade.curr_sell = []
         holdntrade.curr_order_size = 10
@@ -105,10 +107,10 @@ class HoldntradeTest(unittest.TestCase):
 
         holdntrade.create_sell_order(change)
 
-        assert not mock_create_order.called, 'create_order was called but should have not'
+        assert not mock_create_limit_sell_order.called, 'create_order was called but should have not'
 
-    @mock.patch.object(ccxt.bitmex, 'create_order')
-    def test_create_sell_order_should_create_order(self, mock_create_order):
+    @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
+    def test_create_sell_order_should_create_order(self, mock_create_limit_sell_order):
         holdntrade.sell_price = 4000
         holdntrade.curr_sell = []
         holdntrade.curr_order_size = 10
@@ -118,11 +120,13 @@ class HoldntradeTest(unittest.TestCase):
 
         holdntrade.create_sell_order(change)
 
-        mock_create_order.assert_called_with(holdntrade.PAIR, 'limit', 'sell', holdntrade.curr_order_size, holdntrade.sell_price)
+        mock_create_limit_sell_order.assert_called_with(holdntrade.PAIR, holdntrade.curr_order_size,
+                                                        holdntrade.sell_price)
 
     @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
-    @mock.patch.object(ccxt.bitmex, 'create_order')
-    def test_create_buy_order_should_not_create_order_if_order_is_below_limit(self, mock_create_order, mock_fetch_ticker):
+    @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
+    def test_create_buy_order_should_not_create_order_if_order_is_below_limit(self, mock_create_limit_buy_order,
+                                                                              mock_fetch_ticker):
         price = 8000
         holdntrade.curr_sell = []
         amount = 10
@@ -133,11 +137,11 @@ class HoldntradeTest(unittest.TestCase):
 
         holdntrade.create_buy_order(price, amount, change)
 
-        assert not mock_create_order.called, 'create_order was called but should have not'
+        assert not mock_create_limit_buy_order.called, 'create_order was called but should have not'
 
     @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
-    @mock.patch.object(ccxt.bitmex, 'create_order')
-    def test_create_buy_order_should_create_order_if_order_is_above_limit(self, mock_create_order, mock_fetch_ticker):
+    @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
+    def test_create_buy_order_should_create_order_if_order_is_above_limit(self, mock_create_limit_buy_order, mock_fetch_ticker):
         price = 4000
         holdntrade.curr_sell = []
         amount = 10
@@ -149,7 +153,7 @@ class HoldntradeTest(unittest.TestCase):
 
         holdntrade.create_buy_order(price, amount, change)
 
-        mock_create_order.assert_called_with(holdntrade.PAIR, 'limit', 'buy', amount, holdntrade.long_price)
+        mock_create_limit_buy_order.assert_called_with(holdntrade.PAIR, amount, holdntrade.long_price)
 
 
 if __name__ == '__main__':
