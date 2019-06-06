@@ -189,14 +189,12 @@ def cancel_order():
     try:
         if curr_order is not None:
             exchange.cancel_order(curr_order['info']['orderID'])
-    except ccxt.OrderNotFound as error:
-        print('Order to be canceled not found', curr_order['info']['orderID'], error.args)
-        return
-
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
         sleep_for(4, 6)
         return cancel_order()
+    except (ccxt.OrderNotFound, ccxt.base.errors.ExchangeError) as error:
+        print('Order to be canceled not found', curr_order['info']['orderID'], error.args)
 
 
 def create_buy_order(price: float, amount: int, change: float):
@@ -355,14 +353,6 @@ def init_orders(change: float, divider: int, force_close: bool):
 
     try:
         init = ''
-        # Stop function
-        if len(sys.argv) > 1 and sys.argv[1] == '-s':
-            pnl = get_unrealised_pnl(XBTC_SYMBOL)
-            cancel_orders(exchange.fetch_orders(PAIR, since=None, limit=None, params={}))
-            # cancel_orders(exchange.fetch_open_orders(PAIR, since=None, limit=None, params={}))
-            close_position(XBTC_SYMBOL)
-            exit('All orders sold\nUnrealised Pnl: {0:8f} BTC'.format(pnl * SATOSHI_FACTOR))
-
         # Handle open orders
         open_orders = exchange.fetch_open_orders(PAIR, since=None, limit=None, params={})
         if len(open_orders):
@@ -402,7 +392,7 @@ def init_orders(change: float, divider: int, force_close: bool):
                 elif 0 == len(buy_orders):
                     create_buy_order(get_current_price(), round(get_balance() / divider * get_current_price()), change)
 
-                print('initialization complete')
+                print('initialization complete (using existing orders)')
                 # No "create first order" necessary
                 return True
 
@@ -554,7 +544,11 @@ if __name__ == '__main__':
     print('Starting Hold n Trade Bot')
     if sys.version_info[0] != 3:
         exit('Wrong python version!\nVersion 3.xx is needed')
-    filename = os.path.basename(input('Filename with API Keys (config): ') or 'config')
+
+    if len(sys.argv) > 1:
+        filename = os.path.basename(sys.argv[1])
+    else:
+        filename = os.path.basename(input('Filename with API Keys (config): ') or 'config')
 
     conf = ExchangeConfig(filename)
     exchange = connect_to_exchange(conf)
@@ -587,5 +581,5 @@ if __name__ == '__main__':
             print('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.6.8 partly generalized
+# V1.6.9 config file as param
 #
