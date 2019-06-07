@@ -188,13 +188,19 @@ def cancel_order():
 
     try:
         if curr_order is not None:
-            exchange.cancel_order(curr_order['info']['orderID'])
+            status = exchange.fetch_order_status(curr_order['info']['orderID'])
+            if status == 'open':
+                exchange.cancel_order(curr_order['info']['orderID'])
+            else:
+                print('Order to be canceled {0} was in state'.format(curr_order['info']['orderID']), status)
+
+    except (ccxt.OrderNotFound, ccxt.base.errors.OrderNotFound) as error:
+        print('Order to be canceled not found', curr_order['info']['orderID'], error.args)
+        return
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
         sleep_for(4, 6)
         return cancel_order()
-    except (ccxt.OrderNotFound, ccxt.base.errors.ExchangeError) as error:
-        print('Order to be canceled not found', curr_order['info']['orderID'], error.args)
 
 
 def create_buy_order(price: float, amount: int, change: float):
@@ -408,12 +414,11 @@ def init_orders(change: float, divider: int, force_close: bool):
                     exit('')
 
         # Handle open positions if no orders are open
-        else:
-            if get_open_position(XBTC_SYMBOL) is not None:
-                msg = 'There is an open BTC position!\nUnrealised PNL: {0:.8f} BTC\nWould you like to close it? (y/n) '
-                init = input(msg.format(get_unrealised_pnl(XBTC_SYMBOL) * SATOSHI_FACTOR))
-                if init.lower() in ['y', 'yes']:
-                    close_position(XBTC_SYMBOL)
+        elif not force_close and get_open_position(XBTC_SYMBOL) is not None:
+            msg = 'There is an open BTC position!\nUnrealised PNL: {0:.8f} BTC\nWould you like to close it? (y/n) '
+            init = input(msg.format(get_unrealised_pnl(XBTC_SYMBOL) * SATOSHI_FACTOR))
+            if init.lower() in ['y', 'yes']:
+                close_position(XBTC_SYMBOL)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
@@ -434,8 +439,17 @@ def cancel_orders(orders):
     try:
         for o in orders:
             print('cancel {0} order'.format(o['side']))
-            exchange.cancel_order(o['info']['orderID'])
 
+            status = exchange.fetch_order_status(o['id'])
+            if status == 'open':
+                exchange.cancel_order(o['id'])
+                # exchange.cancel_order(o['info']['orderID'])
+            else:
+                print('Cancel {0} order {1} was in state'.format(o['side'], o['id']), status)
+
+    except (ccxt.OrderNotFound, ccxt.base.errors.OrderNotFound) as error:
+        print('Cancel {0} order {1} not found'.format(o['side'], o['id']), error.args)
+        return
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
         sleep_for(4, 6)
@@ -581,5 +595,5 @@ if __name__ == '__main__':
             print('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.6.9 config file as param
+# V1.7.0 query state before cancel
 #
