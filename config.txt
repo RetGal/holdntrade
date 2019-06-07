@@ -5,6 +5,11 @@ api_key = "YOUR_KEY"
 api_secret = "YOUR_SECRET"
 test = "True"
 
+# currency properties
+pair = "BTC/USD"
+symbol = "XBTUSD"
+satoshi_factor = 0.00000001
+
 # bot properties
 change = 0.005
 divider = 5

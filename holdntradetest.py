@@ -86,28 +86,28 @@ class HoldntradeTest(unittest.TestCase):
     def test_is_order_below_limit_true(self):
         price = 8000
         amount = 10
-        holdntrade.order_btc_min = 0.0025
+        holdntrade.conf = self.create_default_conf()
 
         self.assertTrue(holdntrade.is_order_below_limit(amount, price))
 
     def test_is_order_negative_amount_below_limit_true(self):
         price = 8000
         amount = -10
-        holdntrade.order_btc_min = 0.0025
+        holdntrade.conf = self.create_default_conf()
 
         self.assertTrue(holdntrade.is_order_below_limit(amount, price))
 
     def test_is_order_below_limit_false(self):
         price = 4000
         amount = 10
-        holdntrade.order_btc_min = 0.0025
+        holdntrade.conf = self.create_default_conf()
 
         self.assertFalse(holdntrade.is_order_below_limit(amount, price))
 
     def test_is_order_negative_amount_below_limit_false(self):
         price = 4000
         amount = -10
-        holdntrade.order_btc_min = 0.0025
+        holdntrade.conf = self.create_default_conf()
 
         self.assertFalse(holdntrade.is_order_below_limit(amount, price))
 
@@ -116,10 +116,9 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.sell_price = 8000
         holdntrade.curr_sell = []
         holdntrade.curr_order_size = 10
-        change = 0.005
-        holdntrade.order_btc_min = 0.0025
+        holdntrade.conf = self.create_default_conf()
 
-        holdntrade.create_sell_order(change)
+        holdntrade.create_sell_order(holdntrade.conf.change)
 
         assert not mock_create_limit_sell_order.called, 'create_order was called but should have not'
 
@@ -128,13 +127,12 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.sell_price = 4000
         holdntrade.curr_sell = []
         holdntrade.curr_order_size = 10
-        change = 0.005
-        holdntrade.order_btc_min = 0.0025
+        holdntrade.conf = self.create_default_conf()
         holdntrade.exchange = ccxt.bitmex
 
-        holdntrade.create_sell_order(change)
+        holdntrade.create_sell_order(holdntrade.conf.change)
 
-        mock_create_limit_sell_order.assert_called_with(holdntrade.PAIR, holdntrade.curr_order_size,
+        mock_create_limit_sell_order.assert_called_with(holdntrade.conf.pair, holdntrade.curr_order_size,
                                                         holdntrade.sell_price)
 
     @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
@@ -144,12 +142,11 @@ class HoldntradeTest(unittest.TestCase):
         price = 8000
         holdntrade.curr_sell = []
         amount = 10
-        change = 0.005
-        holdntrade.order_btc_min = 0.0025
+        holdntrade.conf = self.create_default_conf()
         holdntrade.exchange = ccxt.bitmex
         mock_fetch_ticker.return_value = {'bid': 99}
 
-        holdntrade.create_buy_order(price, amount, change)
+        holdntrade.create_buy_order(price, amount, holdntrade.conf.change)
 
         assert not mock_create_limit_buy_order.called, 'create_order was called but should have not'
 
@@ -159,15 +156,23 @@ class HoldntradeTest(unittest.TestCase):
         price = 4000
         holdntrade.curr_sell = []
         amount = 10
-        change = 0.005
+        holdntrade.conf = self.create_default_conf()
         holdntrade.long_price = 1234
-        holdntrade.order_btc_min = 0.0025
         holdntrade.exchange = ccxt.bitmex
         mock_fetch_ticker.return_value = {'bid': 99}
 
-        holdntrade.create_buy_order(price, amount, change)
+        holdntrade.create_buy_order(price, amount, holdntrade.conf.change)
 
-        mock_create_limit_buy_order.assert_called_with(holdntrade.PAIR, amount, holdntrade.long_price)
+        mock_create_limit_buy_order.assert_called_with(holdntrade.conf.pair, amount, holdntrade.long_price)
+
+
+    @staticmethod
+    def create_default_conf():
+        conf = holdntrade.ExchangeConfig
+        conf.pair = 'FOOBAR/SNAFU'
+        conf.change = 0.005
+        conf.order_btc_min = 0.0025
+        return conf
 
 
 if __name__ == '__main__':

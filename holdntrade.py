@@ -7,10 +7,6 @@ import sys
 import time
 import ccxt
 
-PAIR = 'BTC/USD'
-XBTC_SYMBOL = 'XBTUSD'
-SATOSHI_FACTOR = 0.00000001
-
 # ------------------------------------------------------------------------------
 
 sell_price = 0
@@ -39,6 +35,9 @@ class ExchangeConfig:
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
             self.test = bool(props['test'].strip('"').lower() == 'true')
+            self.pair = props['pair'].strip('"')
+            self.symbol = props['symbol'].strip('"')
+            self.satoshi_factor = float(props['satoshi_factor'].strip('"'))
             self.change = float(props['change'].strip('"'))
             self.divider = int(props['divider'].strip('"'))
             self.order_btc_min = float(props['order_btc_min'].strip('"'))
@@ -108,8 +107,7 @@ def create_sell_order(change: float):
 
     try:
         if not is_order_below_limit(curr_order_size, sell_price):
-            order = exchange.create_limit_sell_order(PAIR, curr_order_size, sell_price)
-            # order = exchange.create_order(PAIR, 'limit', 'sell', curr_order_size, sell_price)
+            order = exchange.create_limit_sell_order(conf.pair, curr_order_size, sell_price)
             curr_sell.append(order['info']['orderID'])
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
@@ -132,13 +130,11 @@ def create_divided_sell_order(divider: float, change: float):
         amount = round(used_bal / divider)
 
         if not is_order_below_limit(amount, sell_price):
-            order = exchange.create_limit_sell_order(PAIR, amount, sell_price)
-            # order = exchange.create_order(PAIR, 'limit', 'sell', amount, sell_price)
+            order = exchange.create_limit_sell_order(conf.pair, amount, sell_price)
             curr_sell.append(order['info']['orderID'])
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
-        # sleep_for(4, 6)
         sell_price = round(get_current_price() * (1 + change))
         return create_divided_sell_order(divider, change)
 
@@ -152,7 +148,6 @@ def fetch_sell_orders(orderId: str):
     """
     try:
         fo = exchange.fetch_order_status(orderId)
-        # fo = exchange.fetchOrder(orderId)['status']
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
@@ -170,7 +165,6 @@ def fetch_order_status():
     """
     try:
         fo = exchange.fetch_order_status(curr_order['info']['orderID'])
-        # fo = exchange.fetchOrder(curr_order['info']['orderID'])['status']
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
@@ -215,7 +209,6 @@ def create_buy_order(price: float, amount: int, change: float):
     global sell_price
     global curr_order
     global curr_order_size
-    global order_btc_min
 
     long_price = round(price * (1 - change))
     sell_price = round(price * (1 + change))
@@ -224,8 +217,7 @@ def create_buy_order(price: float, amount: int, change: float):
 
     try:
         if not is_order_below_limit(amount, long_price):
-            order = exchange.create_limit_buy_order(PAIR, amount, long_price)
-            # order = exchange.create_order(PAIR, 'limit', 'buy', amount, long_price)
+            order = exchange.create_limit_buy_order(conf.pair, amount, long_price)
             curr_order = order
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
@@ -250,9 +242,9 @@ def create_first_order(price: float, amount: int, change: float):
     sell_price = round(price * (1 + change))
     sell_amount = round(amount / 5)
     curr_order_size = sell_amount
+    
     try:
-        order = exchange.create_market_buy_order(PAIR, amount)
-        # order = exchange.create_order(PAIR, 'market', 'buy', amount)
+        order = exchange.create_market_buy_order(conf.pair, amount)
         curr_order = order
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
@@ -269,7 +261,6 @@ def get_balance():
     """
     try:
         bal = exchange.fetch_free_balance()['BTC']
-        # bal = exchange.fetch_balance()['free']['BTC']
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
@@ -304,7 +295,7 @@ def get_current_price():
     """
     sleep_for(4, 6)
     try:
-        d = exchange.fetch_ticker(PAIR)
+        d = exchange.fetch_ticker(conf.pair)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
@@ -360,7 +351,7 @@ def init_orders(change: float, divider: int, force_close: bool):
     try:
         init = ''
         # Handle open orders
-        open_orders = exchange.fetch_open_orders(PAIR, since=None, limit=None, params={})
+        open_orders = exchange.fetch_open_orders(conf.pair, since=None, limit=None, params={})
         if len(open_orders):
             if not force_close:
                 init = input('There are open orders! Would you like to load them? (y/n) ')
@@ -403,22 +394,22 @@ def init_orders(change: float, divider: int, force_close: bool):
                 return True
 
             else:
-                print('Unrealised PNL: {0:.8f} BTC'.format(get_unrealised_pnl(XBTC_SYMBOL) * SATOSHI_FACTOR))
+                print('Unrealised PNL: {0:.8f} BTC'.format(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor))
                 cancel = ''
                 if not force_close:
                     cancel = input('All existing orders will be canceled! Are you sure (y/n)? ')
                 if force_close or cancel.lower() in ['y', 'yes']:
                     cancel_orders(open_orders)
-                    close_position(XBTC_SYMBOL)
+                    close_position(conf.symbol)
                 else:
                     exit('')
 
         # Handle open positions if no orders are open
-        elif not force_close and get_open_position(XBTC_SYMBOL) is not None:
+        elif not force_close and get_open_position(conf.symbol) is not None:
             msg = 'There is an open BTC position!\nUnrealised PNL: {0:.8f} BTC\nWould you like to close it? (y/n) '
-            init = input(msg.format(get_unrealised_pnl(XBTC_SYMBOL) * SATOSHI_FACTOR))
+            init = input(msg.format(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor))
             if init.lower() in ['y', 'yes']:
-                close_position(XBTC_SYMBOL)
+                close_position(conf.symbol)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
@@ -443,7 +434,6 @@ def cancel_orders(orders):
             status = exchange.fetch_order_status(o['id'])
             if status == 'open':
                 exchange.cancel_order(o['id'])
-                # exchange.cancel_order(o['info']['orderID'])
             else:
                 print('Cancel {0} order {1} was in state'.format(o['side'], o['id']), status)
 
@@ -476,9 +466,16 @@ def get_open_position(symbol: str):
     :return: positions
     """
     try:
-        for p in exchange.private_get_position():
-            if p['isOpen'] and p['symbol'] == symbol:
-                return p
+        if conf.exchange == 'bitmex':
+            for p in exchange.private_get_position():
+                if p['isOpen'] and p['symbol'] == conf.symbol:
+                    return p
+        elif conf.exchange == 'kraken':
+            a = exchange.private_post_openpositions()
+            if a['result'] == 'success':
+                for p in a['openPositions']:
+                    if p['symbol'] == conf.symbol:
+                        return p
 
         return None
 
@@ -538,10 +535,7 @@ def sleep_for(greater: int, less: int):
 
 
 def is_order_below_limit(amount: int, price: float):
-
-    global order_btc_min
-
-    if abs(amount / price) < order_btc_min:
+    if abs(amount / price) < conf.order_btc_min:
         print('Per order volume below limit:', abs(amount / price))
         return True
     return False
@@ -566,7 +560,6 @@ if __name__ == '__main__':
 
     conf = ExchangeConfig(filename)
     exchange = connect_to_exchange(conf)
-    order_btc_min = conf.order_btc_min
 
     loop = init_orders(conf.change, conf.divider, False)
 
@@ -595,5 +588,5 @@ if __name__ == '__main__':
             print('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.7.1 absolute order limit calculation
+# V1.8.0 new config
 #
