@@ -90,9 +90,23 @@ class HoldntradeTest(unittest.TestCase):
 
         self.assertTrue(holdntrade.is_order_below_limit(amount, price))
 
+    def test_is_order_negative_amount_below_limit_true(self):
+        price = 8000
+        amount = -10
+        holdntrade.order_btc_min = 0.0025
+
+        self.assertTrue(holdntrade.is_order_below_limit(amount, price))
+
     def test_is_order_below_limit_false(self):
         price = 4000
         amount = 10
+        holdntrade.order_btc_min = 0.0025
+
+        self.assertFalse(holdntrade.is_order_below_limit(amount, price))
+
+    def test_is_order_negative_amount_below_limit_false(self):
+        price = 4000
+        amount = -10
         holdntrade.order_btc_min = 0.0025
 
         self.assertFalse(holdntrade.is_order_below_limit(amount, price))

@@ -541,8 +541,8 @@ def is_order_below_limit(amount: int, price: float):
 
     global order_btc_min
 
-    if amount / price < order_btc_min:
-        print('Per order volume below limit:', amount / price)
+    if abs(amount / price) < order_btc_min:
+        print('Per order volume below limit:', abs(amount / price))
         return True
     return False
 
@@ -577,7 +577,7 @@ if __name__ == '__main__':
         amount = round(balance / conf.divider * price)
         first_amount = round(balance / 2 * price)
 
-        if is_order_below_limit(amount, price) or len(curr_sell) == 0:
+        if is_order_below_limit(amount, price):
             print('Resetting all Orders')
             init_orders(conf.change, conf.divider, True)
 
@@ -595,5 +595,5 @@ if __name__ == '__main__':
             print('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.7.0 query state before cancel
+# V1.7.1 absolute order limit calculation
 #
