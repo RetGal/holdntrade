@@ -169,6 +169,7 @@ class HoldntradeTest(unittest.TestCase):
     @staticmethod
     def create_default_conf():
         conf = holdntrade.ExchangeConfig
+        conf.exchange = 'bitmex'
         conf.pair = 'FOOBAR/SNAFU'
         conf.change = 0.005
         conf.order_btc_min = 0.0025

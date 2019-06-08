@@ -5,6 +5,8 @@ import os
 import random
 import sys
 import time
+from pprint import pprint
+
 import ccxt
 
 # ------------------------------------------------------------------------------
@@ -104,11 +106,17 @@ def create_sell_order(change: float):
     """
     global curr_sell
     global sell_price
+    global curr_order_size
 
     try:
         if not is_order_below_limit(curr_order_size, sell_price):
-            order = exchange.create_limit_sell_order(conf.pair, curr_order_size, sell_price)
-            curr_sell.append(order['info']['orderID'])
+            if conf.exchange == 'bitmex':
+                order = exchange.create_limit_sell_order(conf.pair, curr_order_size, sell_price)
+            elif conf.exchange == 'kraken':
+                rate = get_current_price()
+                order = exchange.create_limit_sell_order(conf.pair, curr_order_size/rate, sell_price)
+            curr_sell.append(order['id'])
+            pprint(order)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
@@ -130,8 +138,13 @@ def create_divided_sell_order(divider: float, change: float):
         amount = round(used_bal / divider)
 
         if not is_order_below_limit(amount, sell_price):
-            order = exchange.create_limit_sell_order(conf.pair, amount, sell_price)
-            curr_sell.append(order['info']['orderID'])
+            if conf.exchange == 'bitmex':
+                order = exchange.create_limit_sell_order(conf.pair, amount, sell_price)
+            elif conf.exchange == 'kraken':
+                rate = get_current_price()
+                order = exchange.create_limit_sell_order(conf.pair, amount/rate, sell_price)
+            curr_sell.append(order['id'])
+            pprint(order)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
@@ -164,7 +177,7 @@ def fetch_order_status():
     output: status of order (open, closed)
     """
     try:
-        fo = exchange.fetch_order_status(curr_order['info']['orderID'])
+        fo = exchange.fetch_order_status(curr_order['id'])
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
@@ -182,14 +195,14 @@ def cancel_order():
 
     try:
         if curr_order is not None:
-            status = exchange.fetch_order_status(curr_order['info']['orderID'])
+            status = exchange.fetch_order_status(curr_order['id'])
             if status == 'open':
-                exchange.cancel_order(curr_order['info']['orderID'])
+                exchange.cancel_order(curr_order['id'])
             else:
-                print('Order to be canceled {0} was in state'.format(curr_order['info']['orderID']), status)
+                print('Order to be canceled {0} was in state'.format(curr_order['id']), status)
 
     except (ccxt.OrderNotFound, ccxt.base.errors.OrderNotFound) as error:
-        print('Order to be canceled not found', curr_order['info']['orderID'], error.args)
+        print('Order to be canceled not found', curr_order['id'], error.args)
         return
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
@@ -217,8 +230,13 @@ def create_buy_order(price: float, amount: int, change: float):
 
     try:
         if not is_order_below_limit(amount, long_price):
-            order = exchange.create_limit_buy_order(conf.pair, amount, long_price)
+            if conf.exchange == 'bitmex':
+                order = exchange.create_limit_buy_order(conf.pair, amount, long_price)
+            elif conf.exchange == 'Kraken':
+                order = exchange.create_limit_buy_order(conf.pair, amount/cur_btc_price, long_price)
             curr_order = order
+            pprint(order)
+
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
         sleep_for(4, 6)
@@ -244,8 +262,13 @@ def create_first_order(price: float, amount: int, change: float):
     curr_order_size = sell_amount
     
     try:
-        order = exchange.create_market_buy_order(conf.pair, amount)
+        if conf.exchange == 'bitmex':
+            order = exchange.create_market_buy_order(conf.pair, amount)
+        elif conf.exchange == 'kraken':
+            order = exchange.create_market_buy_order(conf.pair, amount/cur_btc_price)
         curr_order = order
+        pprint(order)
+
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
         sleep_for(4, 6)
@@ -260,7 +283,8 @@ def get_balance():
     output: balance
     """
     try:
-        bal = exchange.fetch_free_balance()['BTC']
+        # syntax ok for bitmex and kraken
+        bal = exchange.fetch_balance()['BTC']['free']
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
@@ -277,7 +301,11 @@ def get_used_balance():
     output: balance
     """
     try:
-        used_bal = exchange.private_get_position()[0]['currentQty']
+        if conf.exchange == 'bitmex':
+            used_bal = exchange.private_get_position()[0]['currentQty']
+        elif conf.exchange == 'kraken':
+            rate = get_current_price()
+            used_bal = round(exchange.fetch_balance()['BTC']['used'] * rate)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
@@ -312,6 +340,7 @@ def what_time_is_it():
     try:
         now = exchange.seconds()
         human = time.ctime(now)
+
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
         sleep_for(4, 6)
@@ -373,7 +402,7 @@ def init_orders(change: float, divider: int, force_close: bool):
 
                 for o in sell_orders:
                     sell_price = o['price']
-                    curr_sell.append(o['info']['orderID'])
+                    curr_sell.append(o['id'])
 
                 for o in buy_orders:
                     long_price = o['price']
@@ -452,7 +481,10 @@ def close_position(symbol: str):
     """
     try:
         print('close position ' + symbol)
-        exchange.private_post_order_closeposition({'symbol': symbol})
+        if conf.exchange == 'bitmex':
+            exchange.private_post_order_closeposition({'symbol': symbol})
+        elif conf.exchange == 'kraken':
+            exchange.private_post_closepositions({'symbol': symbol})
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         print('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
@@ -468,15 +500,14 @@ def get_open_position(symbol: str):
     try:
         if conf.exchange == 'bitmex':
             for p in exchange.private_get_position():
-                if p['isOpen'] and p['symbol'] == conf.symbol:
+                if p['isOpen'] and p['symbol'] == symbol:
                     return p
         elif conf.exchange == 'kraken':
             a = exchange.private_post_openpositions()
             if a['result'] == 'success':
                 for p in a['openPositions']:
-                    if p['symbol'] == conf.symbol:
+                    if p['symbol'] == symbol:
                         return p
-
         return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
@@ -517,7 +548,10 @@ def connect_to_exchange(conf: ExchangeConfig):
         'enableRateLimit': True,
         'apiKey': conf.api_key,
         'secret': conf.api_secret,
+        #'verbose': True,
     })
+
+    # pprint(dir(exchange))
 
     if hasattr(conf, 'test') & conf.test:
         if 'test' in exchange.urls:
@@ -550,6 +584,7 @@ def __exit__(msg: str):
 # ------------------------------------------------------------------------------
 if __name__ == '__main__':
     print('Starting Hold n Trade Bot')
+    print('ccxt version:', ccxt.__version__)
     if sys.version_info[0] != 3:
         exit('Wrong python version!\nVersion 3.xx is needed')
 
@@ -588,5 +623,5 @@ if __name__ == '__main__':
             print('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.8.0 new config
+# V1.8.1 hello kraken
 #
