@@ -139,7 +139,7 @@ def create_sell_order(change: float):
                 order = exchange.create_limit_sell_order(conf.pair, curr_order_size, sell_price)
             elif conf.exchange == 'kraken':
                 rate = get_current_price()
-                order = exchange.create_limit_sell_order(conf.pair, curr_order_size / rate, sell_price)
+                order = exchange.create_limit_sell_order(conf.pair, to_kraken(curr_order_size, rate), sell_price)
             curr_sell.append(order['id'])
             log.info(str(order))
 
@@ -167,7 +167,7 @@ def create_divided_sell_order(divider: float, change: float):
                 order = exchange.create_limit_sell_order(conf.pair, amount, sell_price)
             elif conf.exchange == 'kraken':
                 rate = get_current_price()
-                order = exchange.create_limit_sell_order(conf.pair, amount / rate, sell_price)
+                order = exchange.create_limit_sell_order(conf.pair, to_kraken(amount, rate), sell_price)
             curr_sell.append(order['id'])
             log.info(str(order))
 
@@ -258,7 +258,7 @@ def create_buy_order(price: float, amount: int, change: float):
             if conf.exchange == 'bitmex':
                 order = exchange.create_limit_buy_order(conf.pair, amount, long_price)
             elif conf.exchange == 'Kraken':
-                order = exchange.create_limit_buy_order(conf.pair, amount / cur_btc_price, long_price)
+                order = exchange.create_limit_buy_order(conf.pair, to_kraken(amount, cur_btc_price), long_price)
             curr_order = order
             log.info(str(order))
 
@@ -290,7 +290,7 @@ def create_first_order(price: float, amount: int, change: float):
         if conf.exchange == 'bitmex':
             order = exchange.create_market_buy_order(conf.pair, amount)
         elif conf.exchange == 'kraken':
-            order = exchange.create_market_buy_order(conf.pair, amount / cur_btc_price)
+            order = exchange.create_market_buy_order(conf.pair, to_kraken(amount, cur_btc_price))
         curr_order = order
         log.info(str(order))
 
@@ -308,8 +308,14 @@ def get_balance():
     output: balance
     """
     try:
-        # syntax ok for bitmex and kraken
-        bal = exchange.fetch_balance()['BTC']['free']
+        if conf.exchange == 'bitmex':
+            bal = exchange.fetch_balance()['BTC']['free']
+        elif conf.exchange == 'kraken':
+            # TODO is this the relevant balance?
+            open_positions = exchange.private_post_openpositions()['result']
+            for pos in open_positions:
+                if open_positions[pos]['type'] == 'buy':
+                    return float(open_positions[pos]['vol'])
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
@@ -329,6 +335,7 @@ def get_used_balance():
         if conf.exchange == 'bitmex':
             used_bal = exchange.private_get_position()[0]['currentQty']
         elif conf.exchange == 'kraken':
+            # TODO is this the relevant balance?
             rate = get_current_price()
             used_bal = round(exchange.fetch_balance()['BTC']['used'] * rate)
 
@@ -583,6 +590,10 @@ def is_order_below_limit(amount: int, price: float):
     return False
 
 
+def to_kraken(amount: int, price: float):
+    return round(amount / price, 8)
+
+
 def __exit__(msg: str):
     log.info(msg + '\nbot will stop in 5s.')
     time.sleep(5)
@@ -634,5 +645,5 @@ if __name__ == '__main__':
             log.info('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.8.2 hello logging
+# V1.8.3 kraken test
 #
