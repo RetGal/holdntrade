@@ -7,7 +7,6 @@ import random
 import sys
 import time
 from logging.handlers import RotatingFileHandler
-from pprint import pprint
 
 import ccxt
 
