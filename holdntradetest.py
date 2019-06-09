@@ -1,6 +1,7 @@
 import time
 import unittest
 from unittest import mock
+from unittest.mock import patch
 
 import ccxt
 
@@ -9,7 +10,9 @@ import holdntrade
 
 class HoldntradeTest(unittest.TestCase):
 
-    def test_connect_to_exchange_params_bitmex(self):
+    @patch('holdntrade.logging')
+    def test_connect_to_exchange_params_bitmex(self, mock_logging):
+        holdntrade.log = mock_logging
         conf = holdntrade.ExchangeConfig
         conf.exchange = 'bitmex'
         conf.api_key = 'key'
@@ -23,7 +26,9 @@ class HoldntradeTest(unittest.TestCase):
         self.assertEqual(exchange.secret, conf.api_secret)
         self.assertEqual(exchange.urls['api'], exchange.urls['test'])
 
-    def test_connect_to_exchange_params_kraken(self):
+    @patch('holdntrade.logging')
+    def test_connect_to_exchange_params_kraken(self, mock_logging):
+        holdntrade.log = mock_logging
         conf = holdntrade.ExchangeConfig
         conf.exchange = 'kraken'
         conf.api_key = 'key'
@@ -36,7 +41,9 @@ class HoldntradeTest(unittest.TestCase):
         self.assertEqual(exchange.apiKey, conf.api_key)
         self.assertEqual(exchange.secret, conf.api_secret)
 
-    def test_connect_to_exchange_params_liquid(self):
+    @patch('holdntrade.logging')
+    def test_connect_to_exchange_params_liquid(self, mock_logging):
+        holdntrade.log = mock_logging
         conf = holdntrade.ExchangeConfig
         conf.exchange = 'liquid'
         conf.api_key = 'key'
@@ -49,7 +56,9 @@ class HoldntradeTest(unittest.TestCase):
         self.assertEqual(exchange.apiKey, conf.api_key)
         self.assertEqual(exchange.secret, conf.api_secret)
 
-    def test_connect_to_exchange_should_fail_if_param_test_is_true_but_not_supported(self):
+    @patch('holdntrade.logging')
+    def test_connect_to_exchange_should_fail_if_param_test_is_true_but_not_supported(self, mock_logging):
+        holdntrade.log = mock_logging
         conf = holdntrade.ExchangeConfig
         conf.exchange = 'kraken'
         conf.api_key = 'key'
@@ -61,7 +70,9 @@ class HoldntradeTest(unittest.TestCase):
 
         self.assertTrue('test not supported' in str(context.exception))
 
-    def test_connect_to_exchange_should_fail_if_exchange_not_supported(self):
+    @patch('holdntrade.logging')
+    def test_connect_to_exchange_should_fail_if_exchange_not_supported(self, mock_logging):
+        holdntrade.log = mock_logging
         conf = holdntrade.ExchangeConfig
         conf.exchange = 'unknown'
         conf.api_key = 'key'
@@ -111,22 +122,27 @@ class HoldntradeTest(unittest.TestCase):
 
         self.assertFalse(holdntrade.is_order_below_limit(amount, price))
 
+    @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
-    def test_create_sell_order_should_not_create_order_if_order_is_below_limit(self, mock_create_limit_sell_order):
+    def test_create_sell_order_should_not_create_order_if_order_is_below_limit(self, mock_create_limit_sell_order,
+                                                                               mock_logging):
         holdntrade.sell_price = 8000
         holdntrade.curr_sell = []
         holdntrade.curr_order_size = 10
+        holdntrade.log = mock_logging
         holdntrade.conf = self.create_default_conf()
 
         holdntrade.create_sell_order(holdntrade.conf.change)
 
         assert not mock_create_limit_sell_order.called, 'create_order was called but should have not'
 
+    @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
-    def test_create_sell_order_should_create_order(self, mock_create_limit_sell_order):
+    def test_create_sell_order_should_create_order(self, mock_create_limit_sell_order, mock_logging):
         holdntrade.sell_price = 4000
         holdntrade.curr_sell = []
         holdntrade.curr_order_size = 10
+        holdntrade.log = mock_logging
         holdntrade.conf = self.create_default_conf()
         holdntrade.exchange = ccxt.bitmex
 
@@ -135,13 +151,15 @@ class HoldntradeTest(unittest.TestCase):
         mock_create_limit_sell_order.assert_called_with(holdntrade.conf.pair, holdntrade.curr_order_size,
                                                         holdntrade.sell_price)
 
+    @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
     @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
     def test_create_buy_order_should_not_create_order_if_order_is_below_limit(self, mock_create_limit_buy_order,
-                                                                              mock_fetch_ticker):
+                                                                              mock_fetch_ticker, mock_logging):
         price = 8000
         holdntrade.curr_sell = []
         amount = 10
+        holdntrade.log = mock_logging
         holdntrade.conf = self.create_default_conf()
         holdntrade.exchange = ccxt.bitmex
         mock_fetch_ticker.return_value = {'bid': 99}
@@ -150,12 +168,15 @@ class HoldntradeTest(unittest.TestCase):
 
         assert not mock_create_limit_buy_order.called, 'create_order was called but should have not'
 
+    @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
     @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
-    def test_create_buy_order_should_create_order_if_order_is_above_limit(self, mock_create_limit_buy_order, mock_fetch_ticker):
+    def test_create_buy_order_should_create_order_if_order_is_above_limit(self, mock_create_limit_buy_order,
+                                                                          mock_fetch_ticker, mock_logging):
         price = 4000
         holdntrade.curr_sell = []
         amount = 10
+        holdntrade.log = mock_logging
         holdntrade.conf = self.create_default_conf()
         holdntrade.long_price = 1234
         holdntrade.exchange = ccxt.bitmex
@@ -164,7 +185,6 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.create_buy_order(price, amount, holdntrade.conf.change)
 
         mock_create_limit_buy_order.assert_called_with(holdntrade.conf.pair, amount, holdntrade.long_price)
-
 
     @staticmethod
     def create_default_conf():
