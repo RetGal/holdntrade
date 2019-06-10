@@ -317,7 +317,7 @@ def get_balance():
         bal = exchange.fetch_balance()['BTC']['free']
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error', type(error).__name__, error.args, ', retrying in about 5 seconds...')
+        log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
         return get_balance()
     else:
@@ -645,5 +645,5 @@ if __name__ == '__main__':
             log.info('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.8.6 sell same amount
+# V1.8.7 fixed logging
 #
