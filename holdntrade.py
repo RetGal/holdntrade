@@ -406,7 +406,7 @@ def init_orders(change: float, divider: int, force_close: bool):
             log.info("no. of buy orders : {0}".format(len(buy_orders)))
             log.info("no. of sell orders: {0}".format(len(sell_orders)))
 
-            if not force_close or init.lower() in ['y', 'yes']:
+            if force_close is False or init.lower() in ['y', 'yes']:
                 sell_orders = sorted(sell_orders, key=lambda o: o['price'], reverse=True)
 
                 for o in sell_orders:
@@ -434,7 +434,7 @@ def init_orders(change: float, divider: int, force_close: bool):
             else:
                 log.info('Unrealised PNL: {0:.8f} BTC'.format(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor))
                 cancel = ''
-                if not force_close:
+                if force_close is False:
                     cancel = input('All existing orders will be canceled! Are you sure (y/n)? ')
                 if force_close or cancel.lower() in ['y', 'yes']:
                     cancel_orders(open_orders)
@@ -443,7 +443,7 @@ def init_orders(change: float, divider: int, force_close: bool):
                     exit('')
 
         # Handle open positions if no orders are open
-        elif not force_close and get_open_position(conf.symbol) is not None:
+        elif force_close is False and get_open_position(conf.symbol) is not None:
             msg = 'There is an open BTC position!\nUnrealised PNL: {0:.8f} BTC\nWould you like to close it? (y/n) '
             init = input(msg.format(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor))
             if init.lower() in ['y', 'yes']:
