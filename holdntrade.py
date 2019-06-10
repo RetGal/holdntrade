@@ -82,7 +82,7 @@ def trade_executed(price: float, amount: int, change: float):
     Else if the order is closed, we follow with the followup function and createbuyorder and
     pass on the variables we got from input.
     """
-    status = fetch_order_status()
+    status = fetch_order_status(curr_order['id'])
     log.debug('-------------------------------')
     log.debug(time.ctime())
     if status == 'open':
@@ -112,7 +112,7 @@ def sell_executed(price: float, amount: int, divider: int, change: float):
 
     for orderId in curr_sell:
         time.sleep(0.5)
-        status = fetch_sell_orders(orderId)
+        status = fetch_order_status(orderId)
         if status == 'open':
             log.debug('Sell still ' + status)
         elif status in ['closed', 'canceled']:
@@ -183,12 +183,12 @@ def create_divided_sell_order(divider: float, change: float):
         return create_divided_sell_order(divider, change)
 
 
-def fetch_sell_orders(orderId: str):
+def fetch_order_status(orderId: str):
     """
-    fetch sell orders
+    fetches the status of an order
 
-    input: Order ID
-    output: Status of the passed order with the passed orderID.
+    input: id of an order
+    output: status of the order (open, closed)
     """
     try:
         fo = exchange.fetch_order_status(orderId)
@@ -196,24 +196,7 @@ def fetch_sell_orders(orderId: str):
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
-        return fetch_sell_orders(orderId)
-    else:
-        return fo
-
-
-def fetch_order_status():
-    """
-    fetches the status of the current buy order
-
-    output: status of order (open, closed)
-    """
-    try:
-        fo = exchange.fetch_order_status(curr_order['id'])
-
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
-        sleep_for(4, 6)
-        return fetch_order_status()
+        return fetch_order_status(orderId)
     else:
         return fo
 
@@ -479,7 +462,7 @@ def cancel_orders(orders):
             if status == 'open':
                 exchange.cancel_order(o['id'])
             else:
-                log.waring('Cancel {0} order {1} was in state'.format(o['side'], o['id']), status)
+                log.waring('Cancel {0} order {1} was in state '.format(o['side'], o['id']) + status)
 
     except (ccxt.OrderNotFound, ccxt.base.errors.OrderNotFound) as error:
         log.error('Cancel {0} order {1} not found '.format(o['side'], o['id']) + error.args)
@@ -645,5 +628,5 @@ if __name__ == '__main__':
             log.info('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.8.7 fixed logging
+# V1.8.8 deduped
 #
