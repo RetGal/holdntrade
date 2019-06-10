@@ -90,8 +90,9 @@ def trade_executed(price: float, amount: int, change: float):
         log.debug('Current Price: {}'.format(price))
     elif status in ['closed', 'canceled']:
         log.info('starting follow up')
+        last_buy_size = curr_order_size
         create_buy_order(price, amount, change)
-        create_sell_order(change)
+        create_sell_order(change, last_buy_size)
         log.info('Trade executed!')
     else:
         log.warning('You should not be here\nOrder state: ' + status)
@@ -123,7 +124,7 @@ def sell_executed(price: float, amount: int, divider: int, change: float):
             log.info('Sell executed')
 
 
-def create_sell_order(change: float):
+def create_sell_order(change: float, fixed_order_size: int = None):
     """
     loop that starts after buy order is executed and sends sell order to exchange
     as well as appends the orderID to the sell_orders list.
@@ -133,20 +134,25 @@ def create_sell_order(change: float):
     global sell_price
     global curr_order_size
 
+    if fixed_order_size is None:
+        order_size = curr_order_size
+    else:
+        order_size = fixed_order_size
+
     try:
-        if not is_order_below_limit(curr_order_size, sell_price):
+        if not is_order_below_limit(order_size, sell_price):
             if conf.exchange == 'bitmex':
-                order = exchange.create_limit_sell_order(conf.pair, curr_order_size, sell_price)
+                order = exchange.create_limit_sell_order(conf.pair, order_size, sell_price)
             elif conf.exchange == 'kraken':
                 rate = get_current_price()
-                order = exchange.create_limit_sell_order(conf.pair, to_kraken(curr_order_size, rate), sell_price, {'leverage': 2})
+                order = exchange.create_limit_sell_order(conf.pair, to_kraken(order_size, rate), sell_price, {'leverage': 2})
             curr_sell.append(order['id'])
             log.info(str(order))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sell_price = round(get_current_price() * (1 + change))
-        return create_sell_order(change)
+        return create_sell_order(change, fixed_order_size)
 
 
 def create_divided_sell_order(divider: float, change: float):
@@ -639,5 +645,5 @@ if __name__ == '__main__':
             log.info('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.8.5 closing octopus
+# V1.8.6 sell same amount
 #
