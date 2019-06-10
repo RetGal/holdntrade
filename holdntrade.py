@@ -315,7 +315,7 @@ def get_used_balance():
     """
     try:
         if conf.exchange == 'bitmex':
-            used_bal = exchange.private_get_position()[0]['currentQty']
+            return exchange.private_get_position()[0]['currentQty']
         elif conf.exchange == 'kraken':
             open_positions = exchange.private_post_openpositions()['result']
             for pos in open_positions:
@@ -326,8 +326,6 @@ def get_used_balance():
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
         return get_used_balance()
-    else:
-        return used_bal
 
 
 def get_current_price():
@@ -510,6 +508,9 @@ def get_open_position(symbol: str):
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        # no retry in case of "no volume to close position" (kraken specific error)
+        if "volume to close position" in str(error.args):
+            return
         sleep_for(4, 6)
         return get_open_position(symbol)
 
@@ -628,5 +629,5 @@ if __name__ == '__main__':
             log.info('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.8.8 deduped
+# V1.8.9 bug free (almost)
 #
