@@ -406,7 +406,7 @@ def init_orders(change: float, divider: int, force_close: bool):
             log.info("no. of buy orders : {0}".format(len(buy_orders)))
             log.info("no. of sell orders: {0}".format(len(sell_orders)))
 
-            if force_close is False or init.lower() in ['y', 'yes']:
+            if force_close is False and init.lower() in ['y', 'yes']:
                 sell_orders = sorted(sell_orders, key=lambda o: o['price'], reverse=True)
 
                 for o in sell_orders:
@@ -493,7 +493,7 @@ def close_position(symbol: str):
         if conf.exchange == 'bitmex':
             exchange.private_post_order_closeposition({'symbol': symbol})
         elif conf.exchange == 'kraken':
-            exchange.private_post_closepositions({'symbol': symbol})
+            exchange.create_market_sell_order(conf.pair, 0.0, {'leverage': 2})
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -639,5 +639,5 @@ if __name__ == '__main__':
             log.info('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.8.4 flying octopus
+# V1.8.5 closing octopus
 #
