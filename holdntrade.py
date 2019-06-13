@@ -520,7 +520,7 @@ def cancel_orders(orders):
             if status == 'open':
                 exchange.cancel_order(o['id'])
             else:
-                log.waring('Cancel {0} order {1} was in state '.format(o['side'], o['id']) + status)
+                log.warnig('Cancel {0} order {1} was in state '.format(o['side'], o['id']) + status)
 
     except (ccxt.OrderNotFound, ccxt.base.errors.OrderNotFound) as error:
         log.error('Cancel {0} order {1} not found '.format(o['side'], o['id']) + error.args)
