@@ -335,14 +335,12 @@ def get_balance():
     output: balance
     """
     try:
-        bal = exchange.fetch_balance()['BTC']['free']
+        return exchange.fetch_balance()['BTC']['free']
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
         return get_balance()
-    else:
-        return bal
 
 
 def get_used_balance():
@@ -355,10 +353,8 @@ def get_used_balance():
         if conf.exchange == 'bitmex':
             return exchange.private_get_position()[0]['currentQty']
         elif conf.exchange == 'kraken':
-            open_positions = exchange.private_post_openpositions()['result']
-            for pos in open_positions:
-                if open_positions[pos]['type'] == 'buy':
-                    return float(open_positions[pos]['vol'])
+            result = exchange.private_post_tradebalance()['result']
+            return round(float(result['e']) - float(result['mf']))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -399,13 +395,11 @@ def get_current_price():
     """
     sleep_for(4, 6)
     try:
-        d = exchange.fetch_ticker(conf.pair)
+        return exchange.fetch_ticker(conf.pair)['bid']
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         return get_current_price()
-    else:
-        return d['bid']
 
 
 def update_price(origin_price: float, price: float):
@@ -691,5 +685,5 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.9.0 compensate margin
+# V1.9.1 kraken used balance
 #
