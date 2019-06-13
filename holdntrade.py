@@ -82,14 +82,20 @@ def trade_executed(price: float, amount: int):
     Else if the order is closed, we follow with the followup function and createbuyorder and
     pass on the variables we got from input.
     """
-    status = fetch_order_status(curr_order['id'])
+    global curr_order_size
+
+    if curr_order is None:
+        status = 'closed'
+        log.info('Closed inexisting compensation order')
+    else:
+        status = fetch_order_status(curr_order['id'])
     log.debug('-------------------------------')
     log.debug(time.ctime())
     if status == 'open':
         log.debug('Open Buy Order! Amount: {} @ {}'.format(curr_order_size, long_price))
         log.debug('Current Price: {}'.format(price))
     elif status in ['closed', 'canceled']:
-        log.info('starting follow up')
+        log.info('Starting follow up')
         last_buy_size = curr_order_size
         create_buy_order(price, amount)
         create_sell_order(last_buy_size)
@@ -257,36 +263,69 @@ def create_buy_order(price: float, amount: int):
         return create_buy_order(update_price(cur_btc_price, price), amount)
 
 
-def create_first_order(price: float, amount: int):
+def create_market_sell_order(amount_btc: float):
     """
-    creation of first order. Similar to createorder(price, amount) but with different price to go long.
-    Calculated in raw USD, its the current price - the value of first_c
+    creates a market sell order and sets the values as global ones. Used to compensate margins above 50%.
+
+    input: amount_btc to be sold to reach 50% margin
     """
     global long_price
     global sell_price
     global curr_sell
-    global curr_order
-    global curr_order_size
 
     cur_btc_price = get_current_price()
 
-    long_price = round(price)
-    sell_price = round(price * (1 + conf.change))
-    curr_order_size = round(amount / conf.divider)
+    amount = round(amount_btc*cur_btc_price)
+
+    long_price = round(cur_btc_price * (1 - conf.change))
+    sell_price = round(cur_btc_price * (1 + conf.change))
 
     try:
-        if conf.exchange == 'bitmex':
-            order = exchange.create_market_buy_order(conf.pair, amount)
-        elif conf.exchange == 'kraken':
-            order = exchange.create_market_buy_order(conf.pair, to_kraken(amount, cur_btc_price), {'leverage': 2})
-        curr_order = order
-        log.info(str(order))
+        if not is_btc_amount_below_limit(amount_btc):
+            if conf.exchange == 'bitmex':
+                order = exchange.create_market_sell_order(conf.pair, amount)
+            elif conf.exchange == 'kraken':
+                order = exchange.create_market_sell_order(conf.pair, amount_btc, {'leverage': 2})
+            curr_sell.append(order['id'])
+            log.info(str(order))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
+        return create_market_sell_order(amount_btc)
 
-        return create_first_order(update_price(cur_btc_price, price), amount)
+
+def create_market_buy_order(amount_btc: float):
+    """
+    creates a market buy order and sets the values as global ones. Used to compensate margins below 50%.
+
+    input: amount_btc to be bought to reach 50% margin
+    """
+
+    global long_price
+    global sell_price
+    global curr_order
+
+    cur_btc_price = get_current_price()
+
+    amount = round(amount_btc*cur_btc_price)
+
+    long_price = round(cur_btc_price * (1 - conf.change))
+    sell_price = round(cur_btc_price * (1 + conf.change))
+
+    try:
+        if not is_order_below_limit(amount, cur_btc_price):
+            if conf.exchange == 'bitmex':
+                order = exchange.create_market_buy_order(conf.pair, amount)
+            elif conf.exchange == 'kraken':
+                order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2})
+            curr_order = order
+            log.info(str(order))
+
+    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        sleep_for(4, 6)
+        return create_market_buy_order(amount_btc)
 
 
 def get_balance():
@@ -327,6 +366,31 @@ def get_used_balance():
         return get_used_balance()
 
 
+def compensate():
+    """
+    approaches the margin used towards 50% by selling or buying the difference to market price
+
+    """
+    try:
+        bal = exchange.fetch_balance()['BTC']
+
+    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        sleep_for(4, 6)
+        return compensate()
+
+    used = float(100-(bal['free']/bal['total'])*100)
+    if used < 40 or used > 60:
+        amount_btc = float(bal['total']/2-bal['used'])
+        if amount_btc > 0:
+            log.info("Need to buy {0} BTC in order to reach 50% margin".format(amount_btc))
+            create_market_buy_order(amount_btc)
+        else:
+            log.info("Need to sell {0} BTC in order to reach 50% margin".format(amount_btc))
+            create_market_sell_order(abs(amount_btc))
+    return
+
+
 def get_current_price():
     """
     fetch the current BTC price
@@ -358,9 +422,7 @@ def init_orders(force_close: bool):
     """
     initialize existing orders or remove all pending ones
     output True if loaded and False if first order necessary
-    :param change:
-    :param divider:
-    :param force_close:
+    :param force_close: close all orders/positions (reset)
     :return:
     """
     global curr_order
@@ -414,7 +476,7 @@ def init_orders(force_close: bool):
                     create_buy_order(get_current_price(), round(get_balance() / conf.divider * get_current_price()))
 
                 log.info('initialization complete (using existing orders)')
-                # No "create first order" necessary
+                # No "create first order" / "approach_half_margin" necessary
                 return True
 
             else:
@@ -424,7 +486,6 @@ def init_orders(force_close: bool):
                     cancel = input('All existing orders will be canceled! Are you sure (y/n)? ')
                 if force_close or cancel.lower() in ['y', 'yes']:
                     cancel_orders(open_orders)
-                    close_position(conf.symbol)
                 else:
                     exit('')
 
@@ -567,8 +628,12 @@ def sleep_for(greater: int, less: int):
 
 
 def is_order_below_limit(amount: int, price: float):
-    if abs(amount / price) < conf.order_btc_min:
-        log.info('Per order volume below limit: ' + str(abs(amount / price)))
+    return is_btc_amount_below_limit(abs(amount / price))
+
+
+def is_btc_amount_below_limit(amount_btc: float):
+    if abs(amount_btc) < conf.order_btc_min:
+        log.info('Per order volume below limit: ' + str(abs(amount_btc)))
         return True
     return False
 
@@ -608,7 +673,6 @@ if __name__ == '__main__':
 
         balance = get_balance()
         amount = round(balance / conf.divider * price)
-        first_amount = round(balance / 2 * price)
 
         if is_order_below_limit(amount, price):
             log.info('Resetting all Orders')
@@ -621,12 +685,11 @@ if __name__ == '__main__':
                 log.info('No sell orders - resetting all Orders')
                 init_orders(True)
         else:
-            create_first_order(price, first_amount)
+            # good enough as starting point if no compensation buy/sell is required
+            curr_order_size = amount
+            compensate()
             loop = True
-            log.info('-------------------------------')
-            log.info(time.ctime())
-            log.info('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.8.10 correct divider
+# V1.9.0 compensate margin
 #
