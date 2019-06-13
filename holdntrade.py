@@ -72,7 +72,7 @@ def function_logger(console_level: int, filename: str, file_level: int = None):
     return logger
 
 
-def trade_executed(price: float, amount: int, change: float):
+def trade_executed(price: float, amount: int):
     """
     Check if the most recent buy order has been executed.
 
@@ -91,14 +91,14 @@ def trade_executed(price: float, amount: int, change: float):
     elif status in ['closed', 'canceled']:
         log.info('starting follow up')
         last_buy_size = curr_order_size
-        create_buy_order(price, amount, change)
-        create_sell_order(change, last_buy_size)
+        create_buy_order(price, amount)
+        create_sell_order(last_buy_size)
         log.info('Trade executed!')
     else:
         log.warning('You should not be here\nOrder state: ' + status)
 
 
-def sell_executed(price: float, amount: int, divider: int, change: float):
+def sell_executed(price: float, amount: int):
     """
     Check if any of the open sell orders has been executed.
 
@@ -118,13 +118,13 @@ def sell_executed(price: float, amount: int, divider: int, change: float):
         elif status in ['closed', 'canceled']:
             curr_sell.remove(orderId)
             if len(curr_sell) == 0:
-                create_divided_sell_order(divider, change)
+                create_divided_sell_order()
             cancel_order()
-            create_buy_order(price, amount, change)
+            create_buy_order(price, amount)
             log.info('Sell executed')
 
 
-def create_sell_order(change: float, fixed_order_size: int = None):
+def create_sell_order(fixed_order_size: int = None):
     """
     loop that starts after buy order is executed and sends sell order to exchange
     as well as appends the orderID to the sell_orders list.
@@ -151,11 +151,11 @@ def create_sell_order(change: float, fixed_order_size: int = None):
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
-        sell_price = round(get_current_price() * (1 + change))
-        return create_sell_order(change, fixed_order_size)
+        sell_price = round(get_current_price() * (1 + conf.change))
+        return create_sell_order(fixed_order_size)
 
 
-def create_divided_sell_order(divider: float, change: float):
+def create_divided_sell_order():
     """
     loop that starts after buy order is executed and sends sell order to exchange
     as well as appends the orderID to the sell_orders list.
@@ -166,7 +166,7 @@ def create_divided_sell_order(divider: float, change: float):
 
     try:
         used_bal = get_used_balance()
-        amount = round(used_bal / divider)
+        amount = round(used_bal / conf.divider)
 
         if not is_order_below_limit(amount, sell_price):
             if conf.exchange == 'bitmex':
@@ -179,8 +179,8 @@ def create_divided_sell_order(divider: float, change: float):
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
-        sell_price = round(get_current_price() * (1 + change))
-        return create_divided_sell_order(divider, change)
+        sell_price = round(get_current_price() * (1 + conf.change))
+        return create_divided_sell_order()
 
 
 def fetch_order_status(orderId: str):
@@ -224,7 +224,7 @@ def cancel_order():
         return cancel_order()
 
 
-def create_buy_order(price: float, amount: int, change: float):
+def create_buy_order(price: float, amount: int):
     """
     creates a buy order and sets the values as global ones. Used by other functions.
 
@@ -237,8 +237,8 @@ def create_buy_order(price: float, amount: int, change: float):
     global curr_order
     global curr_order_size
 
-    long_price = round(price * (1 - change))
-    sell_price = round(price * (1 + change))
+    long_price = round(price * (1 - conf.change))
+    sell_price = round(price * (1 + conf.change))
     curr_order_size = amount
     cur_btc_price = get_current_price()
 
@@ -254,10 +254,10 @@ def create_buy_order(price: float, amount: int, change: float):
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
-        return create_buy_order(update_price(cur_btc_price, price), amount, change)
+        return create_buy_order(update_price(cur_btc_price, price), amount)
 
 
-def create_first_order(price: float, amount: int, change: float):
+def create_first_order(price: float, amount: int):
     """
     creation of first order. Similar to createorder(price, amount) but with different price to go long.
     Calculated in raw USD, its the current price - the value of first_c
@@ -271,9 +271,8 @@ def create_first_order(price: float, amount: int, change: float):
     cur_btc_price = get_current_price()
 
     long_price = round(price)
-    sell_price = round(price * (1 + change))
-    sell_amount = round(amount / 5)
-    curr_order_size = sell_amount
+    sell_price = round(price * (1 + conf.change))
+    curr_order_size = round(amount / conf.divider)
 
     try:
         if conf.exchange == 'bitmex':
@@ -287,7 +286,7 @@ def create_first_order(price: float, amount: int, change: float):
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
 
-        return create_first_order(update_price(cur_btc_price, price), amount, change)
+        return create_first_order(update_price(cur_btc_price, price), amount)
 
 
 def get_balance():
@@ -355,7 +354,7 @@ def update_price(origin_price: float, price: float):
     return (get_current_price() / origin_price) * price
 
 
-def init_orders(change: float, divider: int, force_close: bool):
+def init_orders(force_close: bool):
     """
     initialize existing orders or remove all pending ones
     output True if loaded and False if first order necessary
@@ -407,12 +406,12 @@ def init_orders(change: float, divider: int, force_close: bool):
 
                 # All sell orders executed
                 if 0 == len(sell_orders):
-                    sell_price = round(get_current_price() * (1 + change))
-                    create_sell_order(change)
+                    sell_price = round(get_current_price() * (1 + conf.change))
+                    create_sell_order()
 
                 # All buy orders executed
                 elif 0 == len(buy_orders):
-                    create_buy_order(get_current_price(), round(get_balance() / divider * get_current_price()), change)
+                    create_buy_order(get_current_price(), round(get_balance() / conf.divider * get_current_price()))
 
                 log.info('initialization complete (using existing orders)')
                 # No "create first order" necessary
@@ -439,7 +438,7 @@ def init_orders(change: float, divider: int, force_close: bool):
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
-        return init_orders(change, divider, force_close)
+        return init_orders(force_close)
 
     else:
         log.info('initialization complete')
@@ -483,6 +482,9 @@ def close_position(symbol: str):
             exchange.create_market_sell_order(conf.pair, 0.0, {'leverage': 2})
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        # no retry in case of "no volume to close position" (kraken specific error)
+        if "volume to close position" in str(error.args):
+            return
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
         return close_position(symbol)
@@ -508,9 +510,6 @@ def get_open_position(symbol: str):
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
-        # no retry in case of "no volume to close position" (kraken specific error)
-        if "volume to close position" in str(error.args):
-            return
         sleep_for(4, 6)
         return get_open_position(symbol)
 
@@ -602,7 +601,7 @@ if __name__ == '__main__':
     conf = ExchangeConfig(filename)
     exchange = connect_to_exchange(conf)
 
-    loop = init_orders(conf.change, conf.divider, False)
+    loop = init_orders(False)
 
     while True:
         price = get_current_price()
@@ -613,21 +612,21 @@ if __name__ == '__main__':
 
         if is_order_below_limit(amount, price):
             log.info('Resetting all Orders')
-            init_orders(conf.change, conf.divider, True)
+            init_orders(True)
 
         if loop:
-            trade_executed(price, amount, conf.change)
-            sell_executed(price, amount, conf.divider, conf.change)
+            trade_executed(price, amount)
+            sell_executed(price, amount)
             if len(curr_sell) == 0:
                 log.info('No sell orders - resetting all Orders')
-                init_orders(conf.change, conf.divider, True)
+                init_orders(True)
         else:
-            create_first_order(price, first_amount, conf.change)
+            create_first_order(price, first_amount)
             loop = True
             log.info('-------------------------------')
             log.info(time.ctime())
             log.info('Created Buy Order over {}'.format(first_amount))
 
 #
-# V1.8.9 bug free (almost)
+# V1.8.10 correct divider
 #

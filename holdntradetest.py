@@ -146,7 +146,7 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.conf = self.create_default_conf()
         holdntrade.exchange = ccxt.bitmex
 
-        holdntrade.create_sell_order(holdntrade.conf.change)
+        holdntrade.create_sell_order()
 
         mock_create_limit_sell_order.assert_called_with(holdntrade.conf.pair, holdntrade.curr_order_size,
                                                         holdntrade.sell_price)
@@ -164,7 +164,7 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.exchange = ccxt.bitmex
         mock_fetch_ticker.return_value = {'bid': 99}
 
-        holdntrade.create_buy_order(price, amount, holdntrade.conf.change)
+        holdntrade.create_buy_order(price, amount)
 
         assert not mock_create_limit_buy_order.called, 'create_order was called but should have not'
 
@@ -182,7 +182,7 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.exchange = ccxt.bitmex
         mock_fetch_ticker.return_value = {'bid': 99}
 
-        holdntrade.create_buy_order(price, amount, holdntrade.conf.change)
+        holdntrade.create_buy_order(price, amount)
 
         mock_create_limit_buy_order.assert_called_with(holdntrade.conf.pair, amount, holdntrade.long_price)
 
