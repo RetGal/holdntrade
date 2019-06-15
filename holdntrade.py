@@ -95,13 +95,12 @@ def trade_executed(price: float, amount: int):
         log.debug('Open Buy Order! Amount: {} @ {}'.format(curr_order_size, long_price))
         log.debug('Current Price: {}'.format(price))
     elif status in ['closed', 'canceled']:
-        log.info('Starting follow up')
+        log.info('Trade executed, starting follow up')
         last_buy_size = curr_order_size
         create_buy_order(price, amount)
         create_sell_order(last_buy_size)
-        log.info('Trade executed!')
     else:
-        log.warning('You should not be here\nOrder state: ' + status)
+        log.warning('You should not be here, order state: ' + status)
 
 
 def sell_executed(price: float, amount: int):
@@ -123,11 +122,13 @@ def sell_executed(price: float, amount: int):
             log.debug('Sell still ' + status)
         elif status in ['closed', 'canceled']:
             curr_sell.remove(orderId)
+            log.info('Sell executed')
             if len(curr_sell) == 0:
                 create_divided_sell_order()
             cancel_order()
             create_buy_order(price, amount)
-            log.info('Sell executed')
+        else:
+            log.warning('You should not be here, order state: ' + status)
 
 
 def create_sell_order(fixed_order_size: int = None):
@@ -145,6 +146,12 @@ def create_sell_order(fixed_order_size: int = None):
     else:
         order_size = fixed_order_size
 
+    stock = get_used_balance()
+    if stock < order_size:
+        # sold out - the main loop will re-init if there are no other sell orders open
+        log.warning('Not executing sell order over {0} (only {1} left)'.format(str(order_size), str(stock)))
+        return
+
     try:
         if not is_order_below_limit(order_size, sell_price):
             if conf.exchange == 'bitmex':
@@ -158,7 +165,7 @@ def create_sell_order(fixed_order_size: int = None):
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         # insufficient funds
         if "nsufficient" in str(error.args):
-            log.warning('Insufficient funds - not selling ' + str(order_size))
+            log.error('Insufficient funds - not selling ' + str(order_size))
             return
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sell_price = round(get_current_price() * (1 + conf.change))
@@ -190,7 +197,7 @@ def create_divided_sell_order():
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         # insufficient funds
         if "nsufficient" in str(error.args):
-            log.warning('Insufficient funds - not selling ' + str(amount))
+            log.error('Insufficient funds - not selling ' + str(amount))
             return
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sell_price = round(get_current_price() * (1 + conf.change))
@@ -300,7 +307,7 @@ def create_market_sell_order(amount_btc: float):
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         # insufficient funds
         if "nsufficient" in str(error.args):
-            log.warning('Insufficient funds - not selling ' + str(amount))
+            log.error('Insufficient funds - not selling ' + str(amount))
             return
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
@@ -697,5 +704,5 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.9.2 handle insufficient funds
+# V1.9.3 no short positions
 #

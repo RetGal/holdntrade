@@ -124,7 +124,9 @@ class HoldntradeTest(unittest.TestCase):
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
-    def test_create_sell_order_should_not_create_order_if_order_is_below_limit(self, mock_create_limit_sell_order,
+    @mock.patch.object(holdntrade, 'get_used_balance')
+    def test_create_sell_order_should_not_create_order_if_order_is_below_limit(self, mock_get_used_balance,
+                                                                               mock_create_limit_sell_order,
                                                                                mock_logging):
         holdntrade.sell_price = 8000
         holdntrade.curr_sell = []
@@ -132,19 +134,42 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.log = mock_logging
         holdntrade.conf = self.create_default_conf()
 
+        mock_get_used_balance.return_value = 20
+
         holdntrade.create_sell_order(holdntrade.conf.change)
 
         assert not mock_create_limit_sell_order.called, 'create_order was called but should have not'
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
-    def test_create_sell_order_should_create_order(self, mock_create_limit_sell_order, mock_logging):
+    @mock.patch.object(holdntrade, 'get_used_balance')
+    def test_create_sell_order_should_not_create_order_if_order_is_bigger_than_used_balance(self, mock_get_used_balance,
+                                                                               mock_create_limit_sell_order,
+                                                                               mock_logging):
         holdntrade.sell_price = 4000
         holdntrade.curr_sell = []
         holdntrade.curr_order_size = 10
         holdntrade.log = mock_logging
         holdntrade.conf = self.create_default_conf()
-        holdntrade.exchange = ccxt.bitmex
+
+        mock_get_used_balance.return_value = 9
+
+        holdntrade.create_sell_order(holdntrade.conf.change)
+
+        assert not mock_create_limit_sell_order.called, 'create_order was called but should have not'
+
+    @patch('holdntrade.logging')
+    @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
+    @mock.patch.object(holdntrade, 'get_used_balance')
+    def test_create_sell_order_should_create_order(self, mock_get_used_balance, mock_create_limit_sell_order,
+                                                   mock_logging):
+        holdntrade.sell_price = 4000
+        holdntrade.curr_sell = []
+        holdntrade.curr_order_size = 10
+        holdntrade.log = mock_logging
+        holdntrade.conf = self.create_default_conf()
+
+        mock_get_used_balance.return_value = 20
 
         holdntrade.create_sell_order()
 
