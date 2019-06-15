@@ -156,6 +156,10 @@ def create_sell_order(fixed_order_size: int = None):
             log.info(str(order))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        # insufficient funds
+        if "nsufficient" in str(error.args):
+            log.warning('Insufficient funds - not selling ' + str(order_size))
+            return
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sell_price = round(get_current_price() * (1 + conf.change))
         return create_sell_order(fixed_order_size)
@@ -184,6 +188,10 @@ def create_divided_sell_order():
             log.info(str(order))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        # insufficient funds
+        if "nsufficient" in str(error.args):
+            log.warning('Insufficient funds - not selling ' + str(amount))
+            return
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sell_price = round(get_current_price() * (1 + conf.change))
         return create_divided_sell_order()
@@ -290,6 +298,10 @@ def create_market_sell_order(amount_btc: float):
             log.info(str(order))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        # insufficient funds
+        if "nsufficient" in str(error.args):
+            log.warning('Insufficient funds - not selling ' + str(amount))
+            return
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
         return create_market_sell_order(amount_btc)
@@ -382,7 +394,7 @@ def compensate():
             log.info("Need to buy {0} BTC in order to reach 50% margin".format(amount_btc))
             create_market_buy_order(amount_btc)
         else:
-            log.info("Need to sell {0} BTC in order to reach 50% margin".format(amount_btc))
+            log.info("Need to sell {0} BTC in order to reach 50% margin".format(abs(amount_btc)))
             create_market_sell_order(abs(amount_btc))
     return
 
@@ -685,5 +697,5 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.9.1 kraken used balance
+# V1.9.2 handle insufficient funds
 #
