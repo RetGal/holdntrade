@@ -507,12 +507,10 @@ def init_orders(force_close: bool):
                     cancel = input('All existing orders will be canceled! Are you sure (y/n)? ')
                 if force_close or cancel.lower() in ['y', 'yes']:
                     cancel_orders(open_orders)
-                    if reset_counter > 10:
+                    if reset_counter > 9:
                         log.warning('Closing position, reset counter is ' + reset_counter)
                         reset_counter = 0
                         close_position(conf.symbol)
-                else:
-                    exit('')
 
         # Handle open positions if no orders are open
         elif force_close is False and get_open_position(conf.symbol) is not None:
@@ -716,5 +714,5 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.9.4 no init loop
+# V1.9.5 always compensate if necessary
 #
