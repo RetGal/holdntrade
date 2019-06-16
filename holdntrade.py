@@ -17,6 +17,7 @@ long_price = 0
 curr_order = None
 curr_sell = []
 curr_order_size = 0
+reset_counter = 0
 loop = False
 n = 0
 
@@ -257,6 +258,7 @@ def create_buy_order(price: float, amount: int):
     global sell_price
     global curr_order
     global curr_order_size
+    global reset_counter
 
     long_price = round(price * (1 - conf.change))
     sell_price = round(price * (1 + conf.change))
@@ -276,6 +278,9 @@ def create_buy_order(price: float, amount: int):
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
         return create_buy_order(update_price(cur_btc_price, price), amount)
+
+    if reset_counter > 0:
+        reset_counter -= 1
 
 
 def create_market_sell_order(amount_btc: float):
@@ -443,9 +448,12 @@ def init_orders(force_close: bool):
     global long_price
     global sell_price
     global curr_order_size
+    global reset_counter
 
     buy_orders = []
     sell_orders = []
+
+    reset_counter += 5
 
     try:
         init = ''
@@ -499,6 +507,10 @@ def init_orders(force_close: bool):
                     cancel = input('All existing orders will be canceled! Are you sure (y/n)? ')
                 if force_close or cancel.lower() in ['y', 'yes']:
                     cancel_orders(open_orders)
+                    if reset_counter > 10:
+                        log.warning('Closing position, reset counter is ' + reset_counter)
+                        reset_counter = 0
+                        close_position(conf.symbol)
                 else:
                     exit('')
 
@@ -704,5 +716,5 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.9.3 no short positions
+# V1.9.4 no init loop
 #
