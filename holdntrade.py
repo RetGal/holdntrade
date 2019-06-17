@@ -275,6 +275,13 @@ def create_buy_order(price: float, amount: int):
             log.info(str(order))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        # insufficient margin
+        if "nsufficient" in str(error.args):
+            log.error('Insufficient initial margin - not buying ' + str(amount))
+            return
+        elif "too low" in str(error.args):
+            log.error('Margin level too low - not buying ' + str(amount))
+            return
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
         return create_buy_order(update_price(cur_btc_price, price), amount)
@@ -714,5 +721,5 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.9.5 always compensate if necessary
+# V1.9.6 catch insufficient margin
 #
