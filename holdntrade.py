@@ -515,7 +515,7 @@ def init_orders(force_close: bool):
                 if force_close or cancel.lower() in ['y', 'yes']:
                     cancel_orders(open_orders)
                     if reset_counter > 9:
-                        log.warning('Closing position, reset counter is ' + reset_counter)
+                        log.warning('Closing position, reset counter is ' + str(reset_counter))
                         reset_counter = 0
                         close_position(conf.symbol)
 
@@ -721,5 +721,5 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.9.6 catch insufficient margin
+# V1.9.7 reset_counter log fixed
 #
