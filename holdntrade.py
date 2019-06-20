@@ -341,7 +341,6 @@ def create_market_buy_order(amount_btc: float):
 
     input: amount_btc to be bought to reach 50% margin
     """
-
     global long_price
     global sell_price
     global curr_order
@@ -408,7 +407,13 @@ def compensate():
 
     """
     try:
-        bal = exchange.fetch_balance()['BTC']
+        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+            bal = exchange.fetch_balance()['BTC']
+        elif conf.exchange == 'kraken':
+            bal = exchange.private_post_tradebalance({'asset': 'EUR'})['result']
+            bal['free'] = float(bal['mf'])
+            bal['total'] = float(bal['e'])
+            bal['used'] = float(bal['m'])
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -432,7 +437,12 @@ def get_used_margin_percentage():
     calculates the used margin percentage
     """
     try:
-        bal = exchange.fetch_balance()['BTC']
+        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+            bal = exchange.fetch_balance()['BTC']
+        elif conf.exchange == 'kraken':
+            bal = exchange.private_post_tradebalance({'asset': 'EUR'})['result']
+            bal['free'] = float(bal['mf'])
+            bal['total'] = float(bal['e'])
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
