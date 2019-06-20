@@ -467,9 +467,8 @@ def calc_avg_entry_price(open_orders):
     total_price = 0
     if len(open_orders) > 0:
         for o in open_orders:
-            if o['side'] == 'sell':
-                total_amount += o['remaining']
-                total_price += o['price'] * o['remaining']
+            total_amount += o['remaining']
+            total_price += o['price'] * o['remaining']
     if total_amount > 0:
         return total_price / total_amount
     return 0
