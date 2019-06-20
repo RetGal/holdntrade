@@ -19,6 +19,7 @@ curr_sell = []
 curr_order_size = 0
 reset_counter = 0
 loop = False
+auto_conf = False
 n = 0
 
 # ------------------------------------------------------------------------------
@@ -270,7 +271,7 @@ def create_buy_order(price: float, amount: int):
             if conf.exchange == 'bitmex':
                 order = exchange.create_limit_buy_order(conf.pair, amount, long_price)
             elif conf.exchange == 'kraken':
-                order = exchange.create_limit_buy_order(conf.pair, to_kraken(amount, cur_btc_price), long_price, {'leverage': 2})
+                order = exchange.create_limit_buy_order(conf.pair, to_kraken(amount, cur_btc_price), long_price, {'leverage': 2, 'oflags': 'fcib'})
             curr_order = order
             log.info(str(order))
 
@@ -349,7 +350,7 @@ def create_market_buy_order(amount_btc: float):
             if conf.exchange == 'bitmex':
                 order = exchange.create_market_buy_order(conf.pair, amount)
             elif conf.exchange == 'kraken':
-                order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2})
+                order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2, 'oflags': 'fcib'})
             curr_order = order
             log.info(str(order))
 
@@ -406,9 +407,9 @@ def compensate():
         sleep_for(4, 6)
         return compensate()
 
-    used = float(100-(bal['free']/bal['total'])*100)
+    used = float(100 - (bal['free'] / bal['total']) * 100)
     if used < 40 or used > 60:
-        amount_btc = float(bal['total']/2-bal['used'])
+        amount_btc = float(bal['total'] / 2 - bal['used'])
         if amount_btc > 0:
             log.info("Need to buy {0} BTC in order to reach 50% margin".format(amount_btc))
             create_market_buy_order(amount_btc)
@@ -416,6 +417,21 @@ def compensate():
             log.info("Need to sell {0} BTC in order to reach 50% margin".format(abs(amount_btc)))
             create_market_sell_order(abs(amount_btc))
     return
+
+
+def get_used_margin_percentage():
+    """
+    calculates the used margin percentage
+    """
+    try:
+        bal = exchange.fetch_balance()['BTC']
+
+    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        sleep_for(4, 6)
+        return get_used_margin_percentage()
+
+    return float(100 - (bal['free'] / bal['total']) * 100)
 
 
 def get_current_price():
@@ -443,11 +459,12 @@ def update_price(origin_price: float, price: float):
     return (get_current_price() / origin_price) * price
 
 
-def init_orders(force_close: bool):
+def init_orders(force_close: bool, auto_conf: bool):
     """
     initialize existing orders or remove all pending ones
-    output True if loaded and False if first order necessary
+    output True if loaded and False if compensate margin is necessary
     :param force_close: close all orders/positions (reset)
+    :param auto_conf: load all orders and keep position
     :return:
     """
     global curr_order
@@ -466,23 +483,34 @@ def init_orders(force_close: bool):
         init = ''
         # Handle open orders
         open_orders = exchange.fetch_open_orders(conf.pair, since=None, limit=None, params={})
-        if len(open_orders):
-            if not force_close:
-                init = input('There are open orders! Would you like to load them? (y/n) ')
 
+        log.info("Used margin in: {:>14.2f}%".format(get_used_margin_percentage()))
+        log.info("Position in USD: {:>10}".format(get_used_balance()))
+
+        if len(open_orders):
+            total_buy_order_value = 0
+            total_sell_order_value = 0
             for o in open_orders:
                 if o['side'] == 'sell':
+                    total_sell_order_value += o['amount']
                     sell_orders.append(o)
                 elif o['side'] == 'buy':
+                    total_buy_order_value += o['amount']
                     buy_orders.append(o)
                 else:
                     log.error(inspect.stack()[1][3], ' shit happens')
                     time.sleep(5)
 
-            log.info("no. of buy orders : {0}".format(len(buy_orders)))
-            log.info("no. of sell orders: {0}".format(len(sell_orders)))
+            log.info("Value of buy orders: {:>6}".format(int(total_buy_order_value)))
+            log.info("Value of sell orders: {:>5}".format(int(total_sell_order_value)))
+            log.info("No. of buy orders: {:>8}".format(len(buy_orders)))
+            log.info("No. of sell orders: {:>7}".format(len(sell_orders)))
+            log.info('-------------------------------')
 
-            if force_close is False and init.lower() in ['y', 'yes']:
+            if not force_close and not auto_conf:
+                init = input('There are open orders! Would you like to load them? (y/n) ')
+
+            if not force_close and auto_conf or init.lower() in ['y', 'yes']:
                 sell_orders = sorted(sell_orders, key=lambda o: o['price'], reverse=True)
 
                 for o in sell_orders:
@@ -503,14 +531,14 @@ def init_orders(force_close: bool):
                 elif 0 == len(buy_orders):
                     create_buy_order(get_current_price(), round(get_balance() / conf.divider * get_current_price()))
 
-                log.info('initialization complete (using existing orders)')
-                # No compensate necessary
+                log.info('Initialization complete (using existing orders)')
+                # No "compensate" necessary
                 return True
 
             else:
                 log.info('Unrealised PNL: {0:.8f} BTC'.format(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor))
                 cancel = ''
-                if force_close is False:
+                if not force_close:
                     cancel = input('All existing orders will be canceled! Are you sure (y/n)? ')
                 if force_close or cancel.lower() in ['y', 'yes']:
                     cancel_orders(open_orders)
@@ -520,7 +548,7 @@ def init_orders(force_close: bool):
                         close_position(conf.symbol)
 
         # Handle open positions if no orders are open
-        elif force_close is False and get_open_position(conf.symbol) is not None:
+        elif not force_close and not auto_conf and get_open_position(conf.symbol) is not None:
             msg = 'There is an open BTC position!\nUnrealised PNL: {0:.8f} BTC\nWould you like to close it? (y/n) '
             init = input(msg.format(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor))
             if init.lower() in ['y', 'yes']:
@@ -529,10 +557,10 @@ def init_orders(force_close: bool):
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
-        return init_orders(force_close)
+        return init_orders(force_close, auto_conf)
 
     else:
-        log.info('initialization complete')
+        log.info('Initialization complete')
         return False
 
 
@@ -646,9 +674,9 @@ def connect_to_exchange(conf: ExchangeConfig):
         if 'test' in exchange.urls:
             exchange.urls['api'] = exchange.urls['test']
         else:
-            raise SystemExit('test not supported by ' + conf.exchange)
+            raise SystemExit('Test not supported by ' + conf.exchange)
 
-    log.info('connecting to ' + conf.exchange)
+    log.info('Connecting to ' + conf.exchange)
     return exchange
 
 
@@ -672,9 +700,15 @@ def to_kraken(amount: int, price: float):
     return round(amount / price, 8)
 
 
+def write_control_file(filename: str):
+    file = open(filename + '.pid', 'w')
+    file.write(str(os.getpid()) + ' ' + filename)
+    file.close()
+
+
 
 def __exit__(msg: str):
-    log.info(msg + '\nbot will stop in 5s.')
+    log.info(msg + '\nBot will stop in 5s.')
     time.sleep(5)
     sys.exit()
 
@@ -683,13 +717,16 @@ def __exit__(msg: str):
 if __name__ == '__main__':
     print('Starting Hold n Trade Bot')
     print('ccxt version:', ccxt.__version__)
-    if sys.version_info[0] != 3:
-        exit('Wrong python version!\nVersion 3.xx is needed')
 
     if len(sys.argv) > 1:
         filename = os.path.basename(sys.argv[1])
+        if len(sys.argv) > 2:
+            if sys.argv[2] == '-ac':
+                auto_conf = True
     else:
         filename = os.path.basename(input('Filename with API Keys (config): ') or 'config')
+
+    write_control_file(filename)
 
     log = function_logger(logging.DEBUG, filename, logging.INFO)
     log.info('-------------------------------')
@@ -697,7 +734,7 @@ if __name__ == '__main__':
     conf = ExchangeConfig(filename)
     exchange = connect_to_exchange(conf)
 
-    loop = init_orders(False)
+    loop = init_orders(False, auto_conf)
 
     while True:
         price = get_current_price()
@@ -714,7 +751,7 @@ if __name__ == '__main__':
             sell_executed(price, amount)
             if len(curr_sell) == 0:
                 log.info('No sell orders - resetting all Orders')
-                init_orders(True)
+                init_orders(True, False)
         else:
             # good enough as starting point if no compensation buy/sell is required
             curr_order_size = amount
