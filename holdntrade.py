@@ -504,7 +504,7 @@ def init_orders(force_close: bool):
                     create_buy_order(get_current_price(), round(get_balance() / conf.divider * get_current_price()))
 
                 log.info('initialization complete (using existing orders)')
-                # No "create first order" / "approach_half_margin" necessary
+                # No compensate necessary
                 return True
 
             else:
@@ -670,6 +670,7 @@ def is_btc_amount_below_limit(amount_btc: float):
 
 def to_kraken(amount: int, price: float):
     return round(amount / price, 8)
+
 
 
 def __exit__(msg: str):
