@@ -22,6 +22,7 @@ loop = False
 auto_conf = False
 n = 0
 
+
 # ------------------------------------------------------------------------------
 
 
@@ -29,6 +30,7 @@ class ExchangeConfig:
     """
     Holds the configuration read from separate .txt file.
     """
+
     def __init__(self, filename: str):
 
         config = configparser.RawConfigParser()
@@ -159,11 +161,12 @@ def create_sell_order(fixed_order_size: int = None):
 
     try:
         if not is_order_below_limit(order_size, sell_price):
-            if conf.exchange == 'bitmex':
+            if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
                 order = exchange.create_limit_sell_order(conf.pair, order_size, sell_price)
             elif conf.exchange == 'kraken':
                 rate = get_current_price()
-                order = exchange.create_limit_sell_order(conf.pair, to_kraken(order_size, rate), sell_price, {'leverage': 2})
+                order = exchange.create_limit_sell_order(conf.pair, to_kraken(order_size, rate), sell_price,
+                                                         {'leverage': 2})
             curr_sell.append(order['id'])
             log.info(str(order))
 
@@ -191,11 +194,12 @@ def create_divided_sell_order():
         amount = round(used_bal / conf.divider)
 
         if not is_order_below_limit(amount, sell_price):
-            if conf.exchange == 'bitmex':
+            if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
                 order = exchange.create_limit_sell_order(conf.pair, amount, sell_price)
             elif conf.exchange == 'kraken':
                 rate = get_current_price()
-                order = exchange.create_limit_sell_order(conf.pair, to_kraken(amount, rate), sell_price, {'leverage': 2})
+                order = exchange.create_limit_sell_order(conf.pair, to_kraken(amount, rate), sell_price,
+                                                         {'leverage': 2})
             curr_sell.append(order['id'])
             log.info(str(order))
 
@@ -271,10 +275,11 @@ def create_buy_order(price: float, amount: int):
 
     try:
         if not is_order_below_limit(amount, long_price):
-            if conf.exchange == 'bitmex':
+            if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
                 order = exchange.create_limit_buy_order(conf.pair, amount, long_price)
             elif conf.exchange == 'kraken':
-                order = exchange.create_limit_buy_order(conf.pair, to_kraken(amount, cur_btc_price), long_price, {'leverage': 2, 'oflags': 'fcib'})
+                order = exchange.create_limit_buy_order(conf.pair, to_kraken(amount, cur_btc_price), long_price,
+                                                        {'leverage': 2, 'oflags': 'fcib'})
             curr_order = order
             log.info(str(order))
 
@@ -306,14 +311,14 @@ def create_market_sell_order(amount_btc: float):
 
     cur_btc_price = get_current_price()
 
-    amount = round(amount_btc*cur_btc_price)
+    amount = round(amount_btc * cur_btc_price)
 
     long_price = round(cur_btc_price * (1 - conf.change))
     sell_price = round(cur_btc_price * (1 + conf.change))
 
     try:
         if not is_btc_amount_below_limit(amount_btc):
-            if conf.exchange == 'bitmex':
+            if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
                 order = exchange.create_market_sell_order(conf.pair, amount)
             elif conf.exchange == 'kraken':
                 order = exchange.create_market_sell_order(conf.pair, amount_btc, {'leverage': 2})
@@ -343,17 +348,17 @@ def create_market_buy_order(amount_btc: float):
 
     cur_btc_price = get_current_price()
 
-    amount = round(amount_btc*cur_btc_price)
+    amount = round(amount_btc * cur_btc_price)
 
     long_price = round(cur_btc_price * (1 - conf.change))
     sell_price = round(cur_btc_price * (1 + conf.change))
 
     try:
         if not is_order_below_limit(amount, cur_btc_price):
-            if conf.exchange == 'bitmex':
+            if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
                 order = exchange.create_market_buy_order(conf.pair, amount)
             elif conf.exchange == 'kraken':
-                    order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2, 'oflags': 'fcib'})
+                order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2, 'oflags': 'fcib'})
             curr_order = order
             log.info(str(order))
 
@@ -385,7 +390,7 @@ def get_used_balance():
     output: balance
     """
     try:
-        if conf.exchange == 'bitmex':
+        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
             return exchange.private_get_position()[0]['currentQty']
         elif conf.exchange == 'kraken':
             result = exchange.private_post_tradebalance()['result']
@@ -460,7 +465,7 @@ def calc_avg_entry_price(open_orders):
     """
     total_amount = 0
     total_price = 0
-    if len(open_orders) > 0 :
+    if len(open_orders) > 0:
         for o in open_orders:
             if o['side'] == 'sell':
                 total_amount += o['remaining']
@@ -522,7 +527,7 @@ def init_orders(force_close: bool, auto_conf: bool):
 
         log.info("Used margin in: {:>14.2f}%".format(get_used_margin_percentage()))
         log.info("Position in " + conf.quote + ": {:>10}".format(get_used_balance()))
-        if conf.exchange == 'bitmex':
+        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
             log.info("Entry price " + conf.base + ": {:>12.1f}".format(get_avg_entry_price()))
         elif conf.exchange == 'kraken':
             log.info("Entry price " + conf.base + ": {:>12.1f}".format(calc_avg_entry_price(open_orders)))
@@ -641,7 +646,7 @@ def close_position(symbol: str):
     """
     try:
         log.info('close position ' + symbol)
-        if conf.exchange == 'bitmex':
+        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
             exchange.private_post_order_closeposition({'symbol': symbol})
         elif conf.exchange == 'kraken':
             exchange.create_market_sell_order(conf.pair, 0.0, {'leverage': 2})
@@ -661,7 +666,7 @@ def get_open_position(symbol: str):
     :return: positions
     """
     try:
-        if conf.exchange == 'bitmex':
+        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
             for p in exchange.private_get_position():
                 if p['isOpen'] and p['symbol'] == symbol:
                     return p
@@ -703,7 +708,10 @@ def connect_to_exchange(conf: ExchangeConfig):
     :param conf: ExchangeConfig
     :return: exchange
     """
-    exchanges = {'bitmex': ccxt.bitmex,
+    exchanges = {'binance': ccxt.binance,
+                 'bitfinex': ccxt.bifinex,
+                 'bitmex': ccxt.bitmex,
+                 'coinbase': ccxt.bifinex,
                  'kraken': ccxt.kraken,
                  'liquid': ccxt.liquid}
 
