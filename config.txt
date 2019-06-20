@@ -8,6 +8,7 @@ test = "True"
 # currency properties
 pair = "BTC/USD"
 symbol = "XBTUSD"
+order_btc_min = 0.0025
 satoshi_factor = 0.00000001
 
 # bot properties
