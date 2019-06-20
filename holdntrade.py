@@ -708,9 +708,9 @@ def connect_to_exchange(conf: ExchangeConfig):
     :return: exchange
     """
     exchanges = {'binance': ccxt.binance,
-                 'bitfinex': ccxt.bifinex,
+                 'bitfinex': ccxt.bitfinex,
                  'bitmex': ccxt.bitmex,
-                 'coinbase': ccxt.bifinex,
+                 'coinbase': ccxt.coinbase,
                  'kraken': ccxt.kraken,
                  'liquid': ccxt.liquid}
 
