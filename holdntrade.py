@@ -46,6 +46,9 @@ class ExchangeConfig:
             self.change = float(props['change'].strip('"'))
             self.divider = int(props['divider'].strip('"'))
             self.order_btc_min = float(props['order_btc_min'].strip('"'))
+            currency = self.pair.split("/")
+            self.base = currency[0]
+            self.quote = currency[1]
         except (configparser.NoSectionError, KeyError):
             raise SystemExit('invalid configuration for ' + filename)
 
@@ -238,7 +241,7 @@ def cancel_order():
             else:
                 log.warning('Order to be canceled {0} was in state '.format(curr_order['id']) + status)
 
-    except (ccxt.OrderNotFound, ccxt.base.errors.OrderNotFound) as error:
+    except ccxt.OrderNotFound as error:
         log.error('Order to be canceled not found ' + curr_order['id'] + error.args)
         return
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
@@ -350,7 +353,7 @@ def create_market_buy_order(amount_btc: float):
             if conf.exchange == 'bitmex':
                 order = exchange.create_market_buy_order(conf.pair, amount)
             elif conf.exchange == 'kraken':
-                order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2, 'oflags': 'fcib'})
+                    order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2, 'oflags': 'fcib'})
             curr_order = order
             log.info(str(order))
 
@@ -434,6 +437,39 @@ def get_used_margin_percentage():
     return float(100 - (bal['free'] / bal['total']) * 100)
 
 
+def get_avg_entry_price():
+    """
+    fetches the average entry price of a position
+    """
+    try:
+        avg = exchange.private_get_position()[0]['avgEntryPrice']
+
+    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        sleep_for(4, 6)
+        return get_avg_entry_price()
+
+    if avg is not None:
+        return avg
+    return 0
+
+
+def calc_avg_entry_price(open_orders):
+    """"
+    calculates the average entry price of the remaining amount of all open orders (required for kraken only)
+    """
+    total_amount = 0
+    total_price = 0
+    if len(open_orders) > 0 :
+        for o in open_orders:
+            if o['side'] == 'sell':
+                total_amount += o['remaining']
+                total_price += o['price'] * o['remaining']
+    if total_amount > 0:
+        return total_price / total_amount
+    return 0
+
+
 def get_current_price():
     """
     fetch the current BTC price
@@ -485,17 +521,28 @@ def init_orders(force_close: bool, auto_conf: bool):
         open_orders = exchange.fetch_open_orders(conf.pair, since=None, limit=None, params={})
 
         log.info("Used margin in: {:>14.2f}%".format(get_used_margin_percentage()))
-        log.info("Position in USD: {:>10}".format(get_used_balance()))
+        log.info("Position in " + conf.quote + ": {:>10}".format(get_used_balance()))
+        if conf.exchange == 'bitmex':
+            log.info("Entry price " + conf.base + ": {:>12.1f}".format(get_avg_entry_price()))
+        elif conf.exchange == 'kraken':
+            log.info("Entry price " + conf.base + ": {:>12.1f}".format(calc_avg_entry_price(open_orders)))
+        log.info("Market price " + conf.base + ": {:>11.1f}".format(get_current_price()))
 
         if len(open_orders):
             total_buy_order_value = 0
             total_sell_order_value = 0
             for o in open_orders:
                 if o['side'] == 'sell':
-                    total_sell_order_value += o['amount']
+                    if conf.exchange == 'kraken':
+                        total_sell_order_value += o['amount'] * o['price']
+                    else:
+                        total_sell_order_value += o['amount']
                     sell_orders.append(o)
                 elif o['side'] == 'buy':
-                    total_buy_order_value += o['amount']
+                    if conf.exchange == 'kraken':
+                        total_buy_order_value += o['amount'] * o['price']
+                    else:
+                        total_buy_order_value += o['amount']
                     buy_orders.append(o)
                 else:
                     log.error(inspect.stack()[1][3], ' shit happens')
@@ -566,9 +613,8 @@ def init_orders(force_close: bool, auto_conf: bool):
 
 def cancel_orders(orders):
     """
-    Close a list of positions
+    Close a list of orders
     :param orders:
-    :return:
     """
     try:
         for o in orders:
@@ -580,7 +626,7 @@ def cancel_orders(orders):
             else:
                 log.warnig('Cancel {0} order {1} was in state '.format(o['side'], o['id']) + status)
 
-    except (ccxt.OrderNotFound, ccxt.base.errors.OrderNotFound) as error:
+    except ccxt.OrderNotFound as error:
         log.error('Cancel {0} order {1} not found '.format(o['side'], o['id']) + error.args)
         return
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
