@@ -554,6 +554,8 @@ def init_orders(force_close: bool, auto_conf: bool):
         elif conf.exchange == 'kraken':
             log.info("Entry price " + conf.base + ": {:>12.1f}".format(calc_avg_entry_price(open_orders)))
         log.info("Market price " + conf.base + ": {:>11.1f}".format(get_current_price()))
+        if len(open_orders) < 1:
+            log.info("No open orders")
 
         if len(open_orders):
             total_buy_order_value = 0
@@ -651,10 +653,10 @@ def cancel_orders(orders):
             if status == 'open':
                 exchange.cancel_order(o['id'])
             else:
-                log.warning('Cancel {0} order {1} was in state '.format(o['side'], o['id']) + status)
+                log.warning('Cancel {0} order {1} was in state '.format(str(o['side']), str(o['id'])) + status)
 
     except ccxt.OrderNotFound as error:
-        log.error('Cancel {0} order {1} not found '.format(o['side'], o['id']) + error.args)
+        log.error('Cancel {0} order {1} not found '.format(str(o['side']), str(o['id'])) + error.args)
         return
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
