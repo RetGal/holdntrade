@@ -827,8 +827,9 @@ if __name__ == '__main__':
             sell_executed(price, amount)
             if len(curr_sell) == 0:
                 log.info('No sell orders, resetting all orders')
-                init_orders(True, False)
-        else:
+                loop = init_orders(True, False)
+
+        if not loop:
             # good enough as starting point if no compensation buy/sell is required
             curr_order_size = amount
             compensate()
