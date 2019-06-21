@@ -423,7 +423,7 @@ def compensate():
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
             bal = exchange.fetch_balance()['BTC']
         elif conf.exchange == 'kraken':
-            bal = exchange.private_post_tradebalance({'asset': 'EUR'})['result']
+            bal = exchange.private_post_tradebalance({'asset': 'BTC'})['result']
             bal['free'] = float(bal['mf'])
             bal['total'] = float(bal['e'])
             bal['used'] = float(bal['m'])
