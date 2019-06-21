@@ -104,8 +104,11 @@ def trade_executed(price: float, amount: int):
     elif status in ['closed', 'canceled']:
         log.info('Trade executed, starting follow up')
         last_buy_size = curr_order_size
-        create_buy_order(price, amount)
-        create_sell_order(last_buy_size)
+        if create_buy_order(price, amount):
+            create_sell_order(last_buy_size)
+        else:
+            log.warning('Resetting')
+            init_orders(True, False)
     else:
         log.warning('You should not be here, order state: ' + status)
 
@@ -133,7 +136,9 @@ def sell_executed(price: float, amount: int):
             if len(curr_sell) == 0:
                 create_divided_sell_order()
             cancel_order()
-            create_buy_order(price, amount)
+            if not create_buy_order(price, amount):
+                log.warning('Resetting')
+                init_orders(True, False)
         else:
             log.warning('You should not be here, order state: ' + status)
 
@@ -282,21 +287,29 @@ def create_buy_order(price: float, amount: int):
                                                         {'leverage': 2, 'oflags': 'fcib'})
             curr_order = order
             log.info(str(order))
+            if reset_counter > 0:
+                reset_counter -= 1
+            return True
+        elif len(curr_sell) > 0:
+            log.warning('Could not create buy order, waiting for a sell order to be realised')
+            sleep_for(60, 120)
+            return create_buy_order(update_price(cur_btc_price, price), amount)
+        else:
+            log.warning('Could not create buy order over {0} and there are no open sell orders, reset required'
+                        .format(str(amount)))
+            return False
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         # insufficient margin
         if "nsufficient" in str(error.args):
             log.error('Insufficient initial margin - not buying ' + str(amount))
-            return
+            return False
         elif "too low" in str(error.args):
             log.error('Margin level too low - not buying ' + str(amount))
-            return
+            return False
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
         return create_buy_order(update_price(cur_btc_price, price), amount)
-
-    if reset_counter > 0:
-        reset_counter -= 1
 
 
 def create_market_sell_order(amount_btc: float):
@@ -571,7 +584,7 @@ def init_orders(force_close: bool, auto_conf: bool):
             if not force_close and not auto_conf:
                 init = input('There are open orders! Would you like to load them? (y/n) ')
 
-            if not force_close and auto_conf or init.lower() in ['y', 'yes']:
+            if not force_close and (auto_conf or init.lower() in ['y', 'yes']):
                 sell_orders = sorted(sell_orders, key=lambda o: o['price'], reverse=True)
 
                 for o in sell_orders:
@@ -813,7 +826,7 @@ if __name__ == '__main__':
             trade_executed(price, amount)
             sell_executed(price, amount)
             if len(curr_sell) == 0:
-                log.info('No sell orders - resetting all Orders')
+                log.info('No sell orders, resetting all orders')
                 init_orders(True, False)
         else:
             # good enough as starting point if no compensation buy/sell is required

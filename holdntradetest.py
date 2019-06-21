@@ -68,7 +68,7 @@ class HoldntradeTest(unittest.TestCase):
         with self.assertRaises(SystemExit) as context:
             holdntrade.connect_to_exchange(conf)
 
-        self.assertTrue('test not supported' in str(context.exception))
+        self.assertTrue('Test not supported' in str(context.exception))
 
     @patch('holdntrade.logging')
     def test_connect_to_exchange_should_fail_if_exchange_not_supported(self, mock_logging):
