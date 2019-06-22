@@ -1,10 +1,13 @@
 #!/usr/bin/python
 import configparser
+import datetime
 import inspect
 import logging
 import os
 import random
+import smtplib
 import sys
+import textwrap
 import time
 from logging.handlers import RotatingFileHandler
 
@@ -20,6 +23,7 @@ curr_order_size = 0
 reset_counter = 0
 loop = False
 auto_conf = False
+email_sent = 0
 n = 0
 
 
@@ -38,6 +42,7 @@ class ExchangeConfig:
 
         try:
             props = dict(config.items('config'))
+            self.bot_instance = filename
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -51,8 +56,44 @@ class ExchangeConfig:
             currency = self.pair.split("/")
             self.base = currency[0]
             self.quote = currency[1]
+            self.send_emails = bool(props['send_emails'].strip('"').lower() == 'true')
+            self.recipient_addresses = props['recipient_addresses'].strip('"').replace(' ', '').split(",")
+            self.sender_address = props['sender_address'].strip('"')
+            self.sender_password = props['sender_password'].strip('"')
+            self.mail_server = props['mail_server'].strip('"')
         except (configparser.NoSectionError, KeyError):
             raise SystemExit('invalid configuration for ' + filename)
+
+
+class OpenOrdersSummary:
+    """
+    Creates and holds an open orders summary
+    """
+
+    def __init__(self, open_orders):
+
+        self.orders = open_orders
+        self.sell_orders = []
+        self.buy_orders = []
+        self.total_sell_order_value = 0
+        self.total_buy_order_value = 0
+
+        if len(open_orders):
+            for o in open_orders:
+                if o['side'] == 'sell':
+                    if conf.exchange == 'kraken':
+                        self.total_sell_order_value += o['amount'] * o['price']
+                    else:
+                        self.total_sell_order_value += o['amount']
+                    self.sell_orders.append(o)
+                elif o['side'] == 'buy':
+                    if conf.exchange == 'kraken':
+                        self.total_buy_order_value += o['amount'] * o['price']
+                    else:
+                        self.total_buy_order_value += o['amount']
+                    self.buy_orders.append(o)
+                else:
+                    log.error(inspect.stack()[1][3], ' ?!?')
 
 
 def function_logger(console_level: int, filename: str, file_level: int = None):
@@ -537,9 +578,6 @@ def init_orders(force_close: bool, auto_conf: bool):
     global curr_order_size
     global reset_counter
 
-    buy_orders = []
-    sell_orders = []
-
     reset_counter += 5
 
     try:
@@ -548,79 +586,62 @@ def init_orders(force_close: bool, auto_conf: bool):
             log.warning("Bot was resurrected by hades")
 
         # Handle open orders
-        open_orders = exchange.fetch_open_orders(conf.pair, since=None, limit=None, params={})
+        oos = OpenOrdersSummary(exchange.fetch_open_orders(conf.pair, since=None, limit=None, params={}))
 
         log.info("Used margin in: {:>14.2f}%".format(get_used_margin_percentage()))
         log.info("Position in " + conf.quote + ": {:>10}".format(get_used_balance()))
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
             log.info("Entry price " + conf.base + ": {:>12.1f}".format(get_avg_entry_price()))
         elif conf.exchange == 'kraken':
-            log.info("Entry price " + conf.base + ": {:>12.1f}".format(calc_avg_entry_price(open_orders)))
+            log.info("Entry price " + conf.base + ": {:>12.1f}".format(calc_avg_entry_price(oos.orders)))
         log.info("Market price " + conf.base + ": {:>11.1f}".format(get_current_price()))
-        if len(open_orders) < 1:
+
+        if not oos.orders:
             log.info("No open orders")
 
-        if len(open_orders):
-            total_buy_order_value = 0
-            total_sell_order_value = 0
-            for o in open_orders:
-                if o['side'] == 'sell':
-                    if conf.exchange == 'kraken':
-                        total_sell_order_value += o['amount'] * o['price']
-                    else:
-                        total_sell_order_value += o['amount']
-                    sell_orders.append(o)
-                elif o['side'] == 'buy':
-                    if conf.exchange == 'kraken':
-                        total_buy_order_value += o['amount'] * o['price']
-                    else:
-                        total_buy_order_value += o['amount']
-                    buy_orders.append(o)
-                else:
-                    log.error(inspect.stack()[1][3], ' shit happens')
-                    time.sleep(5)
-
-            log.info("Value of buy orders: {:>6}".format(int(total_buy_order_value)))
-            log.info("Value of sell orders: {:>5}".format(int(total_sell_order_value)))
-            log.info("No. of buy orders: {:>8}".format(len(buy_orders)))
-            log.info("No. of sell orders: {:>7}".format(len(sell_orders)))
+        if oos.orders:
+            log.info("Value of buy orders: {:>6}".format(int(oos.total_buy_order_value)))
+            log.info("Value of sell orders: {:>5}".format(int(oos.total_sell_order_value)))
+            log.info("No. of buy orders: {:>8}".format(len(oos.buy_orders)))
+            log.info("No. of sell orders: {:>7}".format(len(oos.sell_orders)))
             log.info('-------------------------------')
 
             if not force_close and not auto_conf:
                 init = input('There are open orders! Would you like to load them? (y/n) ')
 
             if not force_close and (auto_conf or init.lower() in ['y', 'yes']):
-                sell_orders = sorted(sell_orders, key=lambda o: o['price'], reverse=True)
+                sell_orders = sorted(oos.sell_orders, key=lambda o: o['price'], reverse=True)
 
                 for o in sell_orders:
                     sell_price = o['price']
                     curr_sell.append(o['id'])
 
-                for o in buy_orders:
+                for o in oos.buy_orders:
                     long_price = o['price']
                     curr_order = o
                     curr_order_size = o['amount']
 
                 # All sell orders executed
-                if 0 == len(sell_orders):
+                if not oos.sell_orders:
                     sell_price = round(get_current_price() * (1 + conf.change))
                     create_sell_order()
 
                 # All buy orders executed
-                elif 0 == len(buy_orders):
+                elif not oos.buy_orders:
                     create_buy_order(get_current_price(), round(get_balance() / conf.divider * get_current_price()))
 
+                del oos
                 log.info('Initialization complete (using existing orders)')
                 # No "compensate" necessary
                 return True
 
             else:
-                log.info('Unrealised PNL: {0:.8f} BTC'.format(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor))
+                log.info('Unrealised PNL: {0} BTC'.format(str(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor)))
                 cancel = ''
                 if not force_close:
                     cancel = input('All existing orders will be canceled! Are you sure (y/n)? ')
                 if force_close or cancel.lower() in ['y', 'yes']:
-                    cancel_orders(open_orders)
+                    cancel_orders(oos.open_orders)
                     if reset_counter > 9:
                         log.warning('Closing position, reset counter is ' + str(reset_counter))
                         reset_counter = 0
@@ -639,6 +660,7 @@ def init_orders(force_close: bool, auto_conf: bool):
         return init_orders(force_close, auto_conf)
 
     else:
+        del oos
         log.info('Initialization complete')
         return False
 
@@ -787,6 +809,62 @@ def write_control_file(filename: str):
     file.close()
 
 
+def daily_report():
+    """
+    Creates a daily report email around 12:10 UTC
+    """
+    global email_sent
+
+    if conf.send_emails:
+        now = datetime.datetime.utcnow()
+        if datetime.datetime(2012, 1, 17, 12, 15).time() > now.time() > datetime.datetime(2012, 1, 17, 12,
+                                                                                          10).time() and email_sent != now.day:
+            subject = "Daily report for {0}".format(conf.bot_instance)
+            send_mail(subject, create_mailcontent())
+            email_sent = now.day
+
+
+def create_mailcontent():
+    """
+    Fetches the data required for the daily report email
+    :return: mailcontent: str
+    """
+    try:
+        oos = OpenOrdersSummary(exchange.fetch_open_orders(conf.pair, since=None, limit=None, params={}))
+
+    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        sleep_for(4, 6)
+        return create_mailcontent()
+
+    content = []
+    content.append("Used margin in: {:>14.2f}%".format(get_used_margin_percentage()))
+    sleep_for(4, 6)
+    content.append("Position in " + conf.quote + ": {:>10}".format(get_used_balance()))
+    sleep_for(4, 6)
+    content.append("Value of buy orders: {:>6}".format(int(oos.total_buy_order_value)))
+    content.append("Value of sell orders: {:>5}".format(int(oos.total_sell_order_value)))
+    content.append("No. of buy orders: {:>8}".format(len(oos.buy_orders)))
+    content.append("No. of sell orders: {:>7}".format(len(oos.sell_orders)))
+    del oos
+    return '\n'.join(content)
+
+
+def send_mail(subject: str, content: str):
+    message = textwrap.dedent("""\
+        From: %s
+        To: %s
+        Subject: %s
+        %s
+        """ % (conf.sender_address, ", ".join(conf.recipient_addresses), subject, content))
+
+    server = smtplib.SMTP(conf.mail_server)
+    server.set_debuglevel(1)
+    server.login(conf.sender_address, conf.sender_password)
+    server.sendmail(message)
+    server.quit()
+    log.info("Sent email to " + ", ".join(conf.recipient_addresses))
+
 
 def __exit__(msg: str):
     log.info(msg + '\nBot will stop in 5s.')
@@ -824,10 +902,11 @@ if __name__ == '__main__':
         amount = round(balance / conf.divider * price)
 
         if is_order_below_limit(amount, price):
-            log.info('Resetting all Orders')
-            init_orders(True)
+            log.info('Hibernating')
+            sleep_for(60, 120)
 
         if loop:
+            daily_report()
             trade_executed(price, amount)
             sell_executed(price, amount)
             if len(curr_sell) == 0:
@@ -841,5 +920,4 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.9.7 reset_counter log fixed
-#
+# V1.10.7 daily report
