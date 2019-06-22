@@ -544,6 +544,9 @@ def init_orders(force_close: bool, auto_conf: bool):
 
     try:
         init = ''
+        if auto_conf:
+            log.warning("Bot was resurrected by hades")
+
         # Handle open orders
         open_orders = exchange.fetch_open_orders(conf.pair, since=None, limit=None, params={})
 
