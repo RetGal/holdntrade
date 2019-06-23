@@ -20,10 +20,12 @@ long_price = 0
 curr_order = None
 curr_sell = []
 curr_order_size = 0
+total_reset_counter = 0
 reset_counter = 0
 loop = False
 auto_conf = False
 email_sent = 0
+started = datetime.datetime.utcnow()
 n = 0
 
 
@@ -34,7 +36,6 @@ class ExchangeConfig:
     """
     Holds the configuration read from separate .txt file.
     """
-
     def __init__(self, filename: str):
 
         config = configparser.RawConfigParser()
@@ -69,7 +70,6 @@ class OpenOrdersSummary:
     """
     Creates and holds an open orders summary
     """
-
     def __init__(self, open_orders):
 
         self.orders = open_orders
@@ -188,7 +188,6 @@ def create_sell_order(fixed_order_size: int = None):
     """
     loop that starts after buy order is executed and sends sell order to exchange
     as well as appends the orderID to the sell_orders list.
-
     """
     global curr_sell
     global sell_price
@@ -230,7 +229,6 @@ def create_divided_sell_order():
     """
     loop that starts after buy order is executed and sends sell order to exchange
     as well as appends the orderID to the sell_orders list.
-
     """
     global curr_sell
     global sell_price
@@ -421,14 +419,46 @@ def create_market_buy_order(amount_btc: float):
         return create_market_buy_order(amount_btc)
 
 
-def get_balance():
+def get_margin_leverage():
     """
-    fetch the free balance in btc.
-
-    output: balance
+    fetch the leverage
     """
     try:
-        return exchange.fetch_balance()['BTC']['free']
+        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+            return exchange.fetch_balance()['info'][0]['marginLeverage']
+        elif conf.exchange == 'kraken':
+            return float(exchange.private_post_tradebalance()['result']['ml'])
+
+    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        sleep_for(4, 6)
+        return get_margin_leverage()
+
+
+def get_wallet_balance():
+    """
+    fetch the wallet balance
+    """
+    try:
+        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+            return exchange.fetch_balance()['info'][0]['walletBalance'] * conf.satoshi_factor
+        elif conf.exchange == 'kraken':
+            return float(exchange.private_post_tradebalance()['result']['tb'])
+
+    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        sleep_for(4, 6)
+        return get_wallet_balance()
+
+
+def get_balance():
+    """
+    fetch the balance in btc.
+
+    output: balance (used,free,total)
+    """
+    try:
+        return exchange.fetch_balance()['BTC']
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -458,7 +488,6 @@ def get_used_balance():
 def compensate():
     """
     approaches the margin used towards 50% by selling or buying the difference to market price
-
     """
     try:
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
@@ -486,9 +515,9 @@ def compensate():
     return
 
 
-def get_used_margin_percentage():
+def get_margin_balance():
     """
-    calculates the used margin percentage
+    fetches the margin balance (free and total)
     """
     try:
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
@@ -501,8 +530,17 @@ def get_used_margin_percentage():
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
-        return get_used_margin_percentage()
+        return get_margin_balance()
 
+    return bal
+
+
+def calculate_used_margin_percentage(bal=None):
+    """
+    calculates the used margin percentage
+    """
+    if bal is None:
+        bal = get_margin_balance()
     return float(100 - (bal['free'] / bal['total']) * 100)
 
 
@@ -576,9 +614,12 @@ def init_orders(force_close: bool, auto_conf: bool):
     global long_price
     global sell_price
     global curr_order_size
+    global total_reset_counter
     global reset_counter
 
-    reset_counter += 5
+    if force_close:
+        total_reset_counter += 1
+        reset_counter += 5
 
     try:
         init = ''
@@ -588,8 +629,8 @@ def init_orders(force_close: bool, auto_conf: bool):
         # Handle open orders
         oos = OpenOrdersSummary(exchange.fetch_open_orders(conf.pair, since=None, limit=None, params={}))
 
-        log.info("Used margin in: {:>14.2f}%".format(get_used_margin_percentage()))
-        log.info("Position in " + conf.quote + ": {:>10}".format(get_used_balance()))
+        log.info("Used margin: {:>17.2f}%".format(calculate_used_margin_percentage()))
+        log.info("Position " + conf.quote + ": {:>13}".format(get_used_balance()))
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
             log.info("Entry price " + conf.base + ": {:>12.1f}".format(get_avg_entry_price()))
         elif conf.exchange == 'kraken':
@@ -600,8 +641,8 @@ def init_orders(force_close: bool, auto_conf: bool):
             log.info("No open orders")
 
         if oos.orders:
-            log.info("Value of buy orders: {:>6}".format(int(oos.total_buy_order_value)))
-            log.info("Value of sell orders: {:>5}".format(int(oos.total_sell_order_value)))
+            log.info("Value of buy orders " + conf.base + ": {:>2}".format(int(oos.total_buy_order_value)))
+            log.info("Value of sell orders " + conf.base + ": {:>1}".format(int(oos.total_sell_order_value)))
             log.info("No. of buy orders: {:>8}".format(len(oos.buy_orders)))
             log.info("No. of sell orders: {:>7}".format(len(oos.sell_orders)))
             log.info('-------------------------------')
@@ -628,7 +669,8 @@ def init_orders(force_close: bool, auto_conf: bool):
 
                 # All buy orders executed
                 elif not oos.buy_orders:
-                    create_buy_order(get_current_price(), round(get_balance() / conf.divider * get_current_price()))
+                    create_buy_order(get_current_price(),
+                                     round(get_balance()['free'] / conf.divider * get_current_price()))
 
                 del oos
                 log.info('Initialization complete (using existing orders)')
@@ -838,14 +880,31 @@ def create_mailcontent():
         return create_mailcontent()
 
     content = []
-    content.append("Used margin in: {:>14.2f}%".format(get_used_margin_percentage()))
     sleep_for(4, 6)
-    content.append("Position in " + conf.quote + ": {:>10}".format(get_used_balance()))
+    bal = get_margin_balance()
+    if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+        content.append("Wallet balance " + conf.base + ": {:>12.4f}".format(get_wallet_balance()))
+        content.append("Margin balance " + conf.base + ": {:>12.4f}".format(bal['total']))
+    elif conf.exchange == 'kraken':
+        content.append("Wallet balance " + conf.quote + ": {:>10.2f}".format(get_wallet_balance()))
+        content.append("Margin balance " + conf.quote + ": {:>10.2f}".format(bal['total']))
+    content.append("Used margin: {:>17.2f}%".format(calculate_used_margin_percentage(bal)))
+    if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+        content.append("Leverage: {:>20.2f}x".format(get_margin_leverage()))
+    elif conf.exchange == 'kraken':
+        content.append("Leverage: {:>20.1f}%".format(get_margin_leverage()))
     sleep_for(4, 6)
-    content.append("Value of buy orders: {:>6}".format(int(oos.total_buy_order_value)))
-    content.append("Value of sell orders: {:>5}".format(int(oos.total_sell_order_value)))
-    content.append("No. of buy orders: {:>8}".format(len(oos.buy_orders)))
-    content.append("No. of sell orders: {:>7}".format(len(oos.sell_orders)))
+    content.append("Position " + conf.quote + ": {:>15}".format(get_used_balance()))
+    sleep_for(4, 6)
+    content.append("Value of buy orders " + conf.quote + ": {:>4}".format(int(oos.total_buy_order_value)))
+    content.append("Value of sell orders " + conf.quote + ": {:>1}".format(int(oos.total_sell_order_value)))
+    content.append("No. of buy orders: {:>9}".format(len(oos.buy_orders)))
+    content.append("No. of sell orders: {:>8}".format(len(oos.sell_orders)))
+    content.append("No. of forced resets is: {:>3}".format(total_reset_counter))
+    if auto_conf:
+        content.append("Bot was resurrected at: {0} UTC".format(started))
+    else:
+        content.append("Bot running since: {0} UTC".format(started))
     del oos
     return '\n'.join(content)
 
@@ -898,7 +957,7 @@ if __name__ == '__main__':
     while True:
         price = get_current_price()
 
-        balance = get_balance()
+        balance = get_balance()['free']
         amount = round(balance / conf.divider * price)
 
         if is_order_below_limit(amount, price):
@@ -920,4 +979,4 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.10.7 daily report
+# V1.10.8 enhanced daily report
