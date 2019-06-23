@@ -7,8 +7,8 @@ import os
 import random
 import smtplib
 import sys
-import textwrap
 import time
+from email.message import EmailMessage
 from logging.handlers import RotatingFileHandler
 
 import ccxt
@@ -851,19 +851,19 @@ def create_mailcontent():
 
 
 def send_mail(subject: str, content: str):
-    message = textwrap.dedent("""\
-        From: %s
-        To: %s
-        Subject: %s
-        %s
-        """ % (conf.sender_address, ", ".join(conf.recipient_addresses), subject, content))
+    recipients = ", ".join(conf.recipient_addresses)
+    msg = EmailMessage()
+    msg['Subject'] = subject
+    msg['From'] = conf.sender_address
+    msg['To'] = recipients
+    msg.set_content(content)
 
-    server = smtplib.SMTP(conf.mail_server)
-    server.set_debuglevel(1)
+    server = smtplib.SMTP(conf.mail_server, 587)
+    server.set_debuglevel(0)
     server.login(conf.sender_address, conf.sender_password)
-    server.sendmail(message)
+    server.send_message(msg)
     server.quit()
-    log.info("Sent email to " + ", ".join(conf.recipient_addresses))
+    log.info("Sent email to {0}".format(recipients))
 
 
 def __exit__(msg: str):
