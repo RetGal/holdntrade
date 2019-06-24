@@ -332,6 +332,8 @@ def create_buy_order(price: float, amount: int):
         elif len(curr_sell) > 0:
             log.warning('Could not create buy order, waiting for a sell order to be realised')
             sleep_for(60, 120)
+            # recalculate order size
+            amount = round(get_balance()['free'] / conf.divider * get_current_price())
             return create_buy_order(update_price(cur_btc_price, price), amount)
         else:
             log.warning('Could not create buy order over {0} and there are no open sell orders, reset required'
@@ -485,6 +487,23 @@ def get_used_balance():
         return get_used_balance()
 
 
+def get_position_info():
+    """
+    fetch position information
+    """
+    try:
+        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+            return exchange.private_get_position()[0]
+        elif conf.exchange == 'kraken':
+            log.error("get_position_info() not yet implemented for kraken")
+            return
+
+    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        sleep_for(4, 6)
+        return get_position_info()
+
+
 def compensate():
     """
     approaches the margin used towards 50% by selling or buying the difference to market price
@@ -630,12 +649,18 @@ def init_orders(force_close: bool, auto_conf: bool):
         oos = OpenOrdersSummary(exchange.fetch_open_orders(conf.pair, since=None, limit=None, params={}))
 
         log.info("Used margin: {:>17.2f}%".format(calculate_used_margin_percentage()))
-        log.info("Position " + conf.quote + ": {:>13}".format(get_used_balance()))
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
-            log.info("Entry price " + conf.base + ": {:>12.1f}".format(get_avg_entry_price()))
+            sleep_for(1, 2)
+            poi = get_position_info()
+            log.info("Position " + conf.quote + ": {:>13}".format(poi['currentQty']))
+            log.info("Entry price: {:>16.1f}".format(poi['avgEntryPrice']))
+            log.info("Market price: {:>15.1f}".format(poi['markPrice']))
+            log.info("Liquidation price: {:>10.1f}".format(poi['bankruptPrice']))
+            del poi
         elif conf.exchange == 'kraken':
+            log.info("Position " + conf.quote + ": {:>13}".format(get_used_balance()))
             log.info("Entry price " + conf.base + ": {:>12.1f}".format(calc_avg_entry_price(oos.orders)))
-        log.info("Market price " + conf.base + ": {:>11.1f}".format(get_current_price()))
+            log.info("Market price " + conf.base + ": {:>11.1f}".format(get_current_price()))
 
         if not oos.orders:
             log.info("No open orders")
@@ -880,6 +905,7 @@ def create_mailcontent():
         return create_mailcontent()
 
     content = []
+    content.append("{0} {1} UTC".format(conf.bot_instance, datetime.datetime.utcnow()))
     sleep_for(4, 6)
     bal = get_margin_balance()
     if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
@@ -906,7 +932,7 @@ def create_mailcontent():
     else:
         content.append("Bot running since: {0} UTC".format(started))
     del oos
-    return '\n'.join(content)
+    return '\n'.join(content) + '\n\n' + ';'.join(content).replace('  ', '').replace(':', ':;')
 
 
 def send_mail(subject: str, content: str):
@@ -979,4 +1005,4 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.10.8 enhanced daily report
+# V1.10.9 recalculate amount after sleep
