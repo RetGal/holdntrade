@@ -123,7 +123,6 @@ def function_logger(console_level: int, filename: str, file_level: int = None):
 def trade_executed(price: float, amount: int):
     """
     Check if the most recent buy order has been executed.
-
     input: current price and amount to trade (Current Balance / divider)
     output: if the most recent buy order is still open,
     the output is print statements containing the amount were trying to buy for which price.
@@ -157,7 +156,6 @@ def trade_executed(price: float, amount: int):
 def sell_executed(price: float, amount: int):
     """
     Check if any of the open sell orders has been executed.
-
     input: current price and amount to trade (Current Balance / divider)
     output: loop through all open sell orders and check if one has been executed. If no, exit with print statement.
     Else if it has been executed, remove the order from the list of open orders,
@@ -260,7 +258,6 @@ def create_divided_sell_order():
 def fetch_order_status(orderId: str):
     """
     fetches the status of an order
-
     input: id of an order
     output: status of the order (open, closed)
     """
@@ -301,10 +298,12 @@ def cancel_order():
 def create_buy_order(price: float, amount: int):
     """
     creates a buy order and sets the values as global ones. Used by other functions.
-
-    input: current price of BTC and 1/divider of balance.
+    :param price current price of BTC
+    :param amount the order volume
     output: calculate the price to get long (price + change) and to get short (price - change).
     In addition set the current orderID and current order size as global values.
+    If the amount is below the order limit and there are open sell orders, the function is going to sleep, allowing
+    sell orders to be filled - afterwards the amount is recalculated and the function calls itself with the new amount
     """
     global long_price
     global sell_price
@@ -332,6 +331,7 @@ def create_buy_order(price: float, amount: int):
         elif len(curr_sell) > 0:
             log.warning('Could not create buy order, waiting for a sell order to be realised')
             sleep_for(60, 120)
+            daily_report()
             # recalculate order size
             amount = round(get_balance()['free'] / conf.divider * get_current_price())
             return create_buy_order(update_price(cur_btc_price, price), amount)
@@ -356,7 +356,6 @@ def create_buy_order(price: float, amount: int):
 def create_market_sell_order(amount_btc: float):
     """
     creates a market sell order and sets the values as global ones. Used to compensate margins above 50%.
-
     input: amount_btc to be sold to reach 50% margin
     """
     global long_price
@@ -392,7 +391,6 @@ def create_market_sell_order(amount_btc: float):
 def create_market_buy_order(amount_btc: float):
     """
     creates a market buy order and sets the values as global ones. Used to compensate margins below 50%.
-
     input: amount_btc to be bought to reach 50% margin
     """
     global long_price
@@ -456,7 +454,6 @@ def get_wallet_balance():
 def get_balance():
     """
     fetch the balance in btc.
-
     output: balance (used,free,total)
     """
     try:
@@ -471,7 +468,6 @@ def get_balance():
 def get_used_balance():
     """
     fetch the used balance in btc.
-
     output: balance
     """
     try:
@@ -493,7 +489,10 @@ def get_position_info():
     """
     try:
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
-            return exchange.private_get_position()[0]
+            response = exchange.private_get_position()
+            if response:
+                return response[0]
+            return None
         elif conf.exchange == 'kraken':
             log.error("get_position_info() not yet implemented for kraken")
             return
@@ -598,7 +597,6 @@ def calc_avg_entry_price(open_orders):
 def get_current_price():
     """
     fetch the current BTC price
-
     output: last bid price
     """
     sleep_for(4, 6)
@@ -652,15 +650,20 @@ def init_orders(force_close: bool, auto_conf: bool):
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
             sleep_for(1, 2)
             poi = get_position_info()
-            log.info("Position " + conf.quote + ": {:>13}".format(poi['currentQty']))
-            log.info("Entry price: {:>16.1f}".format(poi['avgEntryPrice']))
-            log.info("Market price: {:>15.1f}".format(poi['markPrice']))
-            log.info("Liquidation price: {:>10.1f}".format(poi['bankruptPrice']))
-            del poi
+            if poi:
+                log.info("Position " + conf.quote + ": {:>13}".format(poi['currentQty']))
+                log.info("Entry price: {:>16.1f}".format(poi['avgEntryPrice']))
+                log.info("Market price: {:>15.1f}".format(poi['markPrice']))
+                log.info("Liquidation price: {:>10.1f}".format(poi['bankruptPrice']))
+                del poi
+            else:
+                log.info("Available balance is " + conf.base + ": {:>3} ".format(get_balance()['free']))
+                log.info("No position found, I will create one for you")
+                return False
         elif conf.exchange == 'kraken':
             log.info("Position " + conf.quote + ": {:>13}".format(get_used_balance()))
-            log.info("Entry price " + conf.base + ": {:>12.1f}".format(calc_avg_entry_price(oos.orders)))
-            log.info("Market price " + conf.base + ": {:>11.1f}".format(get_current_price()))
+            log.info("Entry price: {:>16.1f}".format(calc_avg_entry_price(oos.orders)))
+            log.info("Market price: {:>15.1f}".format(get_current_price()))
 
         if not oos.orders:
             log.info("No open orders")
@@ -982,13 +985,7 @@ if __name__ == '__main__':
 
     while True:
         price = get_current_price()
-
-        balance = get_balance()['free']
-        amount = round(balance / conf.divider * price)
-
-        if is_order_below_limit(amount, price):
-            log.info('Hibernating')
-            sleep_for(60, 120)
+        amount = round(get_balance()['free'] / conf.divider * price)
 
         if loop:
             daily_report()
@@ -1005,4 +1002,4 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.10.9 recalculate amount after sleep
+# V1.10.11 fixed first init
