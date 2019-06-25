@@ -935,7 +935,7 @@ def create_mailcontent():
     else:
         content.append("Bot running since: {0} UTC".format(started))
     del oos
-    return '\n'.join(content) + '\n\n' + ';'.join(content).replace('  ', '').replace(':', ':;')
+    return '\n'.join(content) + '\n\n' + ';'.join(content).replace('  ', '').replace(': ', ':;')
 
 
 def send_mail(subject: str, content: str):
@@ -981,6 +981,8 @@ if __name__ == '__main__':
     conf = ExchangeConfig(filename)
     exchange = connect_to_exchange(conf)
 
+    create_mailcontent()
+
     loop = init_orders(False, auto_conf)
 
     while True:
@@ -1002,4 +1004,4 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.10.11 fixed first init
+# V1.10.12 fixed csv format
