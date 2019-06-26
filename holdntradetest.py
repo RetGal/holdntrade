@@ -1,3 +1,4 @@
+import datetime
 import time
 import unittest
 from unittest import mock
@@ -129,8 +130,8 @@ class HoldntradeTest(unittest.TestCase):
                                                                                mock_create_limit_sell_order,
                                                                                mock_logging):
         holdntrade.sell_price = 8000
-        holdntrade.curr_sell = []
-        holdntrade.curr_order_size = 10
+        holdntrade.sell_orders = []
+        holdntrade.curr_buy_order_size = 10
         holdntrade.log = mock_logging
         holdntrade.conf = self.create_default_conf()
 
@@ -147,8 +148,8 @@ class HoldntradeTest(unittest.TestCase):
                                                                                mock_create_limit_sell_order,
                                                                                mock_logging):
         holdntrade.sell_price = 4000
-        holdntrade.curr_sell = []
-        holdntrade.curr_order_size = 10
+        holdntrade.sell_orders = []
+        holdntrade.curr_buy_order_size = 10
         holdntrade.log = mock_logging
         holdntrade.conf = self.create_default_conf()
 
@@ -164,8 +165,8 @@ class HoldntradeTest(unittest.TestCase):
     def test_create_sell_order_should_create_order(self, mock_get_used_balance, mock_create_limit_sell_order,
                                                    mock_logging):
         holdntrade.sell_price = 4000
-        holdntrade.curr_sell = []
-        holdntrade.curr_order_size = 10
+        holdntrade.sell_orders = []
+        holdntrade.curr_buy_order_size = 10
         holdntrade.log = mock_logging
         holdntrade.conf = self.create_default_conf()
 
@@ -173,7 +174,7 @@ class HoldntradeTest(unittest.TestCase):
 
         holdntrade.create_sell_order()
 
-        mock_create_limit_sell_order.assert_called_with(holdntrade.conf.pair, holdntrade.curr_order_size,
+        mock_create_limit_sell_order.assert_called_with(holdntrade.conf.pair, holdntrade.curr_buy_order_size,
                                                         holdntrade.sell_price)
 
     @patch('holdntrade.logging')
@@ -182,7 +183,7 @@ class HoldntradeTest(unittest.TestCase):
     def test_create_buy_order_should_not_create_order_if_order_is_below_limit(self, mock_create_limit_buy_order,
                                                                               mock_fetch_ticker, mock_logging):
         price = 8000
-        holdntrade.curr_sell = []
+        holdntrade.sell_orders = []
         amount = 10
         holdntrade.log = mock_logging
         holdntrade.conf = self.create_default_conf()
@@ -199,17 +200,38 @@ class HoldntradeTest(unittest.TestCase):
     def test_create_buy_order_should_create_order_if_order_is_above_limit(self, mock_create_limit_buy_order,
                                                                           mock_fetch_ticker, mock_logging):
         price = 4000
-        holdntrade.curr_sell = []
+        holdntrade.sell_orders = []
         amount = 10
         holdntrade.log = mock_logging
         holdntrade.conf = self.create_default_conf()
-        holdntrade.long_price = 1234
+        holdntrade.buy_price = 1234
         holdntrade.exchange = ccxt.bitmex
         mock_fetch_ticker.return_value = {'bid': 99}
 
         holdntrade.create_buy_order(price, amount)
 
-        mock_create_limit_buy_order.assert_called_with(holdntrade.conf.pair, amount, holdntrade.long_price)
+        mock_create_limit_buy_order.assert_called_with(holdntrade.conf.pair, amount, holdntrade.buy_price)
+
+
+    @patch('holdntrade.logging')
+    @mock.patch.object(ccxt.bitmex, 'fetch_order_status')
+    def test_cancel_current_buy_order_should_remove_order_from_buy_orders_and_clear_current_buy_order(self, mock_fetch_order_status, mock_logging):
+        new_order = {'id': '3f463352-8339-cfbb-3bde-45a63ba43e6c', 'price': 99, 'amount': 20, 'side': 'buy',
+                 'datetime': datetime.datetime.now()}
+        order = holdntrade.Order(new_order)
+        holdntrade.buy_orders = [order]
+        holdntrade.curr_buy_order = order
+        holdntrade.log = mock_logging
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.exchange = ccxt.bitmex
+        mock_fetch_order_status(order.id).return_value = 'open'
+
+        holdntrade.cancel_current_buy_order()
+
+        self.assertFalse(holdntrade.curr_buy_order)
+        self.assertFalse(holdntrade.buy_orders)
+        self.assertTrue(len(holdntrade.buy_orders) == 0)
+
 
     @staticmethod
     def create_default_conf():

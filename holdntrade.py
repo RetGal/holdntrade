@@ -16,18 +16,17 @@ import ccxt
 # ------------------------------------------------------------------------------
 
 sell_price = 0
-long_price = 0
-curr_order = None
-curr_sell = []
-curr_order_size = 0
+sell_orders = []
+buy_price = 0
+buy_orders = []
+curr_buy_order = None
+curr_buy_order_size = 0
 total_reset_counter = 0
 reset_counter = 0
 loop = False
 auto_conf = False
 email_sent = 0
 started = datetime.datetime.utcnow()
-n = 0
-
 
 # ------------------------------------------------------------------------------
 
@@ -85,15 +84,31 @@ class OpenOrdersSummary:
                         self.total_sell_order_value += o['amount'] * o['price']
                     else:
                         self.total_sell_order_value += o['amount']
-                    self.sell_orders.append(o)
+                    self.sell_orders.append(Order(o))
                 elif o['side'] == 'buy':
                     if conf.exchange == 'kraken':
                         self.total_buy_order_value += o['amount'] * o['price']
                     else:
                         self.total_buy_order_value += o['amount']
-                    self.buy_orders.append(o)
+                    self.buy_orders.append(Order(o))
                 else:
                     log.error(inspect.stack()[1][3], ' ?!?')
+
+                self.sell_orders = sorted(self.sell_orders, key=lambda order: order.price, reverse=True)  # desc
+                self.buy_orders = sorted(self.buy_orders, key=lambda order: order.price, reverse=True)  # desc
+
+
+class Order:
+    """
+    Creates and holds an open orders summary
+    """
+    def __init__(self, order):
+
+        self.id = order['id']
+        self.price = order['price']
+        self.amount = order['amount']
+        self.side = order['side']
+        self.datetime = order['datetime']
 
 
 def function_logger(console_level: int, filename: str, file_level: int = None):
@@ -129,21 +144,23 @@ def trade_executed(price: float, amount: int):
     Else if the order is closed, we follow with the followup function and createbuyorder and
     pass on the variables we got from input.
     """
-    global curr_order_size
+    global curr_buy_order_size
+    global buy_orders
 
-    if curr_order is None:
+    if curr_buy_order is None:
         status = 'closed'
         log.info('Closed inexisting compensation order')
     else:
-        status = fetch_order_status(curr_order['id'])
+        status = fetch_order_status(curr_buy_order.id)
     log.debug('-------------------------------')
     log.debug(time.ctime())
     if status == 'open':
-        log.debug('Open Buy Order! Amount: {} @ {}'.format(curr_order_size, long_price))
+        log.debug('Open Buy Order! Amount: {} @ {}'.format(curr_buy_order_size, buy_price))
         log.debug('Current Price: {}'.format(price))
     elif status in ['closed', 'canceled']:
         log.info('Trade executed, starting follow up')
-        last_buy_size = curr_order_size
+        cancel_current_buy_order()
+        last_buy_size = curr_buy_order_size
         if create_buy_order(price, amount):
             create_sell_order(last_buy_size)
         else:
@@ -161,20 +178,19 @@ def sell_executed(price: float, amount: int):
     Else if it has been executed, remove the order from the list of open orders,
     cancel it on Bitmex and create a new buy order.
     """
-    global curr_sell
-    global curr_order
+    global sell_orders
 
-    for orderId in curr_sell:
+    for order in sell_orders:
         time.sleep(0.5)
-        status = fetch_order_status(orderId)
+        status = fetch_order_status(order.id)
         if status == 'open':
             log.debug('Sell still ' + status)
         elif status in ['closed', 'canceled']:
-            curr_sell.remove(orderId)
+            sell_orders.remove(order)
             log.info('Sell executed')
-            if len(curr_sell) == 0:
+            if len(sell_orders) == 0:
                 create_divided_sell_order()
-            cancel_order()
+            cancel_current_buy_order()
             if not create_buy_order(price, amount):
                 log.warning('Resetting')
                 init_orders(True, False)
@@ -182,17 +198,35 @@ def sell_executed(price: float, amount: int):
             log.warning('You should not be here, order state: ' + status)
 
 
+def cancel_current_buy_order():
+    """
+    Cancels the current buy order
+    """
+    global curr_buy_order
+
+    if curr_buy_order is not None:
+        cancel_order(curr_buy_order)
+        buy_orders.remove(curr_buy_order)
+        log.info('Canceled current buy order id: {0} price: {1} amount: {2} '.format(curr_buy_order.id,
+                                                                                curr_buy_order.price,
+                                                                                curr_buy_order.amount))
+        if not buy_orders:
+            curr_buy_order = None
+        else:
+            curr_buy_order = buy_orders[0]
+
+
 def create_sell_order(fixed_order_size: int = None):
     """
     loop that starts after buy order is executed and sends sell order to exchange
     as well as appends the orderID to the sell_orders list.
     """
-    global curr_sell
     global sell_price
-    global curr_order_size
+    global curr_buy_order_size
+    global sell_orders
 
     if fixed_order_size is None:
-        order_size = curr_order_size
+        order_size = curr_buy_order_size
     else:
         order_size = fixed_order_size
 
@@ -205,13 +239,13 @@ def create_sell_order(fixed_order_size: int = None):
     try:
         if not is_order_below_limit(order_size, sell_price):
             if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
-                order = exchange.create_limit_sell_order(conf.pair, order_size, sell_price)
+                new_order = exchange.create_limit_sell_order(conf.pair, order_size, sell_price)
             elif conf.exchange == 'kraken':
                 rate = get_current_price()
-                order = exchange.create_limit_sell_order(conf.pair, to_kraken(order_size, rate), sell_price,
+                new_order = exchange.create_limit_sell_order(conf.pair, to_kraken(order_size, rate), sell_price,
                                                          {'leverage': 2})
-            curr_sell.append(order['id'])
-            log.info(str(order))
+            log.info('Created ' + str(new_order))
+            sell_orders.append(Order(new_order))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         # insufficient funds
@@ -228,7 +262,7 @@ def create_divided_sell_order():
     loop that starts after buy order is executed and sends sell order to exchange
     as well as appends the orderID to the sell_orders list.
     """
-    global curr_sell
+    global sell_orders
     global sell_price
 
     try:
@@ -237,13 +271,13 @@ def create_divided_sell_order():
 
         if not is_order_below_limit(amount, sell_price):
             if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
-                order = exchange.create_limit_sell_order(conf.pair, amount, sell_price)
+                new_order = exchange.create_limit_sell_order(conf.pair, amount, sell_price)
             elif conf.exchange == 'kraken':
                 rate = get_current_price()
-                order = exchange.create_limit_sell_order(conf.pair, to_kraken(amount, rate), sell_price,
+                new_order = exchange.create_limit_sell_order(conf.pair, to_kraken(amount, rate), sell_price,
                                                          {'leverage': 2})
-            curr_sell.append(order['id'])
-            log.info(str(order))
+            log.info('Created ' + str(new_order))
+            sell_orders.append(Order(new_order))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         # insufficient funds
@@ -272,27 +306,25 @@ def fetch_order_status(orderId: str):
         return fo
 
 
-def cancel_order():
+def cancel_order(order: Order):
     """
-    cancels the current order
+    cancels an order
     """
-    global curr_order
-
     try:
-        if curr_order is not None:
-            status = exchange.fetch_order_status(curr_order['id'])
+        if order is not None:
+            status = exchange.fetch_order_status(order.id)
             if status == 'open':
-                exchange.cancel_order(curr_order['id'])
+                exchange.cancel_order(order.id)
             else:
-                log.warning('Order to be canceled {0} was in state '.format(curr_order['id']) + status)
+                log.warning('Order to be canceled {0} was in state '.format(order.id) + status)
 
     except ccxt.OrderNotFound as error:
-        log.error('Order to be canceled not found ' + curr_order['id'] + error.args)
+        log.error('Order to be canceled not found ' + order.id + error.args)
         return
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
-        return cancel_order()
+        return cancel_order(order)
 
 
 def create_buy_order(price: float, amount: int):
@@ -305,30 +337,35 @@ def create_buy_order(price: float, amount: int):
     If the amount is below the order limit and there are open sell orders, the function is going to sleep, allowing
     sell orders to be filled - afterwards the amount is recalculated and the function calls itself with the new amount
     """
-    global long_price
     global sell_price
-    global curr_order
-    global curr_order_size
+    global buy_price
+    global curr_buy_order_size
+    global curr_buy_order
+    global buy_orders
     global reset_counter
 
-    long_price = round(price * (1 - conf.change))
+    buy_price = round(price * (1 - conf.change))
     sell_price = round(price * (1 + conf.change))
-    curr_order_size = amount
+    curr_buy_order_size = amount
     cur_btc_price = get_current_price()
 
     try:
-        if not is_order_below_limit(amount, long_price):
+        if not is_order_below_limit(amount, buy_price):
             if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
-                order = exchange.create_limit_buy_order(conf.pair, amount, long_price)
+                new_order = exchange.create_limit_buy_order(conf.pair, amount, buy_price)
             elif conf.exchange == 'kraken':
-                order = exchange.create_limit_buy_order(conf.pair, to_kraken(amount, cur_btc_price), long_price,
-                                                        {'leverage': 2, 'oflags': 'fcib'})
-            curr_order = order
-            log.info(str(order))
+                new_order = exchange.create_limit_buy_order(conf.pair, to_kraken(amount, cur_btc_price), buy_price,
+                                                            {'leverage': 2, 'oflags': 'fcib'})
+
+            log.info('Created ' + str(new_order))
+            order = Order(new_order)
+            curr_buy_order = order
+            buy_orders.append(order)
+
             if reset_counter > 0:
                 reset_counter -= 1
             return True
-        elif len(curr_sell) > 0:
+        elif len(sell_orders) > 0:
             log.warning('Could not create buy order, waiting for a sell order to be realised')
             sleep_for(60, 120)
             daily_report()
@@ -358,25 +395,27 @@ def create_market_sell_order(amount_btc: float):
     creates a market sell order and sets the values as global ones. Used to compensate margins above 50%.
     input: amount_btc to be sold to reach 50% margin
     """
-    global long_price
+    global buy_price
     global sell_price
-    global curr_sell
+    global sell_orders
 
     cur_btc_price = get_current_price()
 
     amount = round(amount_btc * cur_btc_price)
 
-    long_price = round(cur_btc_price * (1 - conf.change))
+    buy_price = round(cur_btc_price * (1 - conf.change))
     sell_price = round(cur_btc_price * (1 + conf.change))
 
     try:
         if not is_btc_amount_below_limit(amount_btc):
             if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
-                order = exchange.create_market_sell_order(conf.pair, amount)
+                new_order = exchange.create_market_sell_order(conf.pair, amount)
             elif conf.exchange == 'kraken':
-                order = exchange.create_market_sell_order(conf.pair, amount_btc, {'leverage': 2})
-            curr_sell.append(order['id'])
-            log.info(str(order))
+                new_order = exchange.create_market_sell_order(conf.pair, amount_btc, {'leverage': 2})
+
+            log.info('Created ' + str(new_order))
+            order = Order(new_order)
+            sell_orders.append(order)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         # insufficient funds
@@ -393,25 +432,27 @@ def create_market_buy_order(amount_btc: float):
     creates a market buy order and sets the values as global ones. Used to compensate margins below 50%.
     input: amount_btc to be bought to reach 50% margin
     """
-    global long_price
+    global buy_price
     global sell_price
-    global curr_order
+    global curr_buy_order
 
     cur_btc_price = get_current_price()
 
     amount = round(amount_btc * cur_btc_price)
 
-    long_price = round(cur_btc_price * (1 - conf.change))
+    buy_price = round(cur_btc_price * (1 - conf.change))
     sell_price = round(cur_btc_price * (1 + conf.change))
 
     try:
         if not is_order_below_limit(amount, cur_btc_price):
             if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
-                order = exchange.create_market_buy_order(conf.pair, amount)
+                new_order = exchange.create_market_buy_order(conf.pair, amount)
             elif conf.exchange == 'kraken':
-                order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2, 'oflags': 'fcib'})
-            curr_order = order
-            log.info(str(order))
+                new_order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2, 'oflags': 'fcib'})
+
+            log.info('Created ' + str(new_order))
+            order = Order(new_order)
+            curr_buy_order = order
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -626,11 +667,12 @@ def init_orders(force_close: bool, auto_conf: bool):
     :param auto_conf: load all orders and keep position
     :return:
     """
-    global curr_order
-    global curr_sell
-    global long_price
     global sell_price
-    global curr_order_size
+    global sell_orders
+    global curr_buy_order_size
+    global curr_buy_order
+    global buy_orders
+    global buy_price
     global total_reset_counter
     global reset_counter
 
@@ -679,16 +721,17 @@ def init_orders(force_close: bool, auto_conf: bool):
                 init = input('There are open orders! Would you like to load them? (y/n) ')
 
             if not force_close and (auto_conf or init.lower() in ['y', 'yes']):
-                sell_orders = sorted(oos.sell_orders, key=lambda o: o['price'], reverse=True)
+                if oos.sell_orders:
+                    for o in oos.sell_orders:
+                        sell_orders.append(o)
+                    sell_price = sell_orders[0].price
 
-                for o in sell_orders:
-                    sell_price = o['price']
-                    curr_sell.append(o['id'])
-
-                for o in oos.buy_orders:
-                    long_price = o['price']
-                    curr_order = o
-                    curr_order_size = o['amount']
+                if oos.buy_orders:
+                    for o in oos.buy_orders:
+                        buy_orders.append(o)
+                    curr_buy_order = buy_orders[0]
+                    buy_price = curr_buy_order.price
+                    curr_buy_order_size = curr_buy_order.amount
 
                 # All sell orders executed
                 if not oos.sell_orders:
@@ -699,7 +742,6 @@ def init_orders(force_close: bool, auto_conf: bool):
                 elif not oos.buy_orders:
                     create_buy_order(get_current_price(),
                                      round(get_balance()['free'] / conf.divider * get_current_price()))
-
                 del oos
                 log.info('Initialization complete (using existing orders)')
                 # No "compensate" necessary
@@ -711,7 +753,7 @@ def init_orders(force_close: bool, auto_conf: bool):
                 if not force_close:
                     cancel = input('All existing orders will be canceled! Are you sure (y/n)? ')
                 if force_close or cancel.lower() in ['y', 'yes']:
-                    cancel_orders(oos.open_orders)
+                    cancel_orders(oos.orders)
                     if reset_counter > 9:
                         log.warning('Closing position, reset counter is ' + str(reset_counter))
                         reset_counter = 0
@@ -735,7 +777,7 @@ def init_orders(force_close: bool, auto_conf: bool):
         return False
 
 
-def cancel_orders(orders):
+def cancel_orders(orders: [Order]):
     """
     Close a list of orders
     :param orders:
@@ -981,8 +1023,6 @@ if __name__ == '__main__':
     conf = ExchangeConfig(filename)
     exchange = connect_to_exchange(conf)
 
-    create_mailcontent()
-
     loop = init_orders(False, auto_conf)
 
     while True:
@@ -993,15 +1033,15 @@ if __name__ == '__main__':
             daily_report()
             trade_executed(price, amount)
             sell_executed(price, amount)
-            if len(curr_sell) == 0:
+            if len(sell_orders) == 0:
                 log.info('No sell orders, resetting all orders')
                 loop = init_orders(True, False)
 
         if not loop:
             # good enough as starting point if no compensation buy/sell is required
-            curr_order_size = amount
+            curr_buy_order_size = amount
             compensate()
             loop = True
 
 #
-# V1.10.12 fixed csv format
+# V1.11.0 order refactoring
