@@ -42,7 +42,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.11.4"
+            self.bot_version = "1.11.5"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -587,17 +587,17 @@ def spread(market_price: float):
     If so, then the highest buy order is canceled and a new buy and sell order are created with the configured offset
     to the market price
     """
-    highest_buy_order = sorted(buy_orders, key=lambda order: order.price, reverse=True)[0]
-    if highest_buy_order.price < market_price * (1 - conf.change * conf.spread_factor):
-        lowest_sell_order = sorted(sell_orders, key=lambda order: order.price)[0]
-        if lowest_sell_order.price > market_price * (1 + conf.change * conf.spread_factor):
-            log.info("Orders above spread tolerance min sell: {0} max buy: {1} current rate: {2}".format(
-                lowest_sell_order.price, highest_buy_order.price, market_price))
-            log.info("Canceling highest buy order id: {0} price: {1} amount: {2}".format(
-                highest_buy_order.id, highest_buy_order.price, highest_buy_order.amount))
-            cancel_order(highest_buy_order)
-            if create_buy_order(market_price, highest_buy_order.amount):
-                create_divided_sell_order()
+    if len(buy_orders) > 0 and len(sell_orders) > 0:
+        highest_buy_order = sorted(buy_orders, key=lambda order: order.price, reverse=True)[0]
+        if highest_buy_order.price < market_price * (1 - conf.change * conf.spread_factor):
+            lowest_sell_order = sorted(sell_orders, key=lambda order: order.price)[0]
+            if lowest_sell_order.price > market_price * (1 + conf.change * conf.spread_factor):
+                log.info("Orders above spread tolerance min sell: {0} max buy: {1} current rate: {2}".format(
+                    lowest_sell_order.price, highest_buy_order.price, market_price))
+                log.info("Canceling highest " + highest_buy_order)
+                cancel_order(highest_buy_order)
+                if create_buy_order(market_price, highest_buy_order.amount):
+                    create_divided_sell_order()
 
 
 def get_margin_balance():
@@ -1074,4 +1074,4 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.11.4
+# V1.11.5
