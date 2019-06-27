@@ -42,7 +42,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.11.3"
+            self.bot_version = "1.11.4"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -73,8 +73,7 @@ class OpenOrdersSummary:
     Creates and holds an open orders summary
     """
     def __init__(self, open_orders):
-
-        self.orders = open_orders
+        self.orders = []
         self.sell_orders = []
         self.buy_orders = []
         self.total_sell_order_value = 0
@@ -82,6 +81,7 @@ class OpenOrdersSummary:
 
         if len(open_orders):
             for o in open_orders:
+                self.orders.append(Order(o))
                 if o['side'] == 'sell':
                     if conf.exchange == 'kraken':
                         self.total_sell_order_value += o['amount'] * o['price']
@@ -103,15 +103,18 @@ class OpenOrdersSummary:
 
 class Order:
     """
-    Creates and holds an open orders summary
+    Creates and holds the relevant data of an order
     """
     def __init__(self, order):
-
         self.id = order['id']
         self.price = order['price']
         self.amount = order['amount']
         self.side = order['side']
         self.datetime = order['datetime']
+
+    def __str__(self):
+        return "{0} order id: {1} price: {2} amount: {3} created: {4}".format(self.side, self.id, self.price,
+                                                                              self.amount, self.datetime)
 
 
 def function_logger(console_level: int, filename: str, file_level: int = None):
@@ -138,7 +141,7 @@ def function_logger(console_level: int, filename: str, file_level: int = None):
     return logger
 
 
-def trade_executed(price: float, amount: int):
+def buy_executed(price: float, amount: int):
     """
     Check if the most recent buy order has been executed.
     input: current price and amount to trade (Current Balance / divider)
@@ -162,7 +165,8 @@ def trade_executed(price: float, amount: int):
         log.debug('Current Price: {}'.format(price))
     elif status in ['closed', 'canceled']:
         log.info('Trade executed, starting follow up')
-        cancel_current_buy_order()
+        if curr_buy_order in buy_orders:
+            buy_orders.remove(curr_buy_order)
         last_buy_size = curr_buy_order_size
         if create_buy_order(price, amount):
             create_sell_order(last_buy_size)
@@ -212,8 +216,7 @@ def cancel_current_buy_order():
         cancel_order(curr_buy_order)
         if curr_buy_order in buy_orders:
             buy_orders.remove(curr_buy_order)
-        log.info('Canceled current buy order id: {0} price: {1} amount: {2} '
-                 .format(curr_buy_order.id, curr_buy_order.price, curr_buy_order.amount))
+        log.info('Canceled current ' + str(curr_buy_order))
         if not buy_orders:
             curr_buy_order = None
         else:
@@ -248,8 +251,9 @@ def create_sell_order(fixed_order_size: int = None):
                 rate = get_current_price()
                 new_order = exchange.create_limit_sell_order(conf.pair, to_kraken(order_size, rate), sell_price,
                                                              {'leverage': 2})
-            log.info('Created ' + str(new_order))
-            sell_orders.append(Order(new_order))
+            order = Order(new_order)
+            sell_orders.append(order)
+            log.info('Created ' + str(order))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         # insufficient funds
@@ -280,8 +284,9 @@ def create_divided_sell_order():
                 rate = get_current_price()
                 new_order = exchange.create_limit_sell_order(conf.pair, to_kraken(amount, rate), sell_price,
                                                              {'leverage': 2})
-            log.info('Created ' + str(new_order))
-            sell_orders.append(Order(new_order))
+            order = Order(new_order)
+            sell_orders.append(order)
+            log.info('Created ' + str(order))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         # insufficient funds
@@ -360,8 +365,8 @@ def create_buy_order(price: float, amount: int):
                 new_order = exchange.create_limit_buy_order(conf.pair, to_kraken(amount, cur_btc_price), buy_price,
                                                             {'leverage': 2, 'oflags': 'fcib'})
 
-            log.info('Created ' + str(new_order))
             order = Order(new_order)
+            log.info('Created ' + str(order))
             curr_buy_order = order
             buy_orders.append(order)
 
@@ -414,8 +419,8 @@ def create_market_sell_order(amount_btc: float):
             elif conf.exchange == 'kraken':
                 new_order = exchange.create_market_sell_order(conf.pair, amount_btc, {'leverage': 2})
 
-            log.info('Created ' + str(new_order))
             order = Order(new_order)
+            log.info('Created market ' + str(order))
             sell_orders.append(order)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
@@ -451,8 +456,8 @@ def create_market_buy_order(amount_btc: float):
             elif conf.exchange == 'kraken':
                 new_order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2, 'oflags': 'fcib'})
 
-            log.info('Created ' + str(new_order))
             order = Order(new_order)
+            log.info('Created market ' + str(order))
             curr_buy_order = order
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
@@ -641,16 +646,17 @@ def get_avg_entry_price():
     return 0
 
 
-def calc_avg_entry_price(open_orders):
+def calc_avg_entry_price(open_orders: [Order]):
     """"
     Calculates the average entry price of the remaining amount of all open orders (required for kraken only)
+    :param open_orders: [Order]
     """
     total_amount = 0
     total_price = 0
     if len(open_orders) > 0:
         for o in open_orders:
-            total_amount += o['remaining']
-            total_price += o['price'] * o['remaining']
+            total_amount += o.amount
+            total_price += o.price * o.amount
     if total_amount > 0:
         return total_price / total_amount
     return 0
@@ -795,20 +801,19 @@ def init_orders(force_close: bool, auto_conf: bool):
 def cancel_orders(orders: [Order]):
     """
     Close a list of orders
-    :param orders:
+    :param orders: [Order]
     """
     try:
         for o in orders:
-            log.debug('cancel {0} order'.format(o['side']))
-
-            status = exchange.fetch_order_status(o['id'])
+            log.debug('Cancel ' + str(o))
+            status = exchange.fetch_order_status(o.id)
             if status == 'open':
-                exchange.cancel_order(o['id'])
+                exchange.cancel_order(o.id)
             else:
-                log.warning('Cancel {0} order {1} was in state '.format(str(o['side']), str(o['id'])) + status)
+                log.warning('Cancel ' + str(o) + ' was in state ' + status)
 
     except ccxt.OrderNotFound as error:
-        log.error('Cancel {0} order {1} not found '.format(str(o['side']), str(o['id'])) + error.args)
+        log.error('Cancel ' + str(o) + ' not found :' + error.args)
         return
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -1054,7 +1059,7 @@ if __name__ == '__main__':
 
         if loop:
             daily_report()
-            trade_executed(market_price, amount)
+            buy_executed(market_price, amount)
             sell_executed(market_price, amount)
             if len(sell_orders) == 0:
                 log.info('No sell orders, resetting all orders')
@@ -1069,4 +1074,4 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.11.3
+# V1.11.4

@@ -233,12 +233,41 @@ class HoldntradeTest(unittest.TestCase):
         self.assertTrue(len(holdntrade.buy_orders) == 0)
 
 
+    # @patch('holdntrade.logging')
+    # @mock.patch.object(ccxt.bitmex, 'cancel_order')
+    # @mock.patch.object(ccxt.bitmex, 'fetch_order_status')
+    # def test_spread(self, mock_fetch_order_status, mock_cancel_order, mock_logging):
+    #     buy1 = holdntrade.Order({'id': '1', 'price': 100, 'amount': 101, 'side': 'buy',
+    #                              'datetime': datetime.datetime.now()})
+    #     buy2 = holdntrade.Order({'id': '2', 'price': 200, 'amount': 102, 'side': 'buy',
+    #                              'datetime': datetime.datetime.now()})
+    #     holdntrade.buy_orders = [buy1, buy2]
+    #     sell1 = holdntrade.Order({'id': '3', 'price': 400, 'amount': 103, 'side': 'sell',
+    #                               'datetime': datetime.datetime.now()})
+    #     sell2 = holdntrade.Order({'id': '4', 'price': 500, 'amount': 104, 'side': 'sell',
+    #                               'datetime': datetime.datetime.now()})
+    #     holdntrade.buy_orders = [sell1, sell2]
+    #     market_price = 300
+    #     holdntrade.log = mock_logging
+    #     holdntrade.conf = self.create_default_conf()
+    #     mock_fetch_order_status(order.id).return_value = 'open'
+    #
+    #     holdntrade.spread(market_price)
+    #
+    #     self.assertTrue(len(holdntrade.buy_orders) == 1)
+    #
+    #     mock_fetch_order_status.assert_called_with(buy2.id)
+    #     mock_cancel_order.assert_called_with(buy2.id)
+
+
     @staticmethod
     def create_default_conf():
         conf = holdntrade.ExchangeConfig
         conf.exchange = 'bitmex'
         conf.pair = 'FOOBAR/SNAFU'
         conf.change = 0.005
+        conf.divider = 4
+        conf.spread_factor = 2
         conf.order_btc_min = 0.0025
         return conf
 
