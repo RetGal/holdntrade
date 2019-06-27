@@ -14,7 +14,7 @@ Sollen die *holdntrade* Instanzen via Watchdog überwacht und bei Bedarf nau ges
 
 ## Inbetriebnahme
 
-Vor dem Start ist die Konfigurationsdatei mit den gewünschten API Keys und Einstellungen ergänzen.
+Vor dem Start ist die Konfigurationsdatei mit den gewünschten API Keys und Einstellungen zu ergänzen.
 
 Bei der Initialisierung wird jeweils nach dem Namen der Konfigurationsdatei gefragt. Diesen ohne Endung (*.txt*) eingeben. 
 Es können also mehrere config Dateien erstellt und immer dieselbe *holdntrade.py* Datei zum Start verwendet werden.
