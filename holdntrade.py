@@ -21,7 +21,6 @@ buy_price = 0
 buy_orders = []
 curr_buy_order = None
 curr_buy_order_size = 0
-total_reset_counter = 0
 reset_counter = 0
 loop = False
 auto_conf = False
@@ -43,7 +42,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.11.2"
+            self.bot_version = "1.11.3"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -347,7 +346,6 @@ def create_buy_order(price: float, amount: int):
     global curr_buy_order_size
     global curr_buy_order
     global buy_orders
-    global reset_counter
 
     buy_price = round(price * (1 - conf.change))
     sell_price = round(price * (1 + conf.change))
@@ -367,8 +365,6 @@ def create_buy_order(price: float, amount: int):
             curr_buy_order = order
             buy_orders.append(order)
 
-            if reset_counter > 0:
-                reset_counter -= 1
             return True
         elif len(sell_orders) > 0:
             log.warning('Could not create buy order, waiting for a sell order to be realised')
@@ -698,12 +694,10 @@ def init_orders(force_close: bool, auto_conf: bool):
     global curr_buy_order
     global buy_orders
     global buy_price
-    global total_reset_counter
     global reset_counter
 
     if force_close:
-        total_reset_counter += 1
-        reset_counter += 5
+        reset_counter += 1
 
     try:
         init = ''
@@ -721,7 +715,7 @@ def init_orders(force_close: bool, auto_conf: bool):
                 log.info("Position " + conf.quote + ": {:>13}".format(poi['currentQty']))
                 log.info("Entry price: {:>16.1f}".format(poi['avgEntryPrice']))
                 log.info("Market price: {:>15.1f}".format(poi['markPrice']))
-                log.info("Liquidation price: {:>10.1f}".format(poi['bankruptPrice']))
+                log.info("Liquidation price: {:>10.1f}".format(poi['liquidationPrice']))
                 del poi
             else:
                 log.info("Available balance is " + conf.base + ": {:>3} ".format(get_balance()['free']))
@@ -779,10 +773,6 @@ def init_orders(force_close: bool, auto_conf: bool):
                     cancel = input('All existing orders will be canceled! Are you sure (y/n)? ')
                 if force_close or cancel.lower() in ['y', 'yes']:
                     cancel_orders(oos.orders)
-                    if reset_counter > 9:
-                        log.warning('Closing position, reset counter is ' + str(reset_counter))
-                        reset_counter = 0
-                        close_position(conf.symbol)
 
         # Handle open positions if no orders are open
         elif not force_close and not auto_conf and get_open_position(conf.symbol) is not None:
@@ -984,7 +974,7 @@ def create_mail_content():
     if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
         sleep_for(1, 2)
         poi = get_position_info()
-        content.append("Liquidation price: {:>10.1f}".format(poi['bankruptPrice']))
+        content.append("Liquidation price: {:>10.1f}".format(poi['liquidationPrice']))
         del poi
         content.append("Wallet balance " + conf.base + ": {:>12.4f}".format(get_wallet_balance()))
         content.append("Margin balance " + conf.base + ": {:>12.4f}".format(bal['total']))
@@ -1003,7 +993,7 @@ def create_mail_content():
     content.append("Value of sell orders " + conf.quote + ": {:>1}".format(int(oos.total_sell_order_value)))
     content.append("No. of buy orders: {:>9}".format(len(oos.buy_orders)))
     content.append("No. of sell orders: {:>8}".format(len(oos.sell_orders)))
-    content.append("No. of forced resets is: {:>3}".format(total_reset_counter))
+    content.append("No. of forced resets is: {:>3}".format(reset_counter))
     if auto_conf:
         content.append("Bot was resurrected at: {0} UTC".format(started))
     else:
@@ -1079,4 +1069,4 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.11.2 report
+# V1.11.3
