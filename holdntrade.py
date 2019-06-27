@@ -52,6 +52,7 @@ class ExchangeConfig:
             self.satoshi_factor = float(props['satoshi_factor'].strip('"'))
             self.change = float(props['change'].strip('"'))
             self.divider = int(props['divider'].strip('"'))
+            self.spread_factor = float(props['spread_factor'].strip('"'))
             self.order_btc_min = float(props['order_btc_min'].strip('"'))
             currency = self.pair.split("/")
             self.base = currency[0]
@@ -186,7 +187,8 @@ def sell_executed(price: float, amount: int):
         if status == 'open':
             log.debug('Sell still ' + status)
         elif status in ['closed', 'canceled']:
-            sell_orders.remove(order)
+            if order in sell_orders:
+                sell_orders.remove(order)
             log.info('Sell executed')
             if len(sell_orders) == 0:
                 create_divided_sell_order()
@@ -206,10 +208,10 @@ def cancel_current_buy_order():
 
     if curr_buy_order is not None:
         cancel_order(curr_buy_order)
-        buy_orders.remove(curr_buy_order)
-        log.info('Canceled current buy order id: {0} price: {1} amount: {2} '.format(curr_buy_order.id,
-                                                                                curr_buy_order.price,
-                                                                                curr_buy_order.amount))
+        if curr_buy_order in buy_orders:
+            buy_orders.remove(curr_buy_order)
+        log.info('Canceled current buy order id: {0} price: {1} amount: {2} '
+                 .format(curr_buy_order.id, curr_buy_order.price, curr_buy_order.amount))
         if not buy_orders:
             curr_buy_order = None
         else:
@@ -218,7 +220,7 @@ def cancel_current_buy_order():
 
 def create_sell_order(fixed_order_size: int = None):
     """
-    loop that starts after buy order is executed and sends sell order to exchange
+    Loop that starts after buy order is executed and sends sell order to exchange
     as well as appends the orderID to the sell_orders list.
     """
     global sell_price
@@ -243,7 +245,7 @@ def create_sell_order(fixed_order_size: int = None):
             elif conf.exchange == 'kraken':
                 rate = get_current_price()
                 new_order = exchange.create_limit_sell_order(conf.pair, to_kraken(order_size, rate), sell_price,
-                                                         {'leverage': 2})
+                                                             {'leverage': 2})
             log.info('Created ' + str(new_order))
             sell_orders.append(Order(new_order))
 
@@ -259,7 +261,7 @@ def create_sell_order(fixed_order_size: int = None):
 
 def create_divided_sell_order():
     """
-    loop that starts after buy order is executed and sends sell order to exchange
+    Loop that starts after buy order is executed and sends sell order to exchange
     as well as appends the orderID to the sell_orders list.
     """
     global sell_orders
@@ -275,7 +277,7 @@ def create_divided_sell_order():
             elif conf.exchange == 'kraken':
                 rate = get_current_price()
                 new_order = exchange.create_limit_sell_order(conf.pair, to_kraken(amount, rate), sell_price,
-                                                         {'leverage': 2})
+                                                             {'leverage': 2})
             log.info('Created ' + str(new_order))
             sell_orders.append(Order(new_order))
 
@@ -291,7 +293,7 @@ def create_divided_sell_order():
 
 def fetch_order_status(orderId: str):
     """
-    fetches the status of an order
+    Fetches the status of an order
     input: id of an order
     output: status of the order (open, closed)
     """
@@ -308,7 +310,7 @@ def fetch_order_status(orderId: str):
 
 def cancel_order(order: Order):
     """
-    cancels an order
+    Cancels an order
     """
     try:
         if order is not None:
@@ -329,7 +331,7 @@ def cancel_order(order: Order):
 
 def create_buy_order(price: float, amount: int):
     """
-    creates a buy order and sets the values as global ones. Used by other functions.
+    Creates a buy order and sets the values as global ones. Used by other functions.
     :param price current price of BTC
     :param amount the order volume
     output: calculate the price to get long (price + change) and to get short (price - change).
@@ -392,7 +394,7 @@ def create_buy_order(price: float, amount: int):
 
 def create_market_sell_order(amount_btc: float):
     """
-    creates a market sell order and sets the values as global ones. Used to compensate margins above 50%.
+    Creates a market sell order and sets the values as global ones. Used to compensate margins above 50%.
     input: amount_btc to be sold to reach 50% margin
     """
     global buy_price
@@ -429,7 +431,7 @@ def create_market_sell_order(amount_btc: float):
 
 def create_market_buy_order(amount_btc: float):
     """
-    creates a market buy order and sets the values as global ones. Used to compensate margins below 50%.
+    Creates a market buy order and sets the values as global ones. Used to compensate margins below 50%.
     input: amount_btc to be bought to reach 50% margin
     """
     global buy_price
@@ -462,7 +464,7 @@ def create_market_buy_order(amount_btc: float):
 
 def get_margin_leverage():
     """
-    fetch the leverage
+    Fetch the leverage
     """
     try:
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
@@ -478,7 +480,7 @@ def get_margin_leverage():
 
 def get_wallet_balance():
     """
-    fetch the wallet balance
+    Fetch the wallet balance
     """
     try:
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
@@ -494,7 +496,7 @@ def get_wallet_balance():
 
 def get_balance():
     """
-    fetch the balance in btc.
+    Fetch the balance in btc.
     output: balance (used,free,total)
     """
     try:
@@ -508,7 +510,7 @@ def get_balance():
 
 def get_used_balance():
     """
-    fetch the used balance in btc.
+    Fetch the used balance in btc.
     output: balance
     """
     try:
@@ -526,7 +528,7 @@ def get_used_balance():
 
 def get_position_info():
     """
-    fetch position information
+    Fetch position information
     """
     try:
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
@@ -546,7 +548,7 @@ def get_position_info():
 
 def compensate():
     """
-    approaches the margin used towards 50% by selling or buying the difference to market price
+    Approaches the margin used towards 50% by selling or buying the difference to market price
     """
     try:
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
@@ -574,9 +576,29 @@ def compensate():
     return
 
 
+def spread(market_price: float):
+    """
+    Checks if the difference between the highest buy order price and the market price is bigger than spread_factor times
+    change and the difference of the lowest sell order to the market price is bigger spread_factor times change
+    If so, then the highest buy order is canceled and a new buy and sell order are created with the configured offset
+    to the market price
+    """
+    highest_buy_order = sorted(buy_orders, key=lambda order: order.price, reverse=True)[0]
+    if highest_buy_order.price < market_price * (1 - conf.change * conf.spread_factor):
+        lowest_sell_order = sorted(sell_orders, key=lambda order: order.price)[0]
+        if lowest_sell_order.price > market_price * (1 + conf.change * conf.spread_factor):
+            log.info("Orders above spread tolerance min sell: {0} max buy: {1} current rate: {2}".format(
+                lowest_sell_order.price, highest_buy_order.price, market_price))
+            log.info("Canceling highest buy order id: {0} price: {1} amount: {2}".format(
+                highest_buy_order.id, highest_buy_order.price, highest_buy_order.amount))
+            cancel_order(highest_buy_order)
+            if create_buy_order(market_price, highest_buy_order.amount):
+                create_divided_sell_order()
+
+
 def get_margin_balance():
     """
-    fetches the margin balance (free and total)
+    Fetches the margin balance (free and total)
     """
     try:
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
@@ -596,7 +618,7 @@ def get_margin_balance():
 
 def calculate_used_margin_percentage(bal=None):
     """
-    calculates the used margin percentage
+    Calculates the used margin percentage
     """
     if bal is None:
         bal = get_margin_balance()
@@ -605,7 +627,7 @@ def calculate_used_margin_percentage(bal=None):
 
 def get_avg_entry_price():
     """
-    fetches the average entry price of a position
+    Fetches the average entry price of a position
     """
     try:
         avg = exchange.private_get_position()[0]['avgEntryPrice']
@@ -622,7 +644,7 @@ def get_avg_entry_price():
 
 def calc_avg_entry_price(open_orders):
     """"
-    calculates the average entry price of the remaining amount of all open orders (required for kraken only)
+    Calculates the average entry price of the remaining amount of all open orders (required for kraken only)
     """
     total_amount = 0
     total_price = 0
@@ -637,7 +659,7 @@ def calc_avg_entry_price(open_orders):
 
 def get_current_price():
     """
-    fetch the current BTC price
+    Fetch the current BTC price
     output: last bid price
     """
     sleep_for(4, 6)
@@ -651,7 +673,7 @@ def get_current_price():
 
 def update_price(origin_price: float, price: float):
     """
-    update the price by considering the old and current price
+    Update the price by considering the old and current price
     :param origin_price:
     :param price:
     :return: price
@@ -661,7 +683,7 @@ def update_price(origin_price: float, price: float):
 
 def init_orders(force_close: bool, auto_conf: bool):
     """
-    initialize existing orders or remove all pending ones
+    Initialize existing orders or remove all pending ones
     output True if loaded and False if compensate margin is necessary
     :param force_close: close all orders/positions (reset)
     :param auto_conf: load all orders and keep position
@@ -932,11 +954,11 @@ def daily_report():
         if datetime.datetime(2012, 1, 17, 12, 15).time() > now.time() > datetime.datetime(2012, 1, 17, 12,
                                                                                           10).time() and email_sent != now.day:
             subject = "Daily report for {0}".format(conf.bot_instance)
-            send_mail(subject, create_mailcontent())
+            send_mail(subject, create_mail_content())
             email_sent = now.day
 
 
-def create_mailcontent():
+def create_mail_content():
     """
     Fetches the data required for the daily report email
     :return: mailcontent: str
@@ -947,7 +969,7 @@ def create_mailcontent():
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
-        return create_mailcontent()
+        return create_mail_content()
 
     content = []
     content.append("{0} {1} UTC".format(conf.bot_instance, datetime.datetime.utcnow()))
@@ -1026,16 +1048,18 @@ if __name__ == '__main__':
     loop = init_orders(False, auto_conf)
 
     while True:
-        price = get_current_price()
-        amount = round(get_balance()['free'] / conf.divider * price)
+        market_price = get_current_price()
+        amount = round(get_balance()['free'] / conf.divider * market_price)
 
         if loop:
             daily_report()
-            trade_executed(price, amount)
-            sell_executed(price, amount)
+            trade_executed(market_price, amount)
+            sell_executed(market_price, amount)
             if len(sell_orders) == 0:
                 log.info('No sell orders, resetting all orders')
                 loop = init_orders(True, False)
+            else:
+                spread(market_price)
 
         if not loop:
             # good enough as starting point if no compensation buy/sell is required
@@ -1044,4 +1068,4 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.11.0 order refactoring
+# V1.11.1 spread factor
