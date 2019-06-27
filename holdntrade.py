@@ -43,6 +43,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
+            self.bot_version = "1.11.2"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -51,7 +52,7 @@ class ExchangeConfig:
             self.symbol = props['symbol'].strip('"')
             self.satoshi_factor = float(props['satoshi_factor'].strip('"'))
             self.change = float(props['change'].strip('"'))
-            self.divider = int(props['divider'].strip('"'))
+            self.divider = abs(float(props['divider'].strip('"')))
             if self.divider < 1:
                 self.divider = 1
             self.spread_factor = float(props['spread_factor'].strip('"'))
@@ -975,9 +976,16 @@ def create_mail_content():
 
     content = []
     content.append("{0} {1} UTC".format(conf.bot_instance, datetime.datetime.utcnow()))
-    sleep_for(4, 6)
+    content.append("Version: {:>21}".format(conf.bot_version))
+    content.append("Difference: {:>18.5f}".format(conf.change))
+    content.append("Divider: {:>21.2}".format(conf.divider))
+    sleep_for(2, 4)
     bal = get_margin_balance()
     if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+        sleep_for(1, 2)
+        poi = get_position_info()
+        content.append("Liquidation price: {:>10.1f}".format(poi['bankruptPrice']))
+        del poi
         content.append("Wallet balance " + conf.base + ": {:>12.4f}".format(get_wallet_balance()))
         content.append("Margin balance " + conf.base + ": {:>12.4f}".format(bal['total']))
     elif conf.exchange == 'kraken':
@@ -1001,7 +1009,8 @@ def create_mail_content():
     else:
         content.append("Bot running since: {0} UTC".format(started))
     del oos
-    return '\n'.join(content) + '\n\n' + ';'.join(content).replace('  ', '').replace(': ', ':;')
+    return '\n'.join(content) + '\n\n' + exchange.urls['www'] + '\n\n' + ';'.join(content).replace('  ', '').replace(
+        ': ', ':;')
 
 
 def send_mail(subject: str, content: str):
@@ -1070,4 +1079,4 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.11.1 spread factor
+# V1.11.2 report
