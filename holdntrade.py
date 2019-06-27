@@ -52,6 +52,8 @@ class ExchangeConfig:
             self.satoshi_factor = float(props['satoshi_factor'].strip('"'))
             self.change = float(props['change'].strip('"'))
             self.divider = int(props['divider'].strip('"'))
+            if self.divider < 1:
+                self.divider = 1
             self.spread_factor = float(props['spread_factor'].strip('"'))
             self.order_btc_min = float(props['order_btc_min'].strip('"'))
             currency = self.pair.split("/")
