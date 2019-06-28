@@ -42,7 +42,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.11.5"
+            self.bot_version = "1.11.6"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -594,7 +594,7 @@ def spread(market_price: float):
             if lowest_sell_order.price > market_price * (1 + conf.change * conf.spread_factor):
                 log.info("Orders above spread tolerance min sell: {0} max buy: {1} current rate: {2}".format(
                     lowest_sell_order.price, highest_buy_order.price, market_price))
-                log.info("Canceling highest " + highest_buy_order)
+                log.info("Canceling highest " + str(highest_buy_order))
                 cancel_order(highest_buy_order)
                 if create_buy_order(market_price, highest_buy_order.amount):
                     create_divided_sell_order()
@@ -1049,6 +1049,7 @@ if __name__ == '__main__':
     log.info('-------------------------------')
 
     conf = ExchangeConfig(filename)
+    log.info('Holdntrade version: {0}'.format(conf.bot_version))
     exchange = connect_to_exchange(conf)
 
     loop = init_orders(False, auto_conf)
@@ -1074,4 +1075,4 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.11.5
+# V1.11.6
