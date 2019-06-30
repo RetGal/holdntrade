@@ -42,7 +42,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.11.6"
+            self.bot_version = "1.11.7"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -164,7 +164,7 @@ def buy_executed(price: float, amount: int):
         log.debug('Open Buy Order! Amount: {} @ {}'.format(curr_buy_order_size, buy_price))
         log.debug('Current Price: {}'.format(price))
     elif status in ['closed', 'canceled']:
-        log.info('Trade executed, starting follow up')
+        log.info('Buy executed, starting follow up')
         if curr_buy_order in buy_orders:
             buy_orders.remove(curr_buy_order)
         last_buy_size = curr_buy_order_size
@@ -240,7 +240,7 @@ def create_sell_order(fixed_order_size: int = None):
     stock = get_used_balance()
     if stock < order_size:
         # sold out - the main loop will re-init if there are no other sell orders open
-        log.warning('Not executing sell order over {0} (only {1} left)'.format(str(order_size), str(stock)))
+        log.warning('Not executing sell order over {0} (only {1} left)'.format(float(order_size), float(stock)))
         return
 
     try:
@@ -298,19 +298,19 @@ def create_divided_sell_order():
         return create_divided_sell_order()
 
 
-def fetch_order_status(orderId: str):
+def fetch_order_status(order_id: str):
     """
     Fetches the status of an order
     input: id of an order
     output: status of the order (open, closed)
     """
     try:
-        fo = exchange.fetch_order_status(orderId)
+        fo = exchange.fetch_order_status(order_id)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
-        return fetch_order_status(orderId)
+        return fetch_order_status(order_id)
     else:
         return fo
 
@@ -343,8 +343,9 @@ def create_buy_order(price: float, amount: int):
     :param amount the order volume
     output: calculate the price to get long (price + change) and to get short (price - change).
     In addition set the current orderID and current order size as global values.
-    If the amount is below the order limit and there are open sell orders, the function is going to sleep, allowing
-    sell orders to be filled - afterwards the amount is recalculated and the function calls itself with the new amount
+    If the amount is below the order limit or there is not enough margin and there are open sell orders, the function
+    is going to sleep, allowing sell orders to be filled - afterwards the amount is recalculated and the function calls
+    itself with the new amount
     """
     global sell_price
     global buy_price
@@ -364,36 +365,47 @@ def create_buy_order(price: float, amount: int):
             elif conf.exchange == 'kraken':
                 new_order = exchange.create_limit_buy_order(conf.pair, to_kraken(amount, cur_btc_price), buy_price,
                                                             {'leverage': 2, 'oflags': 'fcib'})
-
             order = Order(new_order)
             log.info('Created ' + str(order))
             curr_buy_order = order
             buy_orders.append(order)
-
             return True
         elif len(sell_orders) > 0:
-            log.warning('Could not create buy order, waiting for a sell order to be realised')
-            sleep_for(60, 120)
-            daily_report()
-            # recalculate order size
-            amount = round(get_balance()['free'] / conf.divider * get_current_price())
-            return create_buy_order(update_price(cur_btc_price, price), amount)
+            log.info('Could not create buy order, waiting for a sell order to be realised')
+            return delay_buy_order(cur_btc_price, price)
         else:
             log.warning('Could not create buy order over {0} and there are no open sell orders, reset required'
                         .format(str(amount)))
             return False
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        # insufficient margin
-        if "nsufficient" in str(error.args):
-            log.error('Insufficient initial margin - not buying ' + str(amount))
-            return False
-        elif "too low" in str(error.args):
-            log.error('Margin level too low - not buying ' + str(amount))
-            return False
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
-        sleep_for(4, 6)
-        return create_buy_order(update_price(cur_btc_price, price), amount)
+        # insufficient margin || margin level too low
+        if "nsufficient" in str(error.args) or "too low" in str(error.args):
+            if len(sell_orders) > 0:
+                log.info(
+                    'Could not create buy order over {0}, insufficient margin, waiting for a sell order to be realised'.format(
+                        str(amount)))
+                return delay_buy_order(cur_btc_price, price)
+            else:
+                log.warning('Could not create buy order over {0}, insufficient margin'.format(str(amount)))
+                return False
+        else:
+            log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+            sleep_for(4, 6)
+            return create_buy_order(update_price(cur_btc_price, price), amount)
+
+
+def delay_buy_order(cur_btc_price: float, price: float):
+    """
+    Delays the creation of a buy order, allowing sell orders to be filled - afterwards the amount is recalculated and
+    the function calls create_buy_order with the current btc price and the new amount
+    :param cur_btc_price: the btc with which price was calculated
+    :param price: the price of the original buy order to be created
+    """
+    sleep_for(60, 120)
+    daily_report()
+    amount = round(get_balance()['free'] / conf.divider * get_current_price())  # recalculate order size
+    return create_buy_order(update_price(cur_btc_price, price), amount)
 
 
 def create_market_sell_order(amount_btc: float):
@@ -414,11 +426,12 @@ def create_market_sell_order(amount_btc: float):
 
     try:
         if not is_btc_amount_below_limit(amount_btc):
-            if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+            if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
                 new_order = exchange.create_market_sell_order(conf.pair, amount)
             elif conf.exchange == 'kraken':
                 new_order = exchange.create_market_sell_order(conf.pair, amount_btc, {'leverage': 2})
-
+            elif conf.exchange == 'liquid':
+                new_order = exchange.create_market_sell_order(conf.pair, amount, {'leverage': 2})
             order = Order(new_order)
             log.info('Created market ' + str(order))
             sell_orders.append(order)
@@ -451,16 +464,20 @@ def create_market_buy_order(amount_btc: float):
 
     try:
         if not is_order_below_limit(amount, cur_btc_price):
-            if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+            if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
                 new_order = exchange.create_market_buy_order(conf.pair, amount)
             elif conf.exchange == 'kraken':
                 new_order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2, 'oflags': 'fcib'})
-
+            elif conf.exchange == 'liquid':
+                new_order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2})
             order = Order(new_order)
             log.info('Created market ' + str(order))
             curr_buy_order = order
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        if "not_enough_free" in str(error.args) and conf.exchange == 'liquid':
+            log.error('Not enough free balanace ' + type(error).__name__ + str(error.args))
+            return
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
         return create_market_buy_order(amount_btc)
@@ -487,10 +504,16 @@ def get_wallet_balance():
     Fetch the wallet balance
     """
     try:
-        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
             return exchange.fetch_balance()['info'][0]['walletBalance'] * conf.satoshi_factor
         elif conf.exchange == 'kraken':
             return float(exchange.private_post_tradebalance()['result']['tb'])
+        elif conf.exchange == 'liquid':
+            log.error("get_wallet_balance() not yet implemented for " + conf.exchange)
+            # TODO check
+            for b in exchange.private_get_accounts_balance():
+                if b['currency'] == conf.base:
+                    return b['balance']
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -518,11 +541,20 @@ def get_used_balance():
     output: balance
     """
     try:
-        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
             return exchange.private_get_position()[0]['currentQty']
         elif conf.exchange == 'kraken':
             result = exchange.private_post_tradebalance()['result']
             return round(float(result['e']) - float(result['mf']))
+        elif conf.exchange == 'liquid':
+            log.error("get_used_balance() not yet implemented for " + conf.exchange)
+            return None
+            # TODO check
+            # for b in exchange.private_get_accounts_balance():
+            #     if b['currency'] == conf.base:
+            #        return float(b['balance'])
+            # TODO timeout issue
+            # return exchange.private_get_trades()
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -535,7 +567,7 @@ def get_position_info():
     Fetch position information
     """
     try:
-        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
             response = exchange.private_get_position()
             if response:
                 return response[0]
@@ -543,6 +575,12 @@ def get_position_info():
         elif conf.exchange == 'kraken':
             log.error("get_position_info() not yet implemented for kraken")
             return
+        elif conf.exchange == 'liquid':
+            response = exchange.private_get_trading_accounts()
+            for pos in response:
+                if pos['currency_pair_code'] == conf.symbol:
+                    return pos
+            return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -557,6 +595,8 @@ def compensate():
     try:
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
             bal = exchange.fetch_balance()['BTC']
+            if bal['used'] is None:
+                bal['used'] = 0
         elif conf.exchange == 'kraken':
             bal = exchange.private_post_tradebalance({'asset': 'BTC'})['result']
             bal['free'] = float(bal['mf'])
@@ -626,6 +666,8 @@ def calculate_used_margin_percentage(bal=None):
     """
     if bal is None:
         bal = get_margin_balance()
+        if bal['total'] <= 0:
+            return 0
     return float(100 - (bal['free'] / bal['total']) * 100)
 
 
@@ -714,7 +756,7 @@ def init_orders(force_close: bool, auto_conf: bool):
         oos = OpenOrdersSummary(exchange.fetch_open_orders(conf.pair, since=None, limit=None, params={}))
 
         log.info("Used margin: {:>17.2f}%".format(calculate_used_margin_percentage()))
-        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
             sleep_for(1, 2)
             poi = get_position_info()
             if poi:
@@ -731,7 +773,9 @@ def init_orders(force_close: bool, auto_conf: bool):
             log.info("Position " + conf.quote + ": {:>13}".format(get_used_balance()))
             log.info("Entry price: {:>16.1f}".format(calc_avg_entry_price(oos.orders)))
             log.info("Market price: {:>15.1f}".format(get_current_price()))
-
+        elif conf.exchange == 'liquid':
+            poi = get_position_info()
+            log.info("Position " + conf.base + ": {:>13}".format(poi['position']))
         if not oos.orders:
             log.info("No open orders")
 
@@ -747,14 +791,12 @@ def init_orders(force_close: bool, auto_conf: bool):
 
             if not force_close and (auto_conf or init.lower() in ['y', 'yes']):
                 if oos.sell_orders:
-                    for o in oos.sell_orders:
-                        sell_orders.append(o)
-                    sell_price = sell_orders[0].price
+                    sell_orders = oos.sell_orders
+                    sell_price = sell_orders[0].price  # lowest if several
 
                 if oos.buy_orders:
-                    for o in oos.buy_orders:
-                        buy_orders.append(o)
-                    curr_buy_order = buy_orders[0]
+                    buy_orders = oos.buy_orders
+                    curr_buy_order = buy_orders[-1]  # highest if several
                     buy_price = curr_buy_order.price
                     curr_buy_order_size = curr_buy_order.amount
 
@@ -771,7 +813,6 @@ def init_orders(force_close: bool, auto_conf: bool):
                 log.info('Initialization complete (using existing orders)')
                 # No "compensate" necessary
                 return True
-
             else:
                 log.info('Unrealised PNL: {0} BTC'.format(str(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor)))
                 cancel = ''
@@ -847,7 +888,7 @@ def get_open_position(symbol: str):
     :return: positions
     """
     try:
-        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
             for p in exchange.private_get_position():
                 if p['isOpen'] and p['symbol'] == symbol:
                     return p
@@ -857,6 +898,13 @@ def get_open_position(symbol: str):
                 for p in a['openPositions']:
                     if p['symbol'] == symbol:
                         return p
+        elif conf.exchange == 'liquid':
+            # TODO timeout issue
+            # for t in exchange.private_get_trades():
+            #     if ['isOpen'] and t['symbol'] == symbol:
+            #         return t
+            log.error('get_open_position() not yet implemented for ' + conf.exchange)
+            return None
         return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
@@ -969,12 +1017,10 @@ def create_mail_content():
         sleep_for(4, 6)
         return create_mail_content()
 
-    content = []
-    content.append("{0} {1} UTC".format(conf.bot_instance, datetime.datetime.utcnow()))
-    content.append("Version: {:>21}".format(conf.bot_version))
-    content.append("Difference: {:>18.5f}".format(conf.change))
-    content.append("Divider: {:>21.2}".format(conf.divider))
     sleep_for(2, 4)
+    content = ["{0} {1} UTC".format(conf.bot_instance, datetime.datetime.utcnow()),
+               "Version: {:>21}".format(conf.bot_version), "Difference: {:>18.5f}".format(conf.change),
+               "Divider: {:>21.2}".format(conf.divider)]
     bal = get_margin_balance()
     if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
         sleep_for(1, 2)
@@ -1075,4 +1121,4 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.11.6
+# V1.11.7
