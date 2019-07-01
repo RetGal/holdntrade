@@ -42,20 +42,21 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.11.7"
+            self.bot_version = "1.11.8"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
             self.test = bool(props['test'].strip('"').lower() == 'true')
             self.pair = props['pair'].strip('"')
             self.symbol = props['symbol'].strip('"')
-            self.satoshi_factor = float(props['satoshi_factor'].strip('"'))
+            self.order_btc_min = float(props['order_btc_min'].strip('"'))
+            self.satoshi_factor = 0.00000001
             self.change = float(props['change'].strip('"'))
             self.divider = abs(float(props['divider'].strip('"')))
             if self.divider < 1:
                 self.divider = 1
             self.spread_factor = float(props['spread_factor'].strip('"'))
-            self.order_btc_min = float(props['order_btc_min'].strip('"'))
+            self.server_name = props['server_name'].strip('"')
             currency = self.pair.split("/")
             self.base = currency[0]
             self.quote = currency[1]
@@ -469,7 +470,8 @@ def create_market_buy_order(amount_btc: float):
             elif conf.exchange == 'kraken':
                 new_order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2, 'oflags': 'fcib'})
             elif conf.exchange == 'liquid':
-                new_order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2})
+                # TODO multicurrency_or_collateral_only_used_for_margin
+                new_order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2, 'funding_currency': 'BTC'})
             order = Order(new_order)
             log.info('Created market ' + str(order))
             curr_buy_order = order
@@ -775,7 +777,7 @@ def init_orders(force_close: bool, auto_conf: bool):
             log.info("Market price: {:>15.1f}".format(get_current_price()))
         elif conf.exchange == 'liquid':
             poi = get_position_info()
-            log.info("Position " + conf.base + ": {:>13}".format(poi['position']))
+            log.info("Position " + conf.base + ": {:>13.2f}".format(float(poi['position'])))
         if not oos.orders:
             log.info("No open orders")
 
@@ -899,6 +901,7 @@ def get_open_position(symbol: str):
                     if p['symbol'] == symbol:
                         return p
         elif conf.exchange == 'liquid':
+            trades = exchange.private_get_trades({'status': 'open'})
             # TODO timeout issue
             # for t in exchange.private_get_trades():
             #     if ['isOpen'] and t['symbol'] == symbol:
@@ -1018,40 +1021,48 @@ def create_mail_content():
         return create_mail_content()
 
     sleep_for(2, 4)
-    content = ["{0} {1} UTC".format(conf.bot_instance, datetime.datetime.utcnow()),
-               "Version: {:>21}".format(conf.bot_version), "Difference: {:>18.5f}".format(conf.change),
-               "Divider: {:>21.2}".format(conf.divider)]
+    content = ["{0}@{1}: ".format(conf.bot_instance, conf.server_name) + str(datetime.datetime.utcnow()) + " UTC",
+               "Version: {:>21}".format(conf.bot_version),
+               conf.base + " price in " + conf.quote + ": {:>13.2f}".format(get_current_price()),
+               "Difference: {:>20.3f}".format(conf.change),
+               "Divider: {:>23.2}".format(conf.divider)]
     bal = get_margin_balance()
     if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
         sleep_for(1, 2)
         poi = get_position_info()
-        content.append("Liquidation price: {:>10.1f}".format(poi['liquidationPrice']))
+        content.append("Liquidation price: {:>11.1f}".format(poi['liquidationPrice']))
         del poi
-        content.append("Wallet balance " + conf.base + ": {:>12.4f}".format(get_wallet_balance()))
-        content.append("Margin balance " + conf.base + ": {:>12.4f}".format(bal['total']))
+        content.append("Wallet balance " + conf.base + ": {:>13.4f}".format(get_wallet_balance()))
+        content.append("Margin balance " + conf.base + ": {:>13.4f}".format(bal['total']))
     elif conf.exchange == 'kraken':
-        content.append("Wallet balance " + conf.quote + ": {:>10.2f}".format(get_wallet_balance()))
-        content.append("Margin balance " + conf.quote + ": {:>10.2f}".format(bal['total']))
-    content.append("Used margin: {:>17.2f}%".format(calculate_used_margin_percentage(bal)))
+        content.append("Wallet balance " + conf.quote + ": {:>11.2f}".format(get_wallet_balance()))
+        content.append("Margin balance " + conf.quote + ": {:>11.2f}".format(bal['total']))
+    content.append("Used margin: {:>18.2f}%".format(calculate_used_margin_percentage(bal)))
     if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
-        content.append("Leverage: {:>20.2f}x".format(get_margin_leverage()))
+        content.append("Leverage: {:>21.2f}x".format(get_margin_leverage()))
     elif conf.exchange == 'kraken':
-        content.append("Leverage: {:>20.1f}%".format(get_margin_leverage()))
+        content.append("Leverage: {:>21.1f}%".format(get_margin_leverage()))
     sleep_for(4, 6)
-    content.append("Position " + conf.quote + ": {:>15}".format(get_used_balance()))
+    content.append("Position " + conf.quote + ": {:>16}".format(get_used_balance()))
     sleep_for(4, 6)
-    content.append("Value of buy orders " + conf.quote + ": {:>4}".format(int(oos.total_buy_order_value)))
-    content.append("Value of sell orders " + conf.quote + ": {:>1}".format(int(oos.total_sell_order_value)))
-    content.append("No. of buy orders: {:>9}".format(len(oos.buy_orders)))
-    content.append("No. of sell orders: {:>8}".format(len(oos.sell_orders)))
-    content.append("No. of forced resets is: {:>3}".format(reset_counter))
+    content.append("Value of buy orders " + conf.quote + ": {:>5}".format(int(oos.total_buy_order_value)))
+    content.append("Value of sell orders " + conf.quote + ": {:>4}".format(int(oos.total_sell_order_value)))
+    content.append("No. of buy orders: {:>11}".format(len(oos.buy_orders)))
+    content.append("No. of sell orders: {:>10}".format(len(oos.sell_orders)))
+    content.append("No. of resets is: {:>12}".format(reset_counter))
     if auto_conf:
         content.append("Bot was resurrected at: {0} UTC".format(started))
     else:
         content.append("Bot running since: {0} UTC".format(started))
     del oos
-    return '\n'.join(content) + '\n\n' + exchange.urls['www'] + '\n\n' + ';'.join(content).replace('  ', '').replace(
-        ': ', ':;')
+
+    bitconSchweizUrl = 'https://bitcoin-schweiz.ch/bot/'
+    text = '\n'.join(content) + '\n\n' + bitconSchweizUrl + '\n' + exchange.urls['www'] + '\n\n'
+    date = content.pop(0) + ';'
+    running_since = content.pop().replace(':', ':;', 1)
+    csv = date + ';'.join(content).replace('  ', '').replace(':', ':;') + ';' + running_since
+
+    return text + csv
 
 
 def send_mail(subject: str, content: str):
@@ -1121,4 +1132,4 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.11.7
+# V1.11.8
