@@ -9,12 +9,12 @@ test = "True"
 pair = "BTC/USD"
 symbol = "XBTUSD"
 order_btc_min = 0.0025
-satoshi_factor = 0.00000001
 
 # bot properties
 change = 0.005
 divider = 5
 spread_factor = 3
+server_name = "BOT_SERVER_NAME"
 
 # email properties
 send_emails = "True"
