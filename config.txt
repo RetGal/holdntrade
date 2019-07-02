@@ -14,7 +14,6 @@ order_btc_min = 0.0025
 change = 0.005
 divider = 5
 spread_factor = 3
-server_name = "BOT_SERVER_NAME"
 
 # email properties
 send_emails = "True"

@@ -6,6 +6,7 @@ import logging
 import os
 import random
 import smtplib
+import socket
 import sys
 import time
 from email.message import EmailMessage
@@ -42,7 +43,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.11.8"
+            self.bot_version = "1.11.9"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -56,7 +57,6 @@ class ExchangeConfig:
             if self.divider < 1:
                 self.divider = 1
             self.spread_factor = float(props['spread_factor'].strip('"'))
-            self.server_name = props['server_name'].strip('"')
             currency = self.pair.split("/")
             self.base = currency[0]
             self.quote = currency[1]
@@ -114,7 +114,7 @@ class Order:
         self.datetime = order['datetime']
 
     def __str__(self):
-        return "{0} order id: {1} price: {2} amount: {3} created: {4}".format(self.side, self.id, self.price,
+        return "{0} order id: {1}, price: {2}, amount: {3}, created: {4}".format(self.side, self.id, self.price,
                                                                               self.amount, self.datetime)
 
 
@@ -470,7 +470,7 @@ def create_market_buy_order(amount_btc: float):
             elif conf.exchange == 'kraken':
                 new_order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2, 'oflags': 'fcib'})
             elif conf.exchange == 'liquid':
-                # TODO multicurrency_or_collateral_only_used_for_margin
+                # TODO multicurrency_or_collateral_only_used_for_margin issue
                 new_order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2, 'funding_currency': 'BTC'})
             order = Order(new_order)
             log.info('Created market ' + str(order))
@@ -572,6 +572,8 @@ def get_position_info():
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
             response = exchange.private_get_position()
             if response:
+                if not response[0]['avgEntryPrice']:
+                    response[0]['avgEntryPrice'] = 0
                 return response[0]
             return None
         elif conf.exchange == 'kraken':
@@ -1021,7 +1023,7 @@ def create_mail_content():
         return create_mail_content()
 
     sleep_for(2, 4)
-    content = ["{0}@{1}: ".format(conf.bot_instance, conf.server_name) + str(datetime.datetime.utcnow()) + " UTC",
+    content = ["{0}@{1}: ".format(conf.bot_instance, socket.gethostname()) + str(datetime.datetime.utcnow()) + " UTC",
                "Version: {:>21}".format(conf.bot_version),
                conf.base + " price in " + conf.quote + ": {:>13.2f}".format(get_current_price()),
                "Difference: {:>20.3f}".format(conf.change),
@@ -1132,4 +1134,4 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.11.8
+# V1.11.9
