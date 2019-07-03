@@ -4,6 +4,7 @@ import datetime
 import inspect
 import logging
 import os
+import pickle
 import random
 import smtplib
 import socket
@@ -27,6 +28,7 @@ loop = False
 auto_conf = False
 email_sent = 0
 started = datetime.datetime.utcnow()
+stats = None
 
 # ------------------------------------------------------------------------------
 
@@ -43,7 +45,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.11.9"
+            self.bot_version = "1.12.0"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -115,7 +117,30 @@ class Order:
 
     def __str__(self):
         return "{0} order id: {1}, price: {2}, amount: {3}, created: {4}".format(self.side, self.id, self.price,
-                                                                              self.amount, self.datetime)
+                                                                                 self.amount, self.datetime)
+
+
+class Stats:
+    """
+    Holds the daily statistics in a ring memory (today plus the previous two)
+    """
+    def __init__(self, day_of_year: int, data: object):
+        self.days = []
+        self.add_day(day_of_year, data)
+
+    def add_day(self, day_of_year: int, data: object):
+        data['day'] = day_of_year
+        if len(self.days) > 2:
+            self.days = sorted(self.days, key=lambda data: data['day'], reverse=True)  # desc
+            self.days.pop()
+        self.days.append(data)
+
+    def get_day(self, day_of_year: int):
+        matched = filter(lambda element: element['day'] == day_of_year, self.days)
+        if matched is not None:
+            for day in matched:
+                return day
+        return None
 
 
 def function_logger(console_level: int, filename: str, file_level: int = None):
@@ -572,9 +597,8 @@ def get_position_info():
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
             response = exchange.private_get_position()
             if response:
-                if not response[0]['avgEntryPrice']:
-                    response[0]['avgEntryPrice'] = 0
-                return response[0]
+                if response[0] and response[0]['avgEntryPrice']:
+                    return response[0]
             return None
         elif conf.exchange == 'kraken':
             log.error("get_position_info() not yet implemented for kraken")
@@ -819,11 +843,13 @@ def init_orders(force_close: bool, auto_conf: bool):
                 return True
             else:
                 log.info('Unrealised PNL: {0} BTC'.format(str(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor)))
-                cancel = ''
-                if not force_close:
-                    cancel = input('All existing orders will be canceled! Are you sure (y/n)? ')
-                if force_close or cancel.lower() in ['y', 'yes']:
+                if force_close:
                     cancel_orders(oos.orders)
+                else:
+                    clear_position = input('There is an open BTC position! Would you like to close it? (y/n) ')
+                    if clear_position.lower() in ['y', 'yes']:
+                        cancel_orders(oos.orders)
+                        close_position(conf.symbol)
 
         # Handle open positions if no orders are open
         elif not force_close and not auto_conf and get_open_position(conf.symbol) is not None:
@@ -1028,25 +1054,49 @@ def create_mail_content():
                conf.base + " price in " + conf.quote + ": {:>13.2f}".format(get_current_price()),
                "Difference: {:>20.3f}".format(conf.change),
                "Divider: {:>23.2}".format(conf.divider)]
+
     bal = get_margin_balance()
+    days = calculate_statistics(bal['total'])
+    day_size = len(days)
+    day_labels = ["today", "day-1", "day-2"]
+
     if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
         sleep_for(1, 2)
         poi = get_position_info()
         content.append("Liquidation price: {:>11.1f}".format(poi['liquidationPrice']))
         del poi
         content.append("Wallet balance " + conf.base + ": {:>13.4f}".format(get_wallet_balance()))
-        content.append("Margin balance " + conf.base + ": {:>13.4f}".format(bal['total']))
+        i = 0
+        while i < day_size:
+            day = days.pop(0)
+            if day is not None:
+                if 'mChan' in day:
+                    content.append("Margin balance " + conf.base + " " + day_labels[i] + ": {:>7.4f} ".format(
+                        day['mBal']) + "{0:{1}.2f}%".format(day['mChan'], '+' if day['mChan'] else ''))
+                else:
+                    content.append("Margin balance " + conf.base + " " + day_labels[i] + ": {:>7.4f}".format(day['mBal']))
+            i += 1
+        content.append("Used margin: {:>18.2f}%".format(calculate_used_margin_percentage(bal)))
+        content.append("Leverage: {:>21.2f}x".format(get_margin_leverage()))
+
     elif conf.exchange == 'kraken':
         content.append("Wallet balance " + conf.quote + ": {:>11.2f}".format(get_wallet_balance()))
-        content.append("Margin balance " + conf.quote + ": {:>11.2f}".format(bal['total']))
-    content.append("Used margin: {:>18.2f}%".format(calculate_used_margin_percentage(bal)))
-    if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
-        content.append("Leverage: {:>21.2f}x".format(get_margin_leverage()))
-    elif conf.exchange == 'kraken':
+        i = 0
+        while i < day_size:
+            day = days.pop(0)
+            if day is not None:
+                if 'mChan' in day:
+                    content.append("Margin balance " + conf.quote + " " + day_labels[i] + ": {:>5.2f} ".format(
+                        day['mBal']) + "{0:{1}.2f}%".format(day['mChan'], '+' if day['mChan'] else ''))
+                else:
+                    content.append("Margin balance " + conf.quote + " " + day_labels[i] + ": {:>5.2f}".format(day['mBal']))
+            i += 1
+        content.append("Used margin: {:>18.2f}%".format(calculate_used_margin_percentage(bal)))
         content.append("Leverage: {:>21.1f}%".format(get_margin_leverage()))
+
     sleep_for(4, 6)
     content.append("Position " + conf.quote + ": {:>16}".format(get_used_balance()))
-    sleep_for(4, 6)
+    sleep_for(2, 4)
     content.append("Value of buy orders " + conf.quote + ": {:>5}".format(int(oos.total_buy_order_value)))
     content.append("Value of sell orders " + conf.quote + ": {:>4}".format(int(oos.total_sell_order_value)))
     content.append("No. of buy orders: {:>11}".format(len(oos.buy_orders)))
@@ -1083,6 +1133,45 @@ def send_mail(subject: str, content: str):
     log.info("Sent email to {0}".format(recipients))
 
 
+def calculate_statistics(m_bal: float):
+    """
+    Calculates, updates and persists the change in the margin balance compared with yesterday
+    :param m_bal: todays margin balance
+    :return: a list containing the statistics of today and the two previous days
+    """
+    global stats
+
+    days = []
+    today = {'mBal': m_bal}
+    yesterday = None
+    if stats is None:
+        stats = Stats(int(datetime.date.today().strftime("%j")), today)
+    else:
+        yesterday = stats.get_day(int(datetime.date.today().strftime("%j"))-1)
+        if yesterday is not None:
+            today['mChan'] = round((today['mBal']/yesterday['mBal']-1) * 100, 2)
+        stats.add_day(int(datetime.date.today().strftime("%j")), today)
+    persist_statistics()
+    before_yesterday = stats.get_day(int(datetime.date.today().strftime("%j"))-2)
+    days.append(today)
+    days.append(yesterday)
+    days.append(before_yesterday)
+    return days
+
+
+def load_statistics():
+    content = None
+    stats_file = conf.bot_instance + '.pkl'
+    if os.path.isfile(stats_file):
+        content = pickle.load(open(stats_file, 'rb'))
+    return content
+
+
+def persist_statistics():
+    stats_file = conf.bot_instance + '.pkl'
+    pickle.dump(stats, open(stats_file, 'wb'))
+
+
 def __exit__(msg: str):
     log.info(msg + '\nBot will stop in 5s.')
     time.sleep(5)
@@ -1110,6 +1199,7 @@ if __name__ == '__main__':
     conf = ExchangeConfig(filename)
     log.info('Holdntrade version: {0}'.format(conf.bot_version))
     exchange = connect_to_exchange(conf)
+    stats = load_statistics()
 
     loop = init_orders(False, auto_conf)
 
@@ -1134,4 +1224,4 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.11.9
+# V1.12.0
