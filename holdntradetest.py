@@ -232,11 +232,44 @@ class HoldntradeTest(unittest.TestCase):
         self.assertFalse(holdntrade.buy_orders)
         self.assertTrue(len(holdntrade.buy_orders) == 0)
 
+    def test_calculate_statistics_first_day(self):
+        holdntrade.conf = self.create_default_conf()
+
+        days = holdntrade.calculate_statistics(100)
+
+        self.assertTrue(len(days) == 3)
+        today = days.pop(0)
+        self.assertTrue(today['day'] == int(datetime.date.today().strftime("%j")))
+        self.assertTrue(today['mBal'] == 100)
+
+    def test_calculate_statistics_positive_change(self):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.stats = holdntrade.Stats(int(datetime.date.today().strftime("%j"))-1, {'mBal': 50.1})
+
+        days = holdntrade.calculate_statistics(100.2)
+
+        today = days.pop(0)
+        self.assertTrue(today['day'] == int(datetime.date.today().strftime("%j")))
+        self.assertTrue(today['mBal'] == 100.2)
+        self.assertTrue(today['mChan'] == 100.0)
+
+    def test_calculate_statistics_negative_change(self):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.stats = holdntrade.Stats(int(datetime.date.today().strftime("%j"))-1, {'mBal': 150.3})
+
+        days = holdntrade.calculate_statistics(100.2)
+
+        today = days.pop(0)
+        self.assertTrue(today['day'] == int(datetime.date.today().strftime("%j")))
+        self.assertTrue(today['mBal'] == 100.2)
+        self.assertTrue(today['mChan'] == -33.33)
 
     # @patch('holdntrade.logging')
     # @mock.patch.object(ccxt.bitmex, 'cancel_order')
     # @mock.patch.object(ccxt.bitmex, 'fetch_order_status')
-    # def test_spread(self, mock_fetch_order_status, mock_cancel_order, mock_logging):
+    # @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
+    # def test_spread(self, mock_create_limit_buy_order, mock_fetch_order_status, mock_cancel_order, mock_logging):
+    #     holdntrade.conf = self.create_default_conf()
     #     buy1 = holdntrade.Order({'id': '1', 'price': 100, 'amount': 101, 'side': 'buy',
     #                              'datetime': datetime.datetime.now()})
     #     buy2 = holdntrade.Order({'id': '2', 'price': 200, 'amount': 102, 'side': 'buy',
@@ -246,11 +279,19 @@ class HoldntradeTest(unittest.TestCase):
     #                               'datetime': datetime.datetime.now()})
     #     sell2 = holdntrade.Order({'id': '4', 'price': 500, 'amount': 104, 'side': 'sell',
     #                               'datetime': datetime.datetime.now()})
-    #     holdntrade.buy_orders = [sell1, sell2]
+    #     holdntrade.sell_orders = [sell1, sell2]
     #     market_price = 300
     #     holdntrade.log = mock_logging
     #     holdntrade.conf = self.create_default_conf()
-    #     mock_fetch_order_status(order.id).return_value = 'open'
+    #     mock_fetch_order_status(buy2.id).return_value = 'open'
+    #     buy_price = round(market_price * (1 - holdntrade.conf.change))
+    #     mock_create_limit_buy_order(holdntrade.conf.pair, 102, buy_price).return_value = None
+    #
+    #     holdntrade.exchange = ccxt.bitmex({
+    #         'apiKey': '123',
+    #         'secret': '456',
+    #     })
+    #     holdntrade.exchange.urls['api'] = holdntrade.exchange.urls['test']
     #
     #     holdntrade.spread(market_price)
     #
@@ -264,11 +305,12 @@ class HoldntradeTest(unittest.TestCase):
     def create_default_conf():
         conf = holdntrade.ExchangeConfig
         conf.exchange = 'bitmex'
-        conf.pair = 'FOOBAR/SNAFU'
+        conf.pair = 'BTC/USD'
         conf.change = 0.005
         conf.divider = 4
         conf.spread_factor = 2
         conf.order_btc_min = 0.0025
+        conf.bot_instance = 'test'
         return conf
 
 
