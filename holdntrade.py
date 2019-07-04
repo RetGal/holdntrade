@@ -45,7 +45,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.1"
+            self.bot_version = "1.12.2"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -83,25 +83,26 @@ class OpenOrdersSummary:
         self.total_buy_order_value = 0
 
         if len(open_orders):
-            for o in open_orders:
-                self.orders.append(Order(o))
-                if o['side'] == 'sell':
+            for oo in open_orders:
+                o = Order(oo)
+                self.orders.append(o)
+                if o.side == 'sell':
                     if conf.exchange == 'kraken':
-                        self.total_sell_order_value += o['amount'] * o['price']
+                        self.total_sell_order_value += o.amount * o.price
                     else:
-                        self.total_sell_order_value += o['amount']
-                    self.sell_orders.append(Order(o))
-                elif o['side'] == 'buy':
+                        self.total_sell_order_value += o.amount
+                    self.sell_orders.append(o)
+                elif o.side == 'buy':
                     if conf.exchange == 'kraken':
-                        self.total_buy_order_value += o['amount'] * o['price']
+                        self.total_buy_order_value += o.amount * o.price
                     else:
-                        self.total_buy_order_value += o['amount']
-                    self.buy_orders.append(Order(o))
+                        self.total_buy_order_value += o.amount
+                    self.buy_orders.append(o)
                 else:
                     log.error(inspect.stack()[1][3], ' ?!?')
 
-                self.sell_orders = sorted(self.sell_orders, key=lambda order: order.price, reverse=True)  # desc
-                self.buy_orders = sorted(self.buy_orders, key=lambda order: order.price, reverse=True)  # desc
+            self.sell_orders = sorted(self.sell_orders, key=lambda order: order.price, reverse=True)  # desc
+            self.buy_orders = sorted(self.buy_orders, key=lambda order: order.price, reverse=True)  # desc
 
 
 class Order:
@@ -601,9 +602,8 @@ def get_position_info():
     try:
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
             response = exchange.private_get_position()
-            if response:
-                if response[0] and response[0]['avgEntryPrice']:
-                    return response[0]
+            if response and response[0] and response[0]['avgEntryPrice']:
+                return response[0]
             return None
         elif conf.exchange == 'kraken':
             log.error("get_position_info() not yet implemented for kraken")
@@ -789,28 +789,7 @@ def init_orders(force_close: bool, auto_conf: bool):
         oos = OpenOrdersSummary(exchange.fetch_open_orders(conf.pair, since=None, limit=None, params={}))
 
         log.info("Used margin: {:>17.2f}%".format(calculate_used_margin_percentage()))
-        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
-            sleep_for(1, 2)
-            poi = get_position_info()
-            if poi:
-                log.info("Position " + conf.quote + ": {:>13}".format(poi['currentQty']))
-                log.info("Entry price: {:>16.1f}".format(poi['avgEntryPrice']))
-                log.info("Market price: {:>15.1f}".format(poi['markPrice']))
-                log.info("Liquidation price: {:>10.1f}".format(poi['liquidationPrice']))
-                del poi
-            else:
-                log.info("Available balance is " + conf.base + ": {:>3} ".format(get_balance()['free']))
-                log.info("No position found, I will create one for you")
-                return False
-        elif conf.exchange == 'kraken':
-            log.info("Position " + conf.quote + ": {:>13}".format(get_used_balance()))
-            log.info("Entry price: {:>16.1f}".format(calc_avg_entry_price(oos.orders)))
-            log.info("Market price: {:>15.1f}".format(get_current_price()))
-        elif conf.exchange == 'liquid':
-            poi = get_position_info()
-            log.info("Position " + conf.base + ": {:>13.2f}".format(float(poi['position'])))
-        if not oos.orders:
-            log.info("No open orders")
+        print_position_info(oos)
 
         if oos.orders:
             log.info("Value of buy orders " + conf.base + ": {:>2}".format(int(oos.total_buy_order_value)))
@@ -821,31 +800,8 @@ def init_orders(force_close: bool, auto_conf: bool):
 
             if not force_close and not auto_conf:
                 init = input('There are open orders! Would you like to load them? (y/n) ')
-
             if not force_close and (auto_conf or init.lower() in ['y', 'yes']):
-                if oos.sell_orders:
-                    sell_orders = oos.sell_orders
-                    sell_price = sell_orders[0].price  # lowest if several
-
-                if oos.buy_orders:
-                    buy_orders = oos.buy_orders
-                    curr_buy_order = buy_orders[-1]  # highest if several
-                    buy_price = curr_buy_order.price
-                    curr_buy_order_size = curr_buy_order.amount
-
-                # All sell orders executed
-                if not oos.sell_orders:
-                    sell_price = round(get_current_price() * (1 + conf.change))
-                    create_sell_order()
-
-                # All buy orders executed
-                elif not oos.buy_orders:
-                    create_buy_order(get_current_price(),
-                                     round(get_balance()['free'] / conf.divider * get_current_price()))
-                del oos
-                log.info('Initialization complete (using existing orders)')
-                # No "compensate" necessary
-                return True
+                return load_existing_orders(oos)
             else:
                 log.info('Unrealised PNL: {0} BTC'.format(str(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor)))
                 if force_close:
@@ -878,6 +834,31 @@ def init_orders(force_close: bool, auto_conf: bool):
         log.info('Initialization complete')
         # compensate
         return False
+
+
+def load_existing_orders(oos: OpenOrdersSummary):
+    global sell_orders, sell_price, buy_orders, curr_buy_order, buy_price, curr_buy_order_size
+    if oos.sell_orders:
+        sell_orders = oos.sell_orders
+        sell_price = sell_orders[0].price  # lowest if several
+    if oos.buy_orders:
+        buy_orders = oos.buy_orders
+        curr_buy_order = buy_orders[-1]  # highest if several
+        buy_price = curr_buy_order.price
+        curr_buy_order_size = curr_buy_order.amount
+    # All sell orders executed
+    if not oos.sell_orders:
+        sell_price = round(get_current_price() * (1 + conf.change))
+        create_sell_order()
+
+    # All buy orders executed
+    elif not oos.buy_orders:
+        create_buy_order(get_current_price(),
+                         round(get_balance()['free'] / conf.divider * get_current_price()))
+    del oos
+    log.info('Initialization complete (using existing orders)')
+    # No "compensate" necessary
+    return True
 
 
 def cancel_orders(orders: [Order]):
@@ -973,6 +954,31 @@ def get_unrealised_pnl(symbol: str):
         return get_unrealised_pnl(symbol)
 
 
+def print_position_info(oos: OpenOrdersSummary):
+    if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
+        sleep_for(1, 2)
+        poi = get_position_info()
+        if poi:
+            log.info("Position " + conf.quote + ": {:>13}".format(poi['currentQty']))
+            log.info("Entry price: {:>16.1f}".format(poi['avgEntryPrice']))
+            log.info("Market price: {:>15.1f}".format(poi['markPrice']))
+            log.info("Liquidation price: {:>10.1f}".format(poi['liquidationPrice']))
+            del poi
+        else:
+            log.info("Available balance is " + conf.base + ": {:>3} ".format(get_balance()['free']))
+            log.info("No position found, I will create one for you")
+            return False
+    elif conf.exchange == 'kraken':
+        log.info("Position " + conf.quote + ": {:>13}".format(get_used_balance()))
+        log.info("Entry price: {:>16.1f}".format(calc_avg_entry_price(oos.orders)))
+        log.info("Market price: {:>15.1f}".format(get_current_price()))
+    elif conf.exchange == 'liquid':
+        poi = get_position_info()
+        log.info("Position " + conf.base + ": {:>13.2f}".format(float(poi['position'])))
+    if not oos.orders:
+        log.info("No open orders")
+
+
 def connect_to_exchange(conf: ExchangeConfig):
     """
     Connects to the exchange.
@@ -1026,9 +1032,8 @@ def to_kraken(amount: int, price: float):
 
 
 def write_control_file(filename: str):
-    file = open(filename + '.pid', 'w')
-    file.write(str(os.getpid()) + ' ' + filename)
-    file.close()
+    with open(filename + '.pid', 'w') as f:
+        f.write(str(os.getpid()) + ' ' + filename)
 
 
 def daily_report():
@@ -1039,8 +1044,8 @@ def daily_report():
 
     if conf.send_emails:
         now = datetime.datetime.utcnow()
-        if datetime.datetime(2012, 1, 17, 12, 15).time() > now.time() > datetime.datetime(2012, 1, 17, 12,
-                                                                                          10).time() and email_sent != now.day:
+        if datetime.datetime(2012, 1, 17, 12, 15).time() > now.time() \
+                > datetime.datetime(2012, 1, 17, 12, 10).time() and email_sent != now.day:
             subject = "Daily report for {0}".format(conf.bot_instance)
             send_mail(subject, create_mail_content())
             email_sent = now.day
@@ -1064,68 +1069,82 @@ def create_mail_content():
                "Version: {:>21}".format(conf.bot_version),
                conf.base + " price in " + conf.quote + ": {:>13.2f}".format(get_current_price()),
                "Difference: {:>20.3f}".format(conf.change),
-               "Divider: {:>23.2}".format(conf.divider)]
+               "Divider: {:>21.2}".format(conf.divider)]
 
+    append_balances(content)
+    append_orders(content, oos)
+    del oos
+
+    content.append("No. of resets is: {:>12}".format(reset_counter))
+    if auto_conf:
+        content.append("Bot was resurrected at: {0} UTC".format(started))
+    else:
+        content.append("Bot running since: {0} UTC".format(started))
+
+    bcs_url = 'https://bitcoin-schweiz.ch/bot/'
+    text = '\n'.join(content) + '\n\n' + bcs_url + '\n' + exchange.urls['www'] + '\n\n'
+
+    date = content.pop(0) + ';'
+    running_since = content.pop().replace(':', ':;', 1)
+    csv = date + ';'.join(content).replace('  ', '').replace(':', ':;') + ';' + running_since
+
+    with open(conf.bot_instance + ".csv", "a") as f:
+        f.write(csv)
+
+    return text + csv
+
+
+def append_orders(content: [], oos: OpenOrdersSummary):
+    content.append("Value of buy orders " + conf.quote + ": {:>5}".format(int(oos.total_buy_order_value)))
+    content.append("Value of sell orders " + conf.quote + ": {:>4}".format(int(oos.total_sell_order_value)))
+    content.append("No. of buy orders: {:>11}".format(len(oos.buy_orders)))
+    content.append("No. of sell orders: {:>10}".format(len(oos.sell_orders)))
+
+
+def append_balances(content: []):
+    """
+    Adds liquidation price, wallet balance, margin balance (including stats), used margin and leverage information
+    """
     bal = get_margin_balance()
-    days = calculate_statistics(bal['total'])
-    day_size = len(days)
-    day_labels = ["today", "day-1", "day-2"]
+    sleep_for(2, 3)
 
     if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
         sleep_for(1, 2)
         poi = get_position_info()
         content.append("Liquidation price: {:>11.1f}".format(poi['liquidationPrice']))
         del poi
+        sleep_for(1, 2)
         content.append("Wallet balance " + conf.base + ": {:>13.4f}".format(get_wallet_balance()))
-        i = 0
-        while i < day_size:
-            day = days.pop(0)
-            if day is not None:
-                if 'mChan' in day:
-                    content.append("Margin balance " + conf.base + " " + day_labels[i] + ": {:>7.4f} ".format(
-                        day['mBal']) + "{0:{1}.2f}%".format(day['mChan'], '+' if day['mChan'] else ''))
-                else:
-                    content.append("Margin balance " + conf.base + " " + day_labels[i] + ": {:>7.4f}".format(day['mBal']))
-            i += 1
+        append_margin_change(bal, content, conf.base)
         content.append("Used margin: {:>18.2f}%".format(calculate_used_margin_percentage(bal)))
         content.append("Leverage: {:>21.2f}x".format(get_margin_leverage()))
 
     elif conf.exchange == 'kraken':
-        content.append("Wallet balance " + conf.quote + ": {:>11.2f}".format(get_wallet_balance()))
-        i = 0
-        while i < day_size:
-            day = days.pop(0)
-            if day is not None:
-                if 'mChan' in day:
-                    content.append("Margin balance " + conf.quote + " " + day_labels[i] + ": {:>5.2f} ".format(
-                        day['mBal']) + "{0:{1}.2f}%".format(day['mChan'], '+' if day['mChan'] else ''))
-                else:
-                    content.append("Margin balance " + conf.quote + " " + day_labels[i] + ": {:>5.2f}".format(day['mBal']))
-            i += 1
+        append_margin_change(bal, content, conf.quote)
         content.append("Used margin: {:>18.2f}%".format(calculate_used_margin_percentage(bal)))
         content.append("Leverage: {:>21.1f}%".format(get_margin_leverage()))
 
-    sleep_for(4, 6)
     content.append("Position " + conf.quote + ": {:>16}".format(get_used_balance()))
-    sleep_for(2, 4)
-    content.append("Value of buy orders " + conf.quote + ": {:>5}".format(int(oos.total_buy_order_value)))
-    content.append("Value of sell orders " + conf.quote + ": {:>4}".format(int(oos.total_sell_order_value)))
-    content.append("No. of buy orders: {:>11}".format(len(oos.buy_orders)))
-    content.append("No. of sell orders: {:>10}".format(len(oos.sell_orders)))
-    content.append("No. of resets is: {:>12}".format(reset_counter))
-    if auto_conf:
-        content.append("Bot was resurrected at: {0} UTC".format(started))
+
+
+def append_margin_change(bal: float, content: [], currency: str):
+    if currency == conf.base:
+        formatter = 7.4
     else:
-        content.append("Bot running since: {0} UTC".format(started))
-    del oos
-
-    bitconSchweizUrl = 'https://bitcoin-schweiz.ch/bot/'
-    text = '\n'.join(content) + '\n\n' + bitconSchweizUrl + '\n' + exchange.urls['www'] + '\n\n'
-    date = content.pop(0) + ';'
-    running_since = content.pop().replace(':', ':;', 1)
-    csv = date + ';'.join(content).replace('  ', '').replace(':', ':;') + ';' + running_since
-
-    return text + csv
+        formatter = 6.2
+    days = calculate_statistics(bal['total'])
+    day_labels = ["today", "day-1", "day-2"]
+    i = 0
+    while i < 3:
+        day = days.pop(0)
+        if day is not None:
+            if 'mChan' in day:
+                content.append("Margin balance " + currency + " " + day_labels[i] + ": {0:>{1}f} ".format(
+                    day['mBal'], formatter) + "{0:{1}.2f}%".format(day['mChan'], '+' if day['mChan'] else ''))
+            else:
+                content.append(
+                    "Margin balance " + currency + " " + day_labels[i] + ": {0:>{1}f}".format(day['mBal'], formatter))
+        i += 1
 
 
 def send_mail(subject: str, content: str):
@@ -1174,19 +1193,15 @@ def load_statistics():
     content = None
     stats_file = conf.bot_instance + '.pkl'
     if os.path.isfile(stats_file):
-        content = pickle.load(open(stats_file, 'rb'))
+        with open(stats_file, "rb") as f:
+            content = pickle.load(f)
     return content
 
 
 def persist_statistics():
     stats_file = conf.bot_instance + '.pkl'
-    pickle.dump(stats, open(stats_file, 'wb'))
-
-
-def __exit__(msg: str):
-    log.info(msg + '\nBot will stop in 5s.')
-    time.sleep(5)
-    sys.exit()
+    with open(stats_file, "wb") as f:
+        pickle.dump(stats, f)
 
 
 # ------------------------------------------------------------------------------
@@ -1229,10 +1244,5 @@ if __name__ == '__main__':
                 spread(market_price)
 
         if not loop:
-            # good enough as starting point if no compensation buy/sell is required
-            curr_buy_order_size = amount
             compensate()
             loop = True
-
-#
-# V1.12.1
