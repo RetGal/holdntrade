@@ -45,7 +45,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.0"
+            self.bot_version = "1.12.1"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -193,7 +193,12 @@ def buy_executed(price: float, amount: int):
         log.info('Buy executed, starting follow up')
         if curr_buy_order in buy_orders:
             buy_orders.remove(curr_buy_order)
-        last_buy_size = curr_buy_order_size
+        if curr_buy_order is not None:
+            # use amount of last buy order for next sell order
+            last_buy_size = curr_buy_order_size
+        else:
+            # last buy was compensation order use same amount for next sell order as the buy order to be created next
+            last_buy_size = amount
         if create_buy_order(price, amount):
             create_sell_order(last_buy_size)
         else:
@@ -499,7 +504,7 @@ def create_market_buy_order(amount_btc: float):
                 new_order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2, 'funding_currency': 'BTC'})
             order = Order(new_order)
             log.info('Created market ' + str(order))
-            curr_buy_order = order
+            curr_buy_order = None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if "not_enough_free" in str(error.args) and conf.exchange == 'liquid':
@@ -850,6 +855,11 @@ def init_orders(force_close: bool, auto_conf: bool):
                     if clear_position.lower() in ['y', 'yes']:
                         cancel_orders(oos.orders)
                         close_position(conf.symbol)
+                    else:
+                        compensate_position = input('Would you like to compensate to 50%? (y/n) ')
+                        if compensate_position.lower() in ['n', 'no']:
+                            # No "compensate" wanted
+                            return True
 
         # Handle open positions if no orders are open
         elif not force_close and not auto_conf and get_open_position(conf.symbol) is not None:
@@ -866,6 +876,7 @@ def init_orders(force_close: bool, auto_conf: bool):
     else:
         del oos
         log.info('Initialization complete')
+        # compensate
         return False
 
 
@@ -1224,4 +1235,4 @@ if __name__ == '__main__':
             loop = True
 
 #
-# V1.12.0
+# V1.12.1
