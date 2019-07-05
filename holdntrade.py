@@ -45,7 +45,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.2"
+            self.bot_version = "1.12.3"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -125,11 +125,14 @@ class Stats:
     """
     Holds the daily statistics in a ring memory (today plus the previous two)
     """
-    def __init__(self, day_of_year: int, data: object):
+    def __init__(self, day_of_year: int, data: dict):
         self.days = []
         self.add_day(day_of_year, data)
 
-    def add_day(self, day_of_year: int, data: object):
+    def add_day(self, day_of_year: int, data: dict):
+        existing = self.get_day(day_of_year)
+        if existing is not None:
+            self.days.remove(existing)
         data['day'] = day_of_year
         if len(self.days) > 2:
             self.days = sorted(self.days, key=lambda data: data['day'], reverse=True)  # desc
@@ -194,12 +197,9 @@ def buy_executed(price: float, amount: int):
         log.info('Buy executed, starting follow up')
         if curr_buy_order in buy_orders:
             buy_orders.remove(curr_buy_order)
-        if curr_buy_order is not None:
-            # use amount of last buy order for next sell order
-            last_buy_size = curr_buy_order_size
-        else:
-            # last buy was compensation order use same amount for next sell order as the buy order to be created next
-            last_buy_size = amount
+        # default case: use amount of last (previous) buy order for next sell order
+        # else last buy was compensation order: use same amount for next sell order as the buy order to be created next
+        last_buy_size = curr_buy_order_size if curr_buy_order is not None else amount
         if create_buy_order(price, amount):
             create_sell_order(last_buy_size)
         else:
@@ -249,10 +249,7 @@ def cancel_current_buy_order():
         if curr_buy_order in buy_orders:
             buy_orders.remove(curr_buy_order)
         log.info('Canceled current ' + str(curr_buy_order))
-        if not buy_orders:
-            curr_buy_order = None
-        else:
-            curr_buy_order = buy_orders[0]
+        curr_buy_order = None if not buy_orders else buy_orders[0]
 
 
 def create_sell_order(fixed_order_size: int = None):
@@ -264,10 +261,7 @@ def create_sell_order(fixed_order_size: int = None):
     global curr_buy_order_size
     global sell_orders
 
-    if fixed_order_size is None:
-        order_size = curr_buy_order_size
-    else:
-        order_size = fixed_order_size
+    order_size = curr_buy_order_size if fixed_order_size is None else fixed_order_size
 
     stock = get_used_balance()
     if stock < order_size:
@@ -337,14 +331,12 @@ def fetch_order_status(order_id: str):
     output: status of the order (open, closed)
     """
     try:
-        fo = exchange.fetch_order_status(order_id)
+        return exchange.fetch_order_status(order_id)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
         return fetch_order_status(order_id)
-    else:
-        return fo
 
 
 def cancel_order(order: Order):
@@ -436,8 +428,8 @@ def delay_buy_order(cur_btc_price: float, price: float):
     """
     sleep_for(60, 120)
     daily_report()
-    amount = round(get_balance()['free'] / conf.divider * get_current_price())  # recalculate order size
-    return create_buy_order(update_price(cur_btc_price, price), amount)
+    new_amount = round(get_balance()['free'] / conf.divider * get_current_price())  # recalculate order size
+    return create_buy_order(update_price(cur_btc_price, price), new_amount)
 
 
 def create_market_sell_order(amount_btc: float):
@@ -684,13 +676,12 @@ def get_margin_balance():
             bal = exchange.private_post_tradebalance({'asset': 'EUR'})['result']
             bal['free'] = float(bal['mf'])
             bal['total'] = float(bal['e'])
+        return bal
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
         return get_margin_balance()
-
-    return bal
 
 
 def calculate_used_margin_percentage(bal=None):
@@ -702,23 +693,6 @@ def calculate_used_margin_percentage(bal=None):
         if bal['total'] <= 0:
             return 0
     return float(100 - (bal['free'] / bal['total']) * 100)
-
-
-def get_avg_entry_price():
-    """
-    Fetches the average entry price of a position
-    """
-    try:
-        avg = exchange.private_get_position()[0]['avgEntryPrice']
-
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
-        sleep_for(4, 6)
-        return get_avg_entry_price()
-
-    if avg is not None:
-        return avg
-    return 0
 
 
 def calc_avg_entry_price(open_orders: [Order]):
@@ -1067,7 +1041,6 @@ def create_mail_content():
     sleep_for(2, 4)
     content = ["{0}@{1}: ".format(conf.bot_instance, socket.gethostname()) + str(datetime.datetime.utcnow()) + " UTC",
                "Version: {:>21}".format(conf.bot_version),
-               conf.base + " price in " + conf.quote + ": {:>13.2f}".format(get_current_price()),
                "Difference: {:>20.3f}".format(conf.change),
                "Divider: {:>21.2}".format(conf.divider)]
 
@@ -1115,36 +1088,40 @@ def append_balances(content: []):
         del poi
         sleep_for(1, 2)
         content.append("Wallet balance " + conf.base + ": {:>13.4f}".format(get_wallet_balance()))
-        append_margin_change(bal, content, conf.base)
+        append_price_and_margin_change(bal, content, conf.base)
         content.append("Used margin: {:>18.2f}%".format(calculate_used_margin_percentage(bal)))
         content.append("Leverage: {:>21.2f}x".format(get_margin_leverage()))
 
     elif conf.exchange == 'kraken':
-        append_margin_change(bal, content, conf.quote)
+        append_price_and_margin_change(bal, content, conf.quote)
         content.append("Used margin: {:>18.2f}%".format(calculate_used_margin_percentage(bal)))
         content.append("Leverage: {:>21.1f}%".format(get_margin_leverage()))
 
     content.append("Position " + conf.quote + ": {:>16}".format(get_used_balance()))
 
 
-def append_margin_change(bal: float, content: [], currency: str):
-    if currency == conf.base:
-        formatter = 7.4
-    else:
-        formatter = 6.2
-    days = calculate_statistics(bal['total'])
-    day_labels = ["today", "day-1", "day-2"]
-    i = 0
-    while i < 3:
-        day = days.pop(0)
-        if day is not None:
-            if 'mChan' in day:
-                content.append("Margin balance " + currency + " " + day_labels[i] + ": {0:>{1}f} ".format(
-                    day['mBal'], formatter) + "{0:{1}.2f}%".format(day['mChan'], '+' if day['mChan'] else ''))
-            else:
-                content.append(
-                    "Margin balance " + currency + " " + day_labels[i] + ": {0:>{1}f}".format(day['mBal'], formatter))
-        i += 1
+def append_price_and_margin_change(bal: dict, content: [], currency: str):
+    price = get_current_price()
+    today = calculate_daily_statistics(bal['total'], price)
+
+    rate = conf.base + " price in " + conf.quote + ": {:>13.2f}".format(price)
+    if 'priceChan24' in today:
+        rate += " ("
+        rate += "{0:{1}.2f}%".format(today['priceChan24'], '+' if today['priceChan24'] else '')
+        if 'priceChan48' in today:
+            rate += ", {0:{1}.2f}%".format(today['priceChan48'], '+' if today['priceChan48'] else '')
+        rate += ")"
+    content.append(rate)
+
+    formatter = 13.4 if currency == conf.base else 12.2
+    m_bal = "Margin balance " + currency + ": {0:>{1}f}".format(today['mBal'], formatter)
+    if 'mBalChan24' in today:
+        m_bal += " ("
+        m_bal += "{0:{1}.2f}%".format(today['mBalChan24'], '+' if today['mBalChan24'] else '')
+        if 'mBalChan48' in today:
+            m_bal += ", {0:{1}.2f}%)".format(today['mBalChan48'], '+' if today['mBalChan48'] else '')
+        m_bal += ")"
+    content.append(m_bal)
 
 
 def send_mail(subject: str, content: str):
@@ -1163,30 +1140,33 @@ def send_mail(subject: str, content: str):
     log.info("Sent email to {0}".format(recipients))
 
 
-def calculate_statistics(m_bal: float):
+def calculate_daily_statistics(m_bal: float, price: float):
     """
     Calculates, updates and persists the change in the margin balance compared with yesterday
     :param m_bal: todays margin balance
-    :return: a list containing the statistics of today and the two previous days
+    :param price: the current rate
+    :return: todays statistics including price and margin balance changes compared with 24 and 48 hours ago
     """
     global stats
 
-    days = []
-    today = {'mBal': m_bal}
-    yesterday = None
+    today = {'mBal': m_bal, 'price': price}
     if stats is None:
         stats = Stats(int(datetime.date.today().strftime("%j")), today)
+        persist_statistics()
     else:
-        yesterday = stats.get_day(int(datetime.date.today().strftime("%j"))-1)
-        if yesterday is not None:
-            today['mChan'] = round((today['mBal']/yesterday['mBal']-1) * 100, 2)
         stats.add_day(int(datetime.date.today().strftime("%j")), today)
-    persist_statistics()
-    before_yesterday = stats.get_day(int(datetime.date.today().strftime("%j"))-2)
-    days.append(today)
-    days.append(yesterday)
-    days.append(before_yesterday)
-    return days
+        persist_statistics()
+        before_24h = stats.get_day(int(datetime.date.today().strftime("%j"))-1)
+        if before_24h is not None:
+            today['mBalChan24'] = round((today['mBal']/before_24h['mBal']-1) * 100, 2)
+            if 'price' in before_24h:
+                today['priceChan24'] = round((today['price']/before_24h['price']-1) * 100, 2)
+            before_48h = stats.get_day(int(datetime.date.today().strftime("%j"))-2)
+            if before_48h is not None:
+                today['mBalChan48'] = round((today['mBal']/before_48h['mBal']-1) * 100, 2)
+                if 'price' in before_48h:
+                    today['priceChan48'] = round((today['price']/before_48h['price']-1) * 100, 2)
+    return today
 
 
 def load_statistics():
@@ -1218,10 +1198,8 @@ if __name__ == '__main__':
         filename = os.path.basename(input('Filename with API Keys (config): ') or 'config')
 
     write_control_file(filename)
-
     log = function_logger(logging.DEBUG, filename, logging.INFO)
     log.info('-------------------------------')
-
     conf = ExchangeConfig(filename)
     log.info('Holdntrade version: {0}'.format(conf.bot_version))
     exchange = connect_to_exchange(conf)
