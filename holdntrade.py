@@ -6,6 +6,7 @@ import logging
 import os
 import pickle
 import random
+import requests
 import smtplib
 import socket
 import sys
@@ -45,7 +46,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.3"
+            self.bot_version = "1.12.4"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1044,6 +1045,7 @@ def create_mail_content():
                "Difference: {:>20.3f}".format(conf.change),
                "Divider: {:>21.2}".format(conf.divider)]
 
+    append_mayer(content)
     append_balances(content)
     append_orders(content, oos)
     del oos
@@ -1182,6 +1184,36 @@ def persist_statistics():
     stats_file = conf.bot_instance + '.pkl'
     with open(stats_file, "wb") as f:
         pickle.dump(stats, f)
+
+
+def fetch_mayer(tries: int = 0):
+    try:
+        r = requests.get('https://mayermultiple.info/current.json')
+        return r.json()['data']['current_mayer_multiple']
+
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, requests.exceptions.ReadTimeout) as error:
+        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        sleep_for(4, 6)
+        return fetch_mayer(tries+1) if tries < 4 else None
+
+
+def print_mayer():
+    mayer = fetch_mayer()
+    if mayer is not None:
+        mayer = float(mayer)
+        if mayer < 1.39:
+            return "Mayer multiple: {:>15.2f} (low: buy)".format(mayer)
+        elif mayer > 2.4:
+            return "Mayer multiple: {:>15.2f} (high: sell)".format(mayer)
+        else:
+            return "Mayer multiple: {:>15.2f} (ok)".format(mayer)
+    return
+
+
+def append_mayer(content: []):
+    text = print_mayer()
+    if text is not None:
+        content.append(text)
 
 
 # ------------------------------------------------------------------------------
