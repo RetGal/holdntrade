@@ -1121,7 +1121,7 @@ def append_price_and_margin_change(bal: dict, content: [], currency: str):
         m_bal += " ("
         m_bal += "{0:{1}.2f}%".format(today['mBalChan24'], '+' if today['mBalChan24'] else '')
         if 'mBalChan48' in today:
-            m_bal += ", {0:{1}.2f}%)".format(today['mBalChan48'], '+' if today['mBalChan48'] else '')
+            m_bal += ", {0:{1}.2f}%".format(today['mBalChan48'], '+' if today['mBalChan48'] else '')
         m_bal += ")"
     content.append(m_bal)
 
