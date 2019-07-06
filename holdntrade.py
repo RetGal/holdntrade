@@ -6,7 +6,6 @@ import logging
 import os
 import pickle
 import random
-import requests
 import smtplib
 import socket
 import sys
@@ -15,6 +14,7 @@ from email.message import EmailMessage
 from logging.handlers import RotatingFileHandler
 
 import ccxt
+import requests
 
 # ------------------------------------------------------------------------------
 
@@ -46,7 +46,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.4"
+            self.bot_version = "1.12.5"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -56,7 +56,7 @@ class ExchangeConfig:
             self.order_btc_min = float(props['order_btc_min'].strip('"'))
             self.satoshi_factor = 0.00000001
             self.change = float(props['change'].strip('"'))
-            self.divider = abs(float(props['divider'].strip('"')))
+            self.divider = abs(int(props['divider'].strip('"')))
             if self.divider < 1:
                 self.divider = 1
             self.spread_factor = float(props['spread_factor'].strip('"'))
@@ -761,7 +761,7 @@ def init_orders(force_close: bool, auto_conf: bool):
             log.warning("Bot was resurrected by hades")
 
         # Handle open orders
-        oos = OpenOrdersSummary(exchange.fetch_open_orders(conf.pair, since=None, limit=None, params={}))
+        oos = get_open_orders()
 
         log.info("Used margin: {:>17.2f}%".format(calculate_used_margin_percentage()))
         print_position_info(oos)
@@ -911,6 +911,20 @@ def get_open_position(symbol: str):
         return get_open_position(symbol)
 
 
+def get_open_orders():
+    """
+    Gets all open orders
+    :return: OpenOrdersSummary
+    """
+    try:
+        return OpenOrdersSummary(exchange.fetch_open_orders(conf.pair, since=None, limit=None, params={}))
+
+    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        sleep_for(4, 6)
+        return get_open_orders()
+
+
 def get_unrealised_pnl(symbol: str):
     """
     Returns the unrealised pnl for the requested currency
@@ -1031,52 +1045,67 @@ def create_mail_content():
     Fetches the data required for the daily report email
     :return: mailcontent: str
     """
-    try:
-        oos = OpenOrdersSummary(exchange.fetch_open_orders(conf.pair, since=None, limit=None, params={}))
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
-        sleep_for(4, 6)
-        return create_mail_content()
+    performance_part = create_mail_part_performance()
+    advice_part = create_mail_part_advice()
+    settings_part = create_mail_part_settings()
+    general_part = create_mail_part_general()
 
-    sleep_for(2, 4)
-    content = ["{0}@{1}: ".format(conf.bot_instance, socket.gethostname()) + str(datetime.datetime.utcnow()) + " UTC",
-               "Version: {:>21}".format(conf.bot_version),
-               "Difference: {:>20.3f}".format(conf.change),
-               "Divider: {:>21.2}".format(conf.divider)]
-
-    append_mayer(content)
-    append_balances(content)
-    append_orders(content, oos)
-    del oos
-
-    content.append("No. of resets is: {:>12}".format(reset_counter))
-    if auto_conf:
-        content.append("Bot was resurrected at: {0} UTC".format(started))
-    else:
-        content.append("Bot running since: {0} UTC".format(started))
+    performance = ["Performance", "-----------", '\n'.join(performance_part) + '\n* (change within 24 hours, 48 hours)', '\n\n']
+    advice = ["Assessment / advice", "-------------------", '\n'.join(advice_part), '\n\n']
+    settings = ["Your settings", "-------------", '\n'.join(settings_part), '\n\n']
+    general = ["General", "-------", '\n'.join(general_part), '\n\n']
 
     bcs_url = 'https://bitcoin-schweiz.ch/bot/'
-    text = '\n'.join(content) + '\n\n' + bcs_url + '\n' + exchange.urls['www'] + '\n\n'
+    text = '\n'.join(performance) + '\n'.join(advice) + '\n'.join(settings) + '\n'.join(general) + bcs_url
 
-    date = content.pop(0) + ';'
-    running_since = content.pop().replace(':', ':;', 1)
-    csv = date + ';'.join(content).replace('  ', '').replace(':', ':;') + ';' + running_since
+    csv = conf.bot_instance + ';' + str(datetime.datetime.utcnow()) + ' UTC;' + (';'.join(performance_part) + ';' + ';'.join(
+        advice_part) + ';' + ';'.join(settings_part) + '\n').replace('  ', '').replace(':', ':;')
 
-    with open(conf.bot_instance + ".csv", "a") as f:
+    with open(conf.bot_instance + '.csv', 'a') as f:
         f.write(csv)
 
     return text + csv
 
 
-def append_orders(content: [], oos: OpenOrdersSummary):
-    content.append("Value of buy orders " + conf.quote + ": {:>5}".format(int(oos.total_buy_order_value)))
-    content.append("Value of sell orders " + conf.quote + ": {:>4}".format(int(oos.total_sell_order_value)))
-    content.append("No. of buy orders: {:>11}".format(len(oos.buy_orders)))
-    content.append("No. of sell orders: {:>10}".format(len(oos.sell_orders)))
+def create_mail_part_settings():
+    return ["Change/difference: {:>11.1f}%".format(conf.change*100),
+            "Share/quota: {:>17}".format('1/' + str(conf.divider))]
 
 
-def append_balances(content: []):
+def create_mail_part_general():
+    general = ["No. of resets: {:>15}".format(reset_counter)]
+    if auto_conf:
+        general.append("Bot was resurrected at: {0} UTC".format(started))
+    else:
+        general.append("Bot running since: {0} UTC".format(started))
+    general.append("{0}@{1}: ".format(conf.bot_instance, socket.gethostname()) + str(datetime.datetime.utcnow()) + " UTC")
+    general.append("Version: {:>21}".format(conf.bot_version))
+    return general
+
+
+def create_mail_part_advice():
+    part = []
+    append_mayer(part)
+    return part
+
+
+def create_mail_part_performance():
+    part = []
+    append_balances(part)
+    append_orders(part)
+    return part
+
+
+def append_orders(part: []):
+    oos = get_open_orders()
+    part.append("Value of buy orders " + conf.quote + ": {:>5}".format(int(oos.total_buy_order_value)))
+    part.append("Value of sell orders " + conf.quote + ": {:>4}".format(int(oos.total_sell_order_value)))
+    part.append("No. of buy orders: {:>11}".format(len(oos.buy_orders)))
+    part.append("No. of sell orders: {:>10}".format(len(oos.sell_orders)))
+
+
+def append_balances(part: []):
     """
     Adds liquidation price, wallet balance, margin balance (including stats), used margin and leverage information
     """
@@ -1086,34 +1115,24 @@ def append_balances(content: []):
     if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
         sleep_for(1, 2)
         poi = get_position_info()
-        content.append("Liquidation price: {:>11.1f}".format(poi['liquidationPrice']))
-        del poi
         sleep_for(1, 2)
-        content.append("Wallet balance " + conf.base + ": {:>13.4f}".format(get_wallet_balance()))
-        append_price_and_margin_change(bal, content, conf.base)
-        content.append("Used margin: {:>18.2f}%".format(calculate_used_margin_percentage(bal)))
-        content.append("Leverage: {:>21.2f}x".format(get_margin_leverage()))
+        part.append("Wallet balance " + conf.base + ": {:>13.4f}".format(get_wallet_balance()))
+        append_price_and_margin_change(bal, part, conf.base)
+        part.append("Liquidation price: {:>11.1f}".format(poi['liquidationPrice']))
+        part.append("Used margin: {:>18.2f}%".format(calculate_used_margin_percentage(bal)))
+        part.append("Effective leverage: {:>11.2f}x".format(get_margin_leverage()))
 
     elif conf.exchange == 'kraken':
-        append_price_and_margin_change(bal, content, conf.quote)
-        content.append("Used margin: {:>18.2f}%".format(calculate_used_margin_percentage(bal)))
-        content.append("Leverage: {:>21.1f}%".format(get_margin_leverage()))
+        append_price_and_margin_change(bal, part, conf.quote)
+        part.append("Used margin: {:>18.2f}%".format(calculate_used_margin_percentage(bal)))
+        part.append("Effective leverage: {:>11.1f}%".format(get_margin_leverage()))
 
-    content.append("Position " + conf.quote + ": {:>16}".format(get_used_balance()))
+    part.append("Position " + conf.quote + ": {:>16}".format(get_used_balance()))
 
 
-def append_price_and_margin_change(bal: dict, content: [], currency: str):
+def append_price_and_margin_change(bal: dict, part: [], currency: str):
     price = get_current_price()
     today = calculate_daily_statistics(bal['total'], price)
-
-    rate = conf.base + " price in " + conf.quote + ": {:>13.2f}".format(price)
-    if 'priceChan24' in today:
-        rate += " ("
-        rate += "{0:{1}.2f}%".format(today['priceChan24'], '+' if today['priceChan24'] else '')
-        if 'priceChan48' in today:
-            rate += ", {0:{1}.2f}%".format(today['priceChan48'], '+' if today['priceChan48'] else '')
-        rate += ")"
-    content.append(rate)
 
     formatter = 13.4 if currency == conf.base else 12.2
     m_bal = "Margin balance " + currency + ": {0:>{1}f}".format(today['mBal'], formatter)
@@ -1122,8 +1141,17 @@ def append_price_and_margin_change(bal: dict, content: [], currency: str):
         m_bal += "{0:{1}.2f}%".format(today['mBalChan24'], '+' if today['mBalChan24'] else '')
         if 'mBalChan48' in today:
             m_bal += ", {0:{1}.2f}%".format(today['mBalChan48'], '+' if today['mBalChan48'] else '')
-        m_bal += ")"
-    content.append(m_bal)
+        m_bal += ")*"
+    part.append(m_bal)
+
+    rate = conf.base + " price " + conf.quote + ": {:>16.2f}".format(price)
+    if 'priceChan24' in today:
+        rate += " ("
+        rate += "{0:{1}.2f}%".format(today['priceChan24'], '+' if today['priceChan24'] else '')
+        if 'priceChan48' in today:
+            rate += ", {0:{1}.2f}%".format(today['priceChan48'], '+' if today['priceChan48'] else '')
+        rate += ")*"
+    part.append(rate)
 
 
 def send_mail(subject: str, content: str):
@@ -1206,14 +1234,14 @@ def print_mayer():
         elif mayer > 2.4:
             return "Mayer multiple: {:>15.2f} (high: sell)".format(mayer)
         else:
-            return "Mayer multiple: {:>15.2f} (ok)".format(mayer)
+            return "Mayer multiple: {:>15.2f} (hold)".format(mayer)
     return
 
 
-def append_mayer(content: []):
+def append_mayer(part: []):
     text = print_mayer()
     if text is not None:
-        content.append(text)
+        part.append(text)
 
 
 # ------------------------------------------------------------------------------
