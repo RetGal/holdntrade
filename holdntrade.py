@@ -46,7 +46,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.7"
+            self.bot_version = "1.12.8"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -60,7 +60,7 @@ class ExchangeConfig:
             if self.quota < 1:
                 self.quota = 1
             self.spread_factor = abs(float(props['spread_factor'].strip('"')))
-            self.leverage_initial = abs(float(props['leverage_initial'].strip('"')))
+            self.leverage_default = abs(float(props['leverage_default'].strip('"')))
             self.leverage_low = abs(float(props['leverage_low'].strip('"')))
             self.leverage_high = abs(float(props['leverage_high'].strip('"')))
             self.mm_floor = abs(float(props['mm_floor'].strip('"')))
@@ -1063,10 +1063,10 @@ def create_mail_content():
     general = ["General", "-------", '\n'.join(general_part), '\n\n']
 
     bcs_url = 'https://bitcoin-schweiz.ch/bot/'
-    text = '\n'.join(performance) + '\n'.join(advice) + '\n'.join(settings) + '\n'.join(general) + bcs_url
+    text = '\n'.join(performance) + '\n'.join(advice) + '\n'.join(settings) + '\n'.join(general) + bcs_url + '\n\n'
 
     csv = conf.bot_instance + ';' + str(datetime.datetime.utcnow().replace(microsecond=0)) + ' UTC;' + (';'.join(performance_part) + ';' + ';'.join(
-        advice_part) + ';' + ';'.join(settings_part) + '\n').replace('  ', '').replace(':', ':;')
+        advice_part) + ';' + ';'.join(settings_part) + '\n').replace('  ', '').replace(':', ':;') + '\n'
 
     with open(conf.bot_instance + '.csv', 'a') as f:
         f.write(csv)
@@ -1140,7 +1140,7 @@ def append_price_and_margin_change(bal: dict, part: [], currency: str):
     price = get_current_price()
     today = calculate_daily_statistics(bal['total'], price)
 
-    formatter = 13.4 if currency == conf.base else 12.2
+    formatter = 13.4 if currency == conf.base else 11.2
     m_bal = "Margin balance " + currency + ": {0:>{1}f}".format(today['mBal'], formatter)
     if 'mBalChan24' in today:
         m_bal += " ("
@@ -1260,9 +1260,9 @@ def adjust_leverage():
             if leverage < conf.leverage_high:
                 set_leverage(leverage + 0.1)
         elif mm is not None and mm < conf.mm_ceil:
-            if leverage > conf.leverage_initial:
+            if leverage > conf.leverage_default:
                 set_leverage(leverage - 0.1)
-            elif leverage < conf.leverage_initial:
+            elif leverage < conf.leverage_default:
                 set_leverage(leverage + 0.1)
 
 
@@ -1281,6 +1281,10 @@ def set_leverage(new_leverage: float):
         exchange.private_post_position_leverage({'symbol': conf.symbol, 'leverage': new_leverage})
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        # insufficient Available Balance
+        if "nsufficient" in str(error.args):
+            log.warning('Insufficient available balance - not lowering leverage ' + str(amount))
+            return
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
         return set_leverage(new_leverage)
@@ -1306,8 +1310,6 @@ if __name__ == '__main__':
     log.info('Holdntrade version: {0}'.format(conf.bot_version))
     exchange = connect_to_exchange(conf)
     stats = load_statistics()
-
-    print_mayer()
 
     loop = init_orders(False, auto_conf)
 
