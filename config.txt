@@ -12,7 +12,7 @@ order_btc_min = 0.0025
 
 # bot properties
 change = 0.005
-divider = 5
+quota = 5
 spread_factor = 3
 
 # email properties

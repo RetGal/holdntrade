@@ -56,13 +56,13 @@ class ExchangeConfig:
             self.order_btc_min = float(props['order_btc_min'].strip('"'))
             self.satoshi_factor = 0.00000001
             self.change = abs(float(props['change'].strip('"')))
-            self.divider = abs(int(props['divider'].strip('"')))
-            if self.divider < 1:
-                self.divider = 1
+            self.quota = abs(int(props['quota'].strip('"')))
+            if self.quota < 1:
+                self.quota = 1
             self.spread_factor = abs(float(props['spread_factor'].strip('"')))
             currency = self.pair.split("/")
             self.base = currency[0]
-            self.quote = currency[1]
+            self.quota = currency[1]
             self.send_emails = bool(props['send_emails'].strip('"').lower() == 'true')
             self.recipient_addresses = props['recipient_addresses'].strip('"').replace(' ', '').split(",")
             self.sender_address = props['sender_address'].strip('"')
@@ -175,7 +175,7 @@ def function_logger(console_level: int, filename: str, file_level: int = None):
 def buy_executed(price: float, amount: int):
     """
     Check if the most recent buy order has been executed.
-    input: current price and amount to trade (Current Balance / divider)
+    input: current price and amount to trade (Current Balance / quota)
     output: if the most recent buy order is still open,
     the output is print statements containing the amount were trying to buy for which price.
     Else if the order is closed, we follow with the followup function and createbuyorder and
@@ -213,7 +213,7 @@ def buy_executed(price: float, amount: int):
 def sell_executed(price: float, amount: int):
     """
     Check if any of the open sell orders has been executed.
-    input: current price and amount to trade (Current Balance / divider)
+    input: current price and amount to trade (Current Balance / quota)
     output: loop through all open sell orders and check if one has been executed. If no, exit with print statement.
     Else if it has been executed, remove the order from the list of open orders,
     cancel it on Bitmex and create a new buy order.
@@ -302,7 +302,7 @@ def create_divided_sell_order():
 
     try:
         used_bal = get_used_balance()
-        amount = round(used_bal / conf.divider)
+        amount = round(used_bal / conf.quota)
 
         if not is_order_below_limit(amount, sell_price):
             if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
@@ -429,7 +429,7 @@ def delay_buy_order(cur_btc_price: float, price: float):
     """
     sleep_for(60, 120)
     daily_report()
-    new_amount = round(get_balance()['free'] / conf.divider * get_current_price())  # recalculate order size
+    new_amount = round(get_balance()['free'] / conf.quota * get_current_price())  # recalculate order size
     return create_buy_order(update_price(cur_btc_price, price), new_amount)
 
 
@@ -829,7 +829,7 @@ def load_existing_orders(oos: OpenOrdersSummary):
     # All buy orders executed
     elif not oos.buy_orders:
         create_buy_order(get_current_price(),
-                         round(get_balance()['free'] / conf.divider * get_current_price()))
+                         round(get_balance()['free'] / conf.quota * get_current_price()))
     del oos
     log.info('Initialization complete (using existing orders)')
     # No "compensate" necessary
@@ -948,7 +948,7 @@ def print_position_info(oos: OpenOrdersSummary):
         sleep_for(1, 2)
         poi = get_position_info()
         if poi:
-            log.info("Position " + conf.quote + ": {:>13}".format(poi['currentQty']))
+            log.info("Position " + conf.quota + ": {:>13}".format(poi['currentQty']))
             log.info("Entry price: {:>16.1f}".format(poi['avgEntryPrice']))
             log.info("Market price: {:>15.1f}".format(poi['markPrice']))
             log.info("Liquidation price: {:>10.1f}".format(poi['liquidationPrice']))
@@ -958,7 +958,7 @@ def print_position_info(oos: OpenOrdersSummary):
             log.info("No position found, I will create one for you")
             return False
     elif conf.exchange == 'kraken':
-        log.info("Position " + conf.quote + ": {:>13}".format(get_used_balance()))
+        log.info("Position " + conf.quota + ": {:>13}".format(get_used_balance()))
         log.info("Entry price: {:>16.1f}".format(calc_avg_entry_price(oos.orders)))
         log.info("Market price: {:>15.1f}".format(get_current_price()))
     elif conf.exchange == 'liquid':
@@ -1069,8 +1069,8 @@ def create_mail_content():
 
 
 def create_mail_part_settings():
-    return ["Change/difference: {:>11.1f}%".format(conf.change*100),
-            "Share/quota: {:>17}".format('1/' + str(conf.divider))]
+    return ["Rate change: {:>17.1f}%".format(conf.change*100),
+            "Quota: {:>23}".format('1/' + str(conf.quota))]
 
 
 def create_mail_part_general():
@@ -1099,8 +1099,8 @@ def create_mail_part_performance():
 
 def append_orders(part: []):
     oos = get_open_orders()
-    part.append("Value of buy orders " + conf.quote + ": {:>5}".format(int(oos.total_buy_order_value)))
-    part.append("Value of sell orders " + conf.quote + ": {:>4}".format(int(oos.total_sell_order_value)))
+    part.append("Value of buy orders " + conf.quota + ": {:>5}".format(int(oos.total_buy_order_value)))
+    part.append("Value of sell orders " + conf.quota + ": {:>4}".format(int(oos.total_sell_order_value)))
     part.append("No. of buy orders: {:>11}".format(len(oos.buy_orders)))
     part.append("No. of sell orders: {:>10}".format(len(oos.sell_orders)))
 
@@ -1123,11 +1123,11 @@ def append_balances(part: []):
         part.append("Effective leverage: {:>11.2f}x".format(get_margin_leverage()))
 
     elif conf.exchange == 'kraken':
-        append_price_and_margin_change(bal, part, conf.quote)
+        append_price_and_margin_change(bal, part, conf.quota)
         part.append("Used margin: {:>18.2f}%".format(calculate_used_margin_percentage(bal)))
         part.append("Effective leverage: {:>11.1f}%".format(get_margin_leverage()))
 
-    part.append("Position " + conf.quote + ": {:>16}".format(get_used_balance()))
+    part.append("Position " + conf.quota + ": {:>16}".format(get_used_balance()))
 
 
 def append_price_and_margin_change(bal: dict, part: [], currency: str):
@@ -1144,7 +1144,7 @@ def append_price_and_margin_change(bal: dict, part: [], currency: str):
         m_bal += ")*"
     part.append(m_bal)
 
-    rate = conf.base + " price " + conf.quote + ": {:>16.2f}".format(price)
+    rate = conf.base + " price " + conf.quota + ": {:>16.2f}".format(price)
     if 'priceChan24' in today:
         rate += " ("
         rate += "{0:{1}.2f}%".format(today['priceChan24'], '+' if today['priceChan24'] else '')
@@ -1269,7 +1269,7 @@ if __name__ == '__main__':
 
     while True:
         market_price = get_current_price()
-        amount = round(get_balance()['free'] / conf.divider * market_price)
+        amount = round(get_balance()['free'] / conf.quota * market_price)
 
         if loop:
             daily_report()

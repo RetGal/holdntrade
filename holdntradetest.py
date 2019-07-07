@@ -311,7 +311,7 @@ class HoldntradeTest(unittest.TestCase):
         conf.exchange = 'bitmex'
         conf.pair = 'BTC/USD'
         conf.change = 0.005
-        conf.divider = 4
+        conf.quota = 4
         conf.spread_factor = 2
         conf.order_btc_min = 0.0025
         conf.bot_instance = 'test'
