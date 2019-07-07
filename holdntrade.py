@@ -28,7 +28,7 @@ reset_counter = 0
 loop = False
 auto_conf = False
 email_sent = 0
-started = datetime.datetime.utcnow()
+started = datetime.datetime.utcnow().replace(microsecond=0)
 stats = None
 
 # ------------------------------------------------------------------------------
@@ -55,11 +55,11 @@ class ExchangeConfig:
             self.symbol = props['symbol'].strip('"')
             self.order_btc_min = float(props['order_btc_min'].strip('"'))
             self.satoshi_factor = 0.00000001
-            self.change = float(props['change'].strip('"'))
+            self.change = abs(float(props['change'].strip('"')))
             self.divider = abs(int(props['divider'].strip('"')))
             if self.divider < 1:
                 self.divider = 1
-            self.spread_factor = float(props['spread_factor'].strip('"'))
+            self.spread_factor = abs(float(props['spread_factor'].strip('"')))
             currency = self.pair.split("/")
             self.base = currency[0]
             self.quote = currency[1]
@@ -1059,7 +1059,7 @@ def create_mail_content():
     bcs_url = 'https://bitcoin-schweiz.ch/bot/'
     text = '\n'.join(performance) + '\n'.join(advice) + '\n'.join(settings) + '\n'.join(general) + bcs_url
 
-    csv = conf.bot_instance + ';' + str(datetime.datetime.utcnow()) + ' UTC;' + (';'.join(performance_part) + ';' + ';'.join(
+    csv = conf.bot_instance + ';' + str(datetime.datetime.utcnow().replace(microsecond=0)) + ' UTC;' + (';'.join(performance_part) + ';' + ';'.join(
         advice_part) + ';' + ';'.join(settings_part) + '\n').replace('  ', '').replace(':', ':;')
 
     with open(conf.bot_instance + '.csv', 'a') as f:
@@ -1079,7 +1079,7 @@ def create_mail_part_general():
         general.append("Bot was resurrected at: {0} UTC".format(started))
     else:
         general.append("Bot running since: {0} UTC".format(started))
-    general.append("{0}@{1}: ".format(conf.bot_instance, socket.gethostname()) + str(datetime.datetime.utcnow()) + " UTC")
+    general.append("{0}@{1}: ".format(conf.bot_instance, socket.gethostname()) + str(datetime.datetime.utcnow().replace(microsecond=0)) + " UTC")
     general.append("Version: {:>21}".format(conf.bot_version))
     return general
 
