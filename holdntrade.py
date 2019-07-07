@@ -46,7 +46,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.5"
+            self.bot_version = "1.12.6"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -60,9 +60,14 @@ class ExchangeConfig:
             if self.quota < 1:
                 self.quota = 1
             self.spread_factor = abs(float(props['spread_factor'].strip('"')))
+            self.leverage_initial = abs(float(props['leverage_initial'].strip('"')))
+            self.leverage_low = abs(float(props['leverage_low'].strip('"')))
+            self.leverage_high = abs(float(props['leverage_high'].strip('"')))
+            self.mm_floor = abs(float(props['mm_floor'].strip('"')))
+            self.mm_ceil = abs(float(props['mm_ceil'].strip('"')))
             currency = self.pair.split("/")
             self.base = currency[0]
-            self.quota = currency[1]
+            self.quote = currency[1]
             self.send_emails = bool(props['send_emails'].strip('"').lower() == 'true')
             self.recipient_addresses = props['recipient_addresses'].strip('"').replace(' ', '').split(",")
             self.sender_address = props['sender_address'].strip('"')
@@ -229,6 +234,7 @@ def sell_executed(price: float, amount: int):
             if order in sell_orders:
                 sell_orders.remove(order)
             log.info('Sell executed')
+            adjust_leverage()
             if len(sell_orders) == 0:
                 create_divided_sell_order()
             cancel_current_buy_order()
@@ -948,7 +954,7 @@ def print_position_info(oos: OpenOrdersSummary):
         sleep_for(1, 2)
         poi = get_position_info()
         if poi:
-            log.info("Position " + conf.quota + ": {:>13}".format(poi['currentQty']))
+            log.info("Position " + conf.quote + ": {:>13}".format(poi['currentQty']))
             log.info("Entry price: {:>16.1f}".format(poi['avgEntryPrice']))
             log.info("Market price: {:>15.1f}".format(poi['markPrice']))
             log.info("Liquidation price: {:>10.1f}".format(poi['liquidationPrice']))
@@ -958,7 +964,7 @@ def print_position_info(oos: OpenOrdersSummary):
             log.info("No position found, I will create one for you")
             return False
     elif conf.exchange == 'kraken':
-        log.info("Position " + conf.quota + ": {:>13}".format(get_used_balance()))
+        log.info("Position " + conf.quote + ": {:>13}".format(get_used_balance()))
         log.info("Entry price: {:>16.1f}".format(calc_avg_entry_price(oos.orders)))
         log.info("Market price: {:>15.1f}".format(get_current_price()))
     elif conf.exchange == 'liquid':
@@ -1099,8 +1105,8 @@ def create_mail_part_performance():
 
 def append_orders(part: []):
     oos = get_open_orders()
-    part.append("Value of buy orders " + conf.quota + ": {:>5}".format(int(oos.total_buy_order_value)))
-    part.append("Value of sell orders " + conf.quota + ": {:>4}".format(int(oos.total_sell_order_value)))
+    part.append("Value of buy orders " + conf.quote + ": {:>5}".format(int(oos.total_buy_order_value)))
+    part.append("Value of sell orders " + conf.quote + ": {:>4}".format(int(oos.total_sell_order_value)))
     part.append("No. of buy orders: {:>11}".format(len(oos.buy_orders)))
     part.append("No. of sell orders: {:>10}".format(len(oos.sell_orders)))
 
@@ -1123,11 +1129,11 @@ def append_balances(part: []):
         part.append("Effective leverage: {:>11.2f}x".format(get_margin_leverage()))
 
     elif conf.exchange == 'kraken':
-        append_price_and_margin_change(bal, part, conf.quota)
+        append_price_and_margin_change(bal, part, conf.quote)
         part.append("Used margin: {:>18.2f}%".format(calculate_used_margin_percentage(bal)))
         part.append("Effective leverage: {:>11.1f}%".format(get_margin_leverage()))
 
-    part.append("Position " + conf.quota + ": {:>16}".format(get_used_balance()))
+    part.append("Position " + conf.quote + ": {:>16}".format(get_used_balance()))
 
 
 def append_price_and_margin_change(bal: dict, part: [], currency: str):
@@ -1144,7 +1150,7 @@ def append_price_and_margin_change(bal: dict, part: [], currency: str):
         m_bal += ")*"
     part.append(m_bal)
 
-    rate = conf.base + " price " + conf.quota + ": {:>16.2f}".format(price)
+    rate = conf.base + " price " + conf.quote + ": {:>16.2f}".format(price)
     if 'priceChan24' in today:
         rate += " ("
         rate += "{0:{1}.2f}%".format(today['priceChan24'], '+' if today['priceChan24'] else '')
@@ -1242,6 +1248,43 @@ def append_mayer(part: []):
     text = print_mayer()
     if text is not None:
         part.append(text)
+
+
+def adjust_leverage():
+    if conf.exchange == 'bitmex':
+        mm = fetch_mayer()
+        leverage = get_leverage()
+        if mm is not None and mm > conf.mm_ceil:
+            if leverage > conf.leverage_low:
+                set_leverage(leverage - 0.1)
+        elif mm is not None and mm < conf.mm_floor:
+            if leverage < conf.leverage_high:
+                set_leverage(leverage + 0.1)
+        elif mm is not None and mm < conf.mm_ceil:
+            if leverage > conf.leverage_initial:
+                set_leverage(leverage - 0.1)
+            elif leverage < conf.leverage_initial:
+                set_leverage(leverage + 0.1)
+
+
+def get_leverage():
+    try:
+        return float(exchange.private_get_position({'symbol': conf.symbol})[0]['leverage'])
+
+    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        sleep_for(4, 6)
+        return get_leverage()
+
+
+def set_leverage(new_leverage: float):
+    try:
+        exchange.private_post_position_leverage({'symbol': conf.symbol, 'leverage': new_leverage})
+
+    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        sleep_for(4, 6)
+        return set_leverage(new_leverage)
 
 
 # ------------------------------------------------------------------------------
