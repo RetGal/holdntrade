@@ -63,6 +63,7 @@ class ExchangeConfig:
             if self.quota < 1:
                 self.quota = 1
             self.spread_factor = abs(float(props['spread_factor'].strip('"')))
+            self.auto_leverage = bool(props['auto_leverage'].strip('"').lower() == 'true')
             self.leverage_default = abs(float(props['leverage_default'].strip('"')))
             self.leverage_low = abs(float(props['leverage_low'].strip('"')))
             self.leverage_high = abs(float(props['leverage_high'].strip('"')))
@@ -465,7 +466,7 @@ def create_market_sell_order(amount_btc: float):
             elif conf.exchange == 'kraken':
                 new_order = exchange.create_market_sell_order(conf.pair, amount_btc, {'leverage': 2})
             elif conf.exchange == 'liquid':
-                new_order = exchange.create_market_sell_order(conf.pair, amount, {'leverage': 2})
+                new_order = exchange.create_market_sell_order(conf.pair, amount, {'leverage_level': 2})
             order = Order(new_order)
             log.info('Created market ' + str(order))
             sell_orders.append(order)
@@ -504,7 +505,7 @@ def create_market_buy_order(amount_btc: float):
                 new_order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2, 'oflags': 'fcib'})
             elif conf.exchange == 'liquid':
                 # TODO multicurrency_or_collateral_only_used_for_margin issue
-                new_order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2, 'funding_currency': 'BTC'})
+                new_order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage_level': 2, 'funding_currency': 'BTC'})
             order = Order(new_order)
             log.info('Created market ' + str(order))
             curr_buy_order = None
@@ -595,6 +596,24 @@ def get_used_balance():
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
         return get_used_balance()
+
+
+def get_net_deposits():
+    """
+    Get deposits and withdraws to calculate the net deposits in btc.
+    return: net deposits
+    """
+    try:
+        if conf.exchange in ['bitmex']:
+            result = exchange.private_get_user_wallet({'currency': 'XBt'})
+            return (result['deposited'] - result['withdrawn']) * conf.satoshi_factor
+        else:
+            log.error("get_net_deposit() not yet implemented for " + conf.exchange)
+
+    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        sleep_for(4, 6)
+        return get_net_deposits()
 
 
 def get_position_info():
@@ -1078,6 +1097,7 @@ def create_mail_part_settings():
     return ["Rate change: {:>22.1f}%".format(conf.change*100),
             "Quota: {:>28}".format('1/' + str(conf.quota)),
             "Leverage default: {:>17}".format(str(conf.leverage_default)),
+            "Auto leverage: {:>20}".format(str('Y' if conf.auto_leverage is True else 'N')),
             "Leverage low: {:>21}".format(str(conf.leverage_low)),
             "Leverage high: {:>20}".format(str(conf.leverage_high)),
             "Mayer multiple floor: {:>13}".format(str(conf.mm_floor)),
@@ -1097,7 +1117,7 @@ def create_mail_part_general():
 
 
 def create_mail_part_advice():
-    part = []
+    part = ["Moving average 144d/21d: {:>10}".format('n/a')]
     append_mayer(part)
     return part
 
@@ -1125,10 +1145,21 @@ def append_balances(part: []):
     sleep_for(2, 3)
 
     if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+        wallet_balance = get_wallet_balance()
         sleep_for(1, 2)
+        net_deposits = get_net_deposits()
+        if net_deposits is None:
+            part.append("Net deposits " + conf.base + ": {:>20}".format('n/a'))
+            part.append("Overall performance: {:>21}".format('n/a'))
+        else:
+            part.append("Net deposits " + conf.base + ": {:>18.2f}".format(net_deposits))
+            absolute_performance = wallet_balance - net_deposits
+            relative_performance = round(100 / (net_deposits / absolute_performance), 2)
+            sign = '+' if relative_performance else ''
+            part.append("Overall performance: {:>17.4f} ({}%)".format(absolute_performance, sign + str(relative_performance)))
         poi = get_position_info()
         sleep_for(1, 2)
-        part.append("Wallet balance " + conf.base + ": {:>18.4f}".format(get_wallet_balance()))
+        part.append("Wallet balance " + conf.base + ": {:>18.4f}".format(wallet_balance))
         append_price_and_margin_change(bal, part, conf.base)
         part.append("Liquidation price: {:>16.1f}".format(poi['liquidationPrice']))
         part.append("Used margin: {:>22.2f}%".format(calculate_used_margin_percentage(bal)))
@@ -1158,7 +1189,7 @@ def append_price_and_margin_change(bal: dict, part: [], currency: str):
 
     rate = conf.base + " price " + conf.quote + ": {:>20.1f}".format(price)
     if 'priceChan24' in today:
-        rate += " ("
+        rate += "    ("
         rate += "{0:{1}.2f}%".format(today['priceChan24'], '+' if today['priceChan24'] else '')
         if 'priceChan48' in today:
             rate += ", {0:{1}.2f}%".format(today['priceChan48'], '+' if today['priceChan48'] else '')
@@ -1284,20 +1315,23 @@ def append_mayer(part: []):
 
 
 def adjust_leverage():
-    if conf.exchange == 'bitmex':
-        mm = fetch_mayer()
-        leverage = get_leverage()
-        if mm is not None and mm > conf.mm_ceil:
-            if leverage > conf.leverage_low:
-                set_leverage(leverage - 0.1)
-        elif mm is not None and mm < conf.mm_floor:
-            if leverage < conf.leverage_high:
-                set_leverage(leverage + 0.1)
-        elif mm is not None and mm < conf.mm_ceil:
-            if leverage > conf.leverage_default:
-                set_leverage(leverage - 0.1)
-            elif leverage < conf.leverage_default:
-                set_leverage(leverage + 0.1)
+    if conf.auto_leverage:
+        if conf.exchange == 'bitmex':
+            mm = fetch_mayer()
+            leverage = get_leverage()
+            if mm is not None and mm > conf.mm_ceil:
+                if leverage > conf.leverage_low:
+                    set_leverage(leverage - 0.1)
+            elif mm is not None and mm < conf.mm_floor:
+                if leverage < conf.leverage_high:
+                    set_leverage(leverage + 0.1)
+            elif mm is not None and mm < conf.mm_ceil:
+                if leverage > conf.leverage_default:
+                    set_leverage(leverage - 0.1)
+                elif leverage < conf.leverage_default:
+                    set_leverage(leverage + 0.1)
+        else:
+            log.error("adjust_leverage() not yet implemented for " + conf.exchange)
 
 
 def get_leverage():
