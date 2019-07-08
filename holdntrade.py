@@ -10,7 +10,10 @@ import smtplib
 import socket
 import sys
 import time
-from email.message import EmailMessage
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from logging.handlers import RotatingFileHandler
 
 import ccxt
@@ -46,7 +49,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.8"
+            self.bot_version = "1.12.9"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1042,7 +1045,8 @@ def daily_report():
         if datetime.datetime(2012, 1, 17, 12, 15).time() > now.time() \
                 > datetime.datetime(2012, 1, 17, 12, 10).time() and email_sent != now.day:
             subject = "Daily report for {0}".format(conf.bot_instance)
-            send_mail(subject, create_mail_content())
+            filename = conf.bot_instance + '.csv'
+            send_mail(subject, create_mail_content(), filename)
             email_sent = now.day
 
 
@@ -1065,28 +1069,30 @@ def create_mail_content():
     bcs_url = 'https://bitcoin-schweiz.ch/bot/'
     text = '\n'.join(performance) + '\n'.join(advice) + '\n'.join(settings) + '\n'.join(general) + bcs_url + '\n\n'
 
-    csv = conf.bot_instance + ';' + str(datetime.datetime.utcnow().replace(microsecond=0)) + ' UTC;' + (';'.join(performance_part) + ';' + ';'.join(
-        advice_part) + ';' + ';'.join(settings_part) + '\n').replace('  ', '').replace(':', ':;') + '\n'
+    write_csv(performance_part, advice_part, settings_part)
 
-    with open(conf.bot_instance + '.csv', 'a') as f:
-        f.write(csv)
-
-    return text + csv
+    return text
 
 
 def create_mail_part_settings():
-    return ["Rate change: {:>17.1f}%".format(conf.change*100),
-            "Quota: {:>23}".format('1/' + str(conf.quota))]
+    return ["Rate change: {:>22.1f}%".format(conf.change*100),
+            "Quota: {:>28}".format('1/' + str(conf.quota)),
+            "Leverage default: {:>17}".format(str(conf.leverage_default)),
+            "Leverage low: {:>21}".format(str(conf.leverage_low)),
+            "Leverage high: {:>20}".format(str(conf.leverage_high)),
+            "Mayer multiple floor: {:>13}".format(str(conf.mm_floor)),
+            "Mayer multiple ceil: {:>14}".format(str(conf.mm_ceil))]
 
 
 def create_mail_part_general():
-    general = ["No. of resets: {:>15}".format(reset_counter)]
+    general = ["Generated: {:>28}".format(str(datetime.datetime.utcnow().replace(microsecond=0)) + " UTC")]
     if auto_conf:
-        general.append("Bot was resurrected at: {0} UTC".format(started))
+        general.append("Resurrected at: {:>18} UTC".format(str(started)))
     else:
-        general.append("Bot running since: {0} UTC".format(started))
-    general.append("{0}@{1}: ".format(conf.bot_instance, socket.gethostname()) + str(datetime.datetime.utcnow().replace(microsecond=0)) + " UTC")
-    general.append("Version: {:>21}".format(conf.bot_version))
+        general.append("Running since: {:>20} UTC".format(str(started)))
+    general.append("No. of resets: {:>20}".format(reset_counter))
+    general.append("Bot: {:>30}".format(conf.bot_instance + '@' + socket.gethostname()))
+    general.append("Version: {:>26}".format(conf.bot_version))
     return general
 
 
@@ -1105,10 +1111,10 @@ def create_mail_part_performance():
 
 def append_orders(part: []):
     oos = get_open_orders()
-    part.append("Value of buy orders " + conf.quote + ": {:>5}".format(int(oos.total_buy_order_value)))
-    part.append("Value of sell orders " + conf.quote + ": {:>4}".format(int(oos.total_sell_order_value)))
-    part.append("No. of buy orders: {:>11}".format(len(oos.buy_orders)))
-    part.append("No. of sell orders: {:>10}".format(len(oos.sell_orders)))
+    part.append("Value of buy orders " + conf.quote + ": {:>10}".format(int(oos.total_buy_order_value)))
+    part.append("Value of sell orders " + conf.quote + ": {:>9}".format(int(oos.total_sell_order_value)))
+    part.append("No. of buy orders: {:>16}".format(len(oos.buy_orders)))
+    part.append("No. of sell orders: {:>15}".format(len(oos.sell_orders)))
 
 
 def append_balances(part: []):
@@ -1122,25 +1128,25 @@ def append_balances(part: []):
         sleep_for(1, 2)
         poi = get_position_info()
         sleep_for(1, 2)
-        part.append("Wallet balance " + conf.base + ": {:>13.4f}".format(get_wallet_balance()))
+        part.append("Wallet balance " + conf.base + ": {:>18.4f}".format(get_wallet_balance()))
         append_price_and_margin_change(bal, part, conf.base)
-        part.append("Liquidation price: {:>11.1f}".format(poi['liquidationPrice']))
-        part.append("Used margin: {:>18.2f}%".format(calculate_used_margin_percentage(bal)))
-        part.append("Effective leverage: {:>11.2f}x".format(get_margin_leverage()))
+        part.append("Liquidation price: {:>16.1f}".format(poi['liquidationPrice']))
+        part.append("Used margin: {:>22.2f}%".format(calculate_used_margin_percentage(bal)))
+        part.append("Effective leverage: {:>15.2f}x".format(get_margin_leverage()))
 
     elif conf.exchange == 'kraken':
         append_price_and_margin_change(bal, part, conf.quote)
-        part.append("Used margin: {:>18.2f}%".format(calculate_used_margin_percentage(bal)))
-        part.append("Effective leverage: {:>11.1f}%".format(get_margin_leverage()))
+        part.append("Used margin: {:>22.2f}%".format(calculate_used_margin_percentage(bal)))
+        part.append("Effective leverage: {:>16.1f}%".format(get_margin_leverage()))
 
-    part.append("Position " + conf.quote + ": {:>16}".format(get_used_balance()))
+    part.append("Position " + conf.quote + ": {:>21}".format(get_used_balance()))
 
 
 def append_price_and_margin_change(bal: dict, part: [], currency: str):
     price = get_current_price()
     today = calculate_daily_statistics(bal['total'], price)
 
-    formatter = 13.4 if currency == conf.base else 11.2
+    formatter = 18.4 if currency == conf.base else 16.2
     m_bal = "Margin balance " + currency + ": {0:>{1}f}".format(today['mBal'], formatter)
     if 'mBalChan24' in today:
         m_bal += " ("
@@ -1150,7 +1156,7 @@ def append_price_and_margin_change(bal: dict, part: [], currency: str):
         m_bal += ")*"
     part.append(m_bal)
 
-    rate = conf.base + " price " + conf.quote + ": {:>16.2f}".format(price)
+    rate = conf.base + " price " + conf.quote + ": {:>20.1f}".format(price)
     if 'priceChan24' in today:
         rate += " ("
         rate += "{0:{1}.2f}%".format(today['priceChan24'], '+' if today['priceChan24'] else '')
@@ -1160,15 +1166,43 @@ def append_price_and_margin_change(bal: dict, part: [], currency: str):
     part.append(rate)
 
 
-def send_mail(subject: str, content: str):
+def write_csv(performance_part: dict, advice_part: dict, settings_part: dict):
+
+    csv = conf.bot_instance + ';' + str(datetime.datetime.utcnow().replace(microsecond=0)) + ' UTC;' + (';'.join(performance_part) + ';' + ';'.join(
+        advice_part) + ';' + ';'.join(settings_part) + '\n').replace('  ', '').replace(':', ':;') + '\n'
+
+    if int(datetime.date.today().strftime("%j")) != 1:
+        with open(conf.bot_instance + '.csv', 'a') as f:
+            f.write(csv)
+    else:
+        with open(conf.bot_instance + '.csv', 'w') as f:
+            f.write(csv)
+
+
+def send_mail(subject: str, text: str, filename: str = None):
     recipients = ", ".join(conf.recipient_addresses)
-    msg = EmailMessage()
+    msg = MIMEMultipart()
     msg['Subject'] = subject
     msg['From'] = conf.sender_address
     msg['To'] = recipients
-    msg.set_content(content)
+
+    readable_part = MIMEMultipart('alternative')
+    readable_part.attach(MIMEText(text, 'plain'))
+    html = '<html><body><pre style="font:monospace">' + text + '</pre></body></html>'
+    readable_part.attach(MIMEText(html, 'html'))
+    msg.attach(readable_part)
+
+    if filename:
+        if os.path.isfile(filename):
+            part = MIMEBase('application', 'octet-stream')
+            with open(filename, "rb") as f:
+                part.set_payload(f.read())
+            encoders.encode_base64(part)
+            part.add_header('Content-Disposition', "attachment; filename= %s" % filename)
+            msg.attach(part)
 
     server = smtplib.SMTP(conf.mail_server, 587)
+    server.starttls()
     server.set_debuglevel(0)
     server.login(conf.sender_address, conf.sender_password)
     server.send_message(msg)
@@ -1235,11 +1269,11 @@ def print_mayer():
     mayer = fetch_mayer()
     if mayer is not None:
         if mayer < 1.39:
-            return "Mayer multiple: {:>15.2f} (low: buy)".format(mayer)
+            return "Mayer multiple: {:>19.2f} (low: buy)".format(mayer)
         elif mayer > 2.4:
-            return "Mayer multiple: {:>15.2f} (high: sell)".format(mayer)
+            return "Mayer multiple: {:>19.2f} (high: sell)".format(mayer)
         else:
-            return "Mayer multiple: {:>15.2f} (hold)".format(mayer)
+            return "Mayer multiple: {:>19.2f} (hold)".format(mayer)
     return
 
 
