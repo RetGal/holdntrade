@@ -1169,7 +1169,7 @@ def append_price_and_margin_change(bal: dict, part: [], currency: str):
 def write_csv(performance_part: dict, advice_part: dict, settings_part: dict):
 
     csv = conf.bot_instance + ';' + str(datetime.datetime.utcnow().replace(microsecond=0)) + ' UTC;' + (';'.join(performance_part) + ';' + ';'.join(
-        advice_part) + ';' + ';'.join(settings_part) + '\n').replace('  ', '').replace(':', ':;') + '\n'
+        advice_part) + ';' + ';'.join(settings_part) + '\n').replace('  ', '').replace(':', ':;')
 
     if int(datetime.date.today().strftime("%j")) != 1:
         with open(conf.bot_instance + '.csv', 'a') as f:
