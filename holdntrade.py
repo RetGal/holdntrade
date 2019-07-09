@@ -49,14 +49,14 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.10"
+            self.bot_version = "1.12.11"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
             self.test = bool(props['test'].strip('"').lower() == 'true')
             self.pair = props['pair'].strip('"')
             self.symbol = props['symbol'].strip('"')
-            self.order_btc_min = float(props['order_btc_min'].strip('"'))
+            self.order_crypto_min = float(props['order_crypto_min'].strip('"'))
             self.satoshi_factor = 0.00000001
             self.change = abs(float(props['change'].strip('"')))
             self.quota = abs(int(props['quota'].strip('"')))
@@ -380,7 +380,7 @@ def cancel_order(order: Order):
 def create_buy_order(price: float, amount: int):
     """
     Creates a buy order and sets the values as global ones. Used by other functions.
-    :param price current price of BTC
+    :param price current price of crypto
     :param amount the order volume
     output: calculate the price to get long (price + change) and to get short (price - change).
     In addition set the current orderID and current order size as global values.
@@ -397,14 +397,14 @@ def create_buy_order(price: float, amount: int):
     buy_price = round(price * (1 - conf.change))
     sell_price = round(price * (1 + conf.change))
     curr_buy_order_size = amount
-    cur_btc_price = get_current_price()
+    curr_price = get_current_price()
 
     try:
         if not is_order_below_limit(amount, buy_price):
             if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
                 new_order = exchange.create_limit_buy_order(conf.pair, amount, buy_price)
             elif conf.exchange == 'kraken':
-                new_order = exchange.create_limit_buy_order(conf.pair, to_kraken(amount, cur_btc_price), buy_price,
+                new_order = exchange.create_limit_buy_order(conf.pair, to_kraken(amount, curr_price), buy_price,
                                                             {'leverage': 2, 'oflags': 'fcib'})
             elif conf.exchange == 'liquid':
                 new_order = exchange.create_limit_buy_order(conf.pair, amount, buy_price)
@@ -416,7 +416,7 @@ def create_buy_order(price: float, amount: int):
             return True
         elif len(sell_orders) > 0:
             log.info('Could not create buy order, waiting for a sell order to be realised')
-            return delay_buy_order(cur_btc_price, price)
+            return delay_buy_order(curr_price, price)
         else:
             log.warning('Could not create buy order over {0} and there are no open sell orders, reset required'
                         .format(str(amount)))
@@ -429,51 +429,51 @@ def create_buy_order(price: float, amount: int):
                 log.info(
                     'Could not create buy order over {0}, insufficient margin, waiting for a sell order to be realised'.format(
                         str(amount)))
-                return delay_buy_order(cur_btc_price, price)
+                return delay_buy_order(curr_price, price)
             else:
                 log.warning('Could not create buy order over {0}, insufficient margin'.format(str(amount)))
                 return False
         else:
             log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
             sleep_for(4, 6)
-            return create_buy_order(update_price(cur_btc_price, price), amount)
+            return create_buy_order(update_price(curr_price, price), amount)
 
 
-def delay_buy_order(cur_btc_price: float, price: float):
+def delay_buy_order(crypto_price: float, price: float):
     """
     Delays the creation of a buy order, allowing sell orders to be filled - afterwards the amount is recalculated and
-    the function calls create_buy_order with the current btc price and the new amount
-    :param cur_btc_price: the btc with which price was calculated
+    the function calls create_buy_order with the current price and the new amount
+    :param crypto_price: the crypto rate with which price was calculated
     :param price: the price of the original buy order to be created
     """
     sleep_for(60, 120)
     daily_report()
     new_amount = round(get_balance()['free'] / conf.quota * get_current_price())  # recalculate order size
-    return create_buy_order(update_price(cur_btc_price, price), new_amount)
+    return create_buy_order(update_price(crypto_price, price), new_amount)
 
 
-def create_market_sell_order(amount_btc: float):
+def create_market_sell_order(amount_crypto: float):
     """
     Creates a market sell order and sets the values as global ones. Used to compensate margins above 50%.
-    input: amount_btc to be sold to reach 50% margin
+    input: amount_crypto to be sold to reach 50% margin
     """
     global buy_price
     global sell_price
     global sell_orders
 
-    cur_btc_price = get_current_price()
+    cur_price = get_current_price()
 
-    amount = round(amount_btc * cur_btc_price)
+    amount = round(amount_crypto * cur_price)
 
-    buy_price = round(cur_btc_price * (1 - conf.change))
-    sell_price = round(cur_btc_price * (1 + conf.change))
+    buy_price = round(cur_price * (1 - conf.change))
+    sell_price = round(cur_price * (1 + conf.change))
 
     try:
-        if not is_btc_amount_below_limit(amount_btc):
+        if not is_crypto_amount_below_limit(amount_crypto):
             if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
                 new_order = exchange.create_market_sell_order(conf.pair, amount)
             elif conf.exchange == 'kraken':
-                new_order = exchange.create_market_sell_order(conf.pair, amount_btc, {'leverage': 2})
+                new_order = exchange.create_market_sell_order(conf.pair, amount_crypto, {'leverage': 2})
             elif conf.exchange == 'liquid':
                 new_order = exchange.create_market_sell_order(conf.pair, amount,
                                                               {'leverage_level': conf.leverage_default})
@@ -488,35 +488,35 @@ def create_market_sell_order(amount_btc: float):
             return
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
-        return create_market_sell_order(amount_btc)
+        return create_market_sell_order(amount_crypto)
 
 
-def create_market_buy_order(amount_btc: float):
+def create_market_buy_order(amount_crypto: float):
     """
     Creates a market buy order and sets the values as global ones. Used to compensate margins below 50%.
-    input: amount_btc to be bought to reach 50% margin
+    input: amount_crypto to be bought to reach 50% margin
     """
     global buy_price
     global sell_price
     global curr_buy_order
 
-    cur_btc_price = get_current_price()
+    cur_price = get_current_price()
 
-    amount = round(amount_btc * cur_btc_price)
+    amount = round(amount_crypto * cur_price)
 
-    buy_price = round(cur_btc_price * (1 - conf.change))
-    sell_price = round(cur_btc_price * (1 + conf.change))
+    buy_price = round(cur_price * (1 - conf.change))
+    sell_price = round(cur_price * (1 + conf.change))
 
     try:
-        if not is_order_below_limit(amount, cur_btc_price):
+        if not is_order_below_limit(amount, cur_price):
             if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
                 new_order = exchange.create_market_buy_order(conf.pair, amount)
             elif conf.exchange == 'kraken':
-                new_order = exchange.create_market_buy_order(conf.pair, amount_btc, {'leverage': 2, 'oflags': 'fcib'})
+                new_order = exchange.create_market_buy_order(conf.pair, amount_crypto, {'leverage': 2, 'oflags': 'fcib'})
             elif conf.exchange == 'liquid':
-                new_order = exchange.create_market_buy_order(conf.pair, amount_btc,
+                new_order = exchange.create_market_buy_order(conf.pair, amount_crypto,
                                                              {'leverage_level': conf.leverage_default,
-                                                              'funding_currency': 'BTC'})
+                                                              'funding_currency': conf.base})
             order = Order(new_order)
             log.info('Created market ' + str(order))
             curr_buy_order = None
@@ -527,7 +527,7 @@ def create_market_buy_order(amount_btc: float):
             return
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
-        return create_market_buy_order(amount_btc)
+        return create_market_buy_order(amount_crypto)
 
 
 def get_margin_leverage():
@@ -570,18 +570,18 @@ def get_wallet_balance():
 
 def get_balance():
     """
-    Fetch the balance in btc.
+    Fetch the balance in crypto.
     output: balance (used,free,total)
     """
     try:
         if conf.exchange != 'liquid':
-            bal = exchange.fetch_balance()['BTC']
+            bal = exchange.fetch_balance()[conf.base]
             if bal['used'] is None:
                 bal['used'] = 0
             return bal
         else:
             # TODO check
-            result = exchange.private_get_trades({'status': 'open', 'funding_currency': 'BTC'})
+            result = exchange.private_get_trades({'status': 'open', 'funding_currency': conf.base})
             if result['models'] is not None and  len(result['models']):
                 bal = result['models'][0]
                 return {'used': float(bal['close_quantity']), 'free': float(bal['open_quantity']), 'total': float(bal['quantity'])}
@@ -594,7 +594,7 @@ def get_balance():
 
 def get_used_balance():
     """
-    Fetch the used balance in btc.
+    Fetch the used balance in crypto.
     output: balance
     """
     try:
@@ -621,12 +621,13 @@ def get_used_balance():
 
 def get_net_deposits():
     """
-    Get deposits and withdraws to calculate the net deposits in btc.
+    Get deposits and withdraws to calculate the net deposits in crypto.
     return: net deposits
     """
     try:
         if conf.exchange in ['bitmex']:
-            result = exchange.private_get_user_wallet({'currency': 'XBt'})
+            currency = conf.base if conf.base != 'BTC' else 'XBt'
+            result = exchange.private_get_user_wallet({'currency': currency})
             return (result['deposited'] - result['withdrawn']) * conf.satoshi_factor
         else:
             log.error("get_net_deposit() not yet implemented for " + conf.exchange)
@@ -671,7 +672,7 @@ def compensate():
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
             bal = get_balance()
         elif conf.exchange == 'kraken':
-            bal = exchange.private_post_tradebalance({'asset': 'BTC'})['result']
+            bal = exchange.private_post_tradebalance({'asset': conf.base})['result']
             bal['free'] = float(bal['mf'])
             bal['total'] = float(bal['e'])
             bal['used'] = float(bal['m'])
@@ -683,13 +684,13 @@ def compensate():
 
     used = float(100 - (bal['free'] / bal['total']) * 100)
     if used < 40 or used > 60:
-        amount_btc = float(bal['total'] / 2 - bal['used'])
-        if amount_btc > 0:
-            log.info("Need to buy {0} BTC in order to reach 50% margin".format(amount_btc))
-            create_market_buy_order(amount_btc)
+        amount_crypto = float(bal['total'] / 2 - bal['used'])
+        if amount_crypto > 0:
+            log.info("Need to buy {0} {1} in order to reach 50% margin".format(amount_crypto, conf.base))
+            create_market_buy_order(amount_crypto)
         else:
-            log.info("Need to sell {0} BTC in order to reach 50% margin".format(abs(amount_btc)))
-            create_market_sell_order(abs(amount_btc))
+            log.info("Need to sell {0} {1} in order to reach 50% margin".format(abs(amount_crypto), conf.base))
+            create_market_sell_order(abs(amount_crypto))
     return
 
 
@@ -719,9 +720,9 @@ def get_margin_balance():
     """
     try:
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
-            bal = exchange.fetch_balance()['BTC']
+            bal = exchange.fetch_balance()[conf.base]
         elif conf.exchange == 'kraken':
-            bal = exchange.private_post_tradebalance({'asset': 'EUR'})['result']
+            bal = exchange.private_post_tradebalance({'asset': conf.quote})['result']
             bal['free'] = float(bal['mf'])
             bal['total'] = float(bal['e'])
         return bal
@@ -761,7 +762,7 @@ def calc_avg_entry_price(open_orders: [Order]):
 
 def get_current_price():
     """
-    Fetch the current BTC price
+    Fetch the current crypto price
     output: last bid price
     """
     sleep_for(4, 6)
@@ -825,11 +826,11 @@ def init_orders(force_close: bool, auto_conf: bool):
             if not force_close and (auto_conf or init.lower() in ['y', 'yes']):
                 return load_existing_orders(oos)
             else:
-                log.info('Unrealised PNL: {0} BTC'.format(str(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor)))
+                log.info('Unrealised PNL: {0} {1}'.format(str(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor), conf.base))
                 if force_close:
                     cancel_orders(oos.orders)
                 else:
-                    clear_position = input('There is an open BTC position! Would you like to close it? (y/n) ')
+                    clear_position = input('There is an open ' + conf.base + ' position! Would you like to close it? (y/n) ')
                     if clear_position.lower() in ['y', 'yes']:
                         cancel_orders(oos.orders)
                         close_position(conf.symbol)
@@ -841,7 +842,8 @@ def init_orders(force_close: bool, auto_conf: bool):
 
         # Handle open positions if no orders are open
         elif not force_close and not auto_conf and get_open_position(conf.symbol) is not None:
-            msg = 'There is an open BTC position!\nUnrealised PNL: {0:.8f} BTC\nWould you like to close it? (y/n) '
+            msg = 'There is an open ' + conf.base + ' position!\nUnrealised PNL: {0:.8f} ' + conf.base + \
+                  '\nWould you like to close it? (y/n) '
             init = input(msg.format(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor))
             if init.lower() in ['y', 'yes']:
                 close_position(conf.symbol)
@@ -1050,12 +1052,12 @@ def sleep_for(greater: int, less: int):
 
 
 def is_order_below_limit(amount: int, price: float):
-    return is_btc_amount_below_limit(abs(amount / price))
+    return is_crypto_amount_below_limit(abs(amount / price))
 
 
-def is_btc_amount_below_limit(amount_btc: float):
-    if abs(amount_btc) < conf.order_btc_min:
-        log.info('Per order volume below limit: ' + str(abs(amount_btc)))
+def is_crypto_amount_below_limit(amount_crypto: float):
+    if abs(amount_crypto) < conf.order_crypto_min:
+        log.info('Per order volume below limit: ' + str(abs(amount_crypto)))
         return True
     return False
 
@@ -1166,13 +1168,13 @@ def append_balances(part: []):
         net_deposits = get_net_deposits()
         if net_deposits is None:
             part.append("Net deposits " + conf.base + ": {:>20}".format('n/a'))
-            part.append("Overall performance: {:>21}".format('n/a'))
+            part.append("Overall performance in " + conf.base + ": {:>10}".format('n/a'))
         else:
-            part.append("Net deposits " + conf.base + ": {:>18.2f}".format(net_deposits))
+            part.append("Net deposits " + conf.base + ": {:>20.4f}".format(net_deposits))
             absolute_performance = wallet_balance - net_deposits
             relative_performance = round(100 / (net_deposits / absolute_performance), 2)
-            sign = '+' if relative_performance else ''
-            part.append("Overall performance: {:>17.4f} ({}%)".format(absolute_performance, sign + str(relative_performance)))
+            sign = '+' if relative_performance > 0 else ''
+            part.append("Overall performance in " + conf.base + ": {:>10.4f} ({}%)".format(absolute_performance, sign + str(relative_performance)))
         poi = get_position_info()
         sleep_for(1, 2)
         part.append("Wallet balance " + conf.base + ": {:>18.4f}".format(wallet_balance))

@@ -8,7 +8,7 @@ test = "True"
 # currency properties
 pair = "BTC/USD"
 symbol = "XBTUSD"
-order_btc_min = 0.0025
+order_crypto_min = 0.0025
 
 # bot properties
 change = 0.005
