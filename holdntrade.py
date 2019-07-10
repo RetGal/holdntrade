@@ -128,8 +128,8 @@ class Order:
         self.datetime = order['datetime']
 
     def __str__(self):
-        return "{0} order id: {1}, price: {2}, amount: {3}, created: {4}".format(self.side, self.id, self.price,
-                                                                                 self.amount, self.datetime)
+        return "{} order id: {}, price: {}, amount: {}, created: {}".format(self.side, self.id, self.price,
+                                                                            self.amount, self.datetime)
 
 
 class Stats:
@@ -172,7 +172,7 @@ def function_logger(console_level: int, filename: str, file_level: int = None):
     logger.addHandler(ch)
 
     if file_level is not None:
-        fh = RotatingFileHandler("{0}.log".format(filename), mode='a', maxBytes=5 * 1024 * 1024, backupCount=4,
+        fh = RotatingFileHandler("{}.log".format(filename), mode='a', maxBytes=5 * 1024 * 1024, backupCount=4,
                                  encoding=None, delay=0)
         fh.setLevel(file_level)
         fh_format = logging.Formatter('%(asctime)s - %(lineno)4d - %(levelname)-8s - %(message)s')
@@ -278,7 +278,7 @@ def create_sell_order(fixed_order_size: int = None):
     stock = get_used_balance()
     if stock < order_size:
         # sold out - the main loop will re-init if there are no other sell orders open
-        log.warning('Not executing sell order over {0} (only {1} left)'.format(float(order_size), float(stock)))
+        log.warning('Not executing sell order over {} (only {} left)'.format(float(order_size), float(stock)))
         return
 
     try:
@@ -369,7 +369,7 @@ def cancel_order(order: Order):
             if status == 'open':
                 exchange.cancel_order(order.id)
             else:
-                log.warning('Order to be canceled {0} was in state '.format(order.id) + status)
+                log.warning('Order to be canceled {} was in state '.format(order.id) + status)
 
     except ccxt.OrderNotFound as error:
         log.error('Order to be canceled not found ' + order.id + error.args)
@@ -422,7 +422,7 @@ def create_buy_order(price: float, amount: int):
             log.info('Could not create buy order, waiting for a sell order to be realised')
             return delay_buy_order(curr_price, price)
         else:
-            log.warning('Could not create buy order over {0} and there are no open sell orders, reset required'
+            log.warning('Could not create buy order over {} and there are no open sell orders, reset required'
                         .format(str(amount)))
             return False
 
@@ -430,11 +430,11 @@ def create_buy_order(price: float, amount: int):
         if any(e in str(error.args) for e in no_recall):
             if len(sell_orders) > 0:
                 log.info(
-                    'Could not create buy order over {0}, insufficient margin, waiting for a sell order to be realised'.format(
+                    'Could not create buy order over {}, insufficient margin, waiting for a sell order to be realised'.format(
                         str(amount)))
                 return delay_buy_order(curr_price, price)
             else:
-                log.warning('Could not create buy order over {0}, insufficient margin'.format(str(amount)))
+                log.warning('Could not create buy order over {}, insufficient margin'.format(str(amount)))
                 return False
         else:
             log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -693,10 +693,10 @@ def compensate():
     if used < 40 or used > 60:
         amount_crypto = float(bal['total'] / 2 - bal['used'])
         if amount_crypto > 0:
-            log.info("Need to buy {0} {1} in order to reach 50% margin".format(amount_crypto, conf.base))
+            log.info("Need to buy {} {} in order to reach 50% margin".format(amount_crypto, conf.base))
             create_market_buy_order(amount_crypto)
         else:
-            log.info("Need to sell {0} {1} in order to reach 50% margin".format(abs(amount_crypto), conf.base))
+            log.info("Need to sell {} {} in order to reach 50% margin".format(abs(amount_crypto), conf.base))
             create_market_sell_order(abs(amount_crypto))
     return
 
@@ -713,7 +713,7 @@ def spread(market_price: float):
         if highest_buy_order.price < market_price * (1 - conf.change * conf.spread_factor):
             lowest_sell_order = sorted(sell_orders, key=lambda order: order.price)[0]
             if lowest_sell_order.price > market_price * (1 + conf.change * conf.spread_factor):
-                log.info("Orders above spread tolerance min sell: {0} max buy: {1} current rate: {2}".format(
+                log.info("Orders above spread tolerance min sell: {} max buy: {} current rate: {}".format(
                     lowest_sell_order.price, highest_buy_order.price, market_price))
                 log.info("Canceling highest " + str(highest_buy_order))
                 cancel_order(highest_buy_order)
@@ -835,7 +835,7 @@ def init_orders(force_close: bool, auto_conf: bool):
             if not force_close and (auto_conf or init.lower() in ['y', 'yes']):
                 return load_existing_orders(oos)
             else:
-                log.info('Unrealised PNL: {0} {1}'.format(str(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor), conf.base))
+                log.info('Unrealised PNL: {} {}'.format(str(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor), conf.base))
                 if force_close:
                     cancel_orders(oos.orders)
                 else:
@@ -851,7 +851,7 @@ def init_orders(force_close: bool, auto_conf: bool):
 
         # Handle open positions if no orders are open
         elif not force_close and not auto_conf and get_open_position(conf.symbol) is not None:
-            msg = 'There is an open ' + conf.base + ' position!\nUnrealised PNL: {0:.8f} ' + conf.base + \
+            msg = 'There is an open ' + conf.base + ' position!\nUnrealised PNL: {:.8f} ' + conf.base + \
                   '\nWould you like to close it? (y/n) '
             init = input(msg.format(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor))
             if init.lower() in ['y', 'yes']:
@@ -1095,7 +1095,7 @@ def daily_report():
         now = datetime.datetime.utcnow()
         if datetime.datetime(2012, 1, 17, 12, 15).time() > now.time() \
                 > datetime.datetime(2012, 1, 17, 12, 10).time() and email_sent != now.day:
-            subject = "Daily report for {0}".format(conf.bot_instance)
+            subject = "Daily report for {}".format(conf.bot_instance)
             filename = conf.bot_instance + '.csv'
             send_mail(subject, create_mail_content(), filename)
             email_sent = now.day
@@ -1274,7 +1274,7 @@ def send_mail(subject: str, text: str, filename: str = None):
     server.login(conf.sender_address, conf.sender_password)
     server.send_message(msg)
     server.quit()
-    log.info("Sent email to {0}".format(recipients))
+    log.info("Sent email to {}".format(recipients))
 
 
 def calculate_daily_statistics(m_bal: float, price: float):
@@ -1410,11 +1410,9 @@ if __name__ == '__main__':
     log = function_logger(logging.DEBUG, filename, logging.INFO)
     log.info('-------------------------------')
     conf = ExchangeConfig(filename)
-    log.info('Holdntrade version: {0}'.format(conf.bot_version))
+    log.info('Holdntrade version: {}'.format(conf.bot_version))
     exchange = connect_to_exchange(conf)
     stats = load_statistics()
-
-    create_buy_order(999999.9, 1000000)
 
     loop = init_orders(False, auto_conf)
 
