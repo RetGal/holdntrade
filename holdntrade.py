@@ -33,6 +33,7 @@ auto_conf = False
 email_sent = 0
 started = datetime.datetime.utcnow().replace(microsecond=0)
 stats = None
+no_recall = ['nsufficient', 'too low', 'not_enough_free_balance', 'margin_below']
 
 # ------------------------------------------------------------------------------
 
@@ -298,8 +299,7 @@ def create_sell_order(fixed_order_size: int = None):
             log.info('Created ' + str(order))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        # insufficient funds
-        if "nsufficient" in str(error.args):
+        if any(e in str(error.args) for e in no_recall):
             log.error('Insufficient funds - not selling ' + str(order_size))
             return
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -336,8 +336,7 @@ def create_divided_sell_order():
             log.info('Created ' + str(order))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        # insufficient funds
-        if "nsufficient" in str(error.args):
+        if any(e in str(error.args) for e in no_recall):
             log.error('Insufficient funds - not selling ' + str(amount))
             return
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -428,8 +427,7 @@ def create_buy_order(price: float, amount: int):
             return False
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        # insufficient margin, margin level too low, etc.
-        if "nsufficient" or "too low" or "not_enough_free_balance" or "margin_below" in str(error.args):
+        if any(e in str(error.args) for e in no_recall):
             if len(sell_orders) > 0:
                 log.info(
                     'Could not create buy order over {0}, insufficient margin, waiting for a sell order to be realised'.format(
@@ -485,8 +483,7 @@ def create_market_sell_order(amount_crypto: float):
             sell_orders.append(order)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        # insufficient funds
-        if "nsufficient" or "not_enough_free" in str(error.args):
+        if any(e in str(error.args) for e in no_recall):
             log.error('Insufficient balance/funds - not selling ' + str(amount))
             return
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -1388,8 +1385,7 @@ def set_leverage(new_leverage: float):
         exchange.private_post_position_leverage({'symbol': conf.symbol, 'leverage': new_leverage})
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        # insufficient Available Balance
-        if "nsufficient" in str(error.args):
+        if any(e in str(error.args) for e in no_recall):
             log.warning('Insufficient available balance - not lowering leverage ' + str(amount))
             return
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -1417,6 +1413,8 @@ if __name__ == '__main__':
     log.info('Holdntrade version: {0}'.format(conf.bot_version))
     exchange = connect_to_exchange(conf)
     stats = load_statistics()
+
+    create_buy_order(999999.9, 1000000)
 
     loop = init_orders(False, auto_conf)
 
