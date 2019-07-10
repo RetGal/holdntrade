@@ -49,7 +49,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.11"
+            self.bot_version = "1.12.12"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -286,11 +286,13 @@ def create_sell_order(fixed_order_size: int = None):
                 new_order = exchange.create_limit_sell_order(conf.pair, order_size, sell_price)
             elif conf.exchange == 'kraken':
                 rate = get_current_price()
-                new_order = exchange.create_limit_sell_order(conf.pair, to_kraken(order_size, rate), sell_price,
-                                                             {'leverage': 2})
+                new_order = exchange.create_limit_sell_order(conf.pair, to_crypto_amount(order_size, rate), sell_price,
+                                                             {'leverage': conf.leverage_default})
             elif conf.exchange == 'liquid':
-                new_order = exchange.create_limit_sell_order(conf.pair, order_size, sell_price,
-                                                             {'leverage_level': conf.leverage_default})
+                rate = get_current_price()
+                new_order = exchange.create_limit_sell_order(conf.pair, to_crypto_amount(order_size, rate), sell_price,
+                                                             {'leverage_level': conf.leverage_default,
+                                                             'funding_currency': conf.base})
             order = Order(new_order)
             sell_orders.append(order)
             log.info('Created ' + str(order))
@@ -322,11 +324,13 @@ def create_divided_sell_order():
                 new_order = exchange.create_limit_sell_order(conf.pair, amount, sell_price)
             elif conf.exchange == 'kraken':
                 rate = get_current_price()
-                new_order = exchange.create_limit_sell_order(conf.pair, to_kraken(amount, rate), sell_price,
-                                                             {'leverage': 2})
+                new_order = exchange.create_limit_sell_order(conf.pair, to_crypto_amount(amount, rate), sell_price,
+                                                             {'leverage': conf.leverage_default})
             elif conf.exchange == 'liquid':
-                new_order = exchange.create_limit_sell_order(conf.pair, amount, sell_price,
-                                                         {'leverage_level': conf.leverage_default})
+                rate = get_current_price()
+                new_order = exchange.create_limit_sell_order(conf.pair, to_crypto_amount(amount, rate), sell_price,
+                                                             {'leverage_level': conf.leverage_default,
+                                                             'funding_currency': conf.base})
             order = Order(new_order)
             sell_orders.append(order)
             log.info('Created ' + str(order))
@@ -404,11 +408,12 @@ def create_buy_order(price: float, amount: int):
             if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
                 new_order = exchange.create_limit_buy_order(conf.pair, amount, buy_price)
             elif conf.exchange == 'kraken':
-                new_order = exchange.create_limit_buy_order(conf.pair, to_kraken(amount, curr_price), buy_price,
-                                                            {'leverage': 2, 'oflags': 'fcib'})
+                new_order = exchange.create_limit_buy_order(conf.pair, to_crypto_amount(amount, curr_price), buy_price,
+                                                            {'leverage': conf.leverage_default, 'oflags': 'fcib'})
             elif conf.exchange == 'liquid':
-                new_order = exchange.create_limit_buy_order(conf.pair, amount, buy_price)
-
+                new_order = exchange.create_limit_buy_order(conf.pair, to_crypto_amount(amount, curr_price), buy_price,
+                                                            {'leverage_level': conf.leverage_default,
+                                                            'funding_currency': conf.base})
             order = Order(new_order)
             log.info('Created ' + str(order))
             curr_buy_order = order
@@ -423,8 +428,8 @@ def create_buy_order(price: float, amount: int):
             return False
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        # insufficient margin || margin level too low
-        if "nsufficient" in str(error.args) or "too low" or "not_enough_free_balance" in str(error.args):
+        # insufficient margin, margin level too low, etc.
+        if "nsufficient" or "too low" or "not_enough_free_balance" or "margin_below" in str(error.args):
             if len(sell_orders) > 0:
                 log.info(
                     'Could not create buy order over {0}, insufficient margin, waiting for a sell order to be realised'.format(
@@ -462,9 +467,7 @@ def create_market_sell_order(amount_crypto: float):
     global sell_orders
 
     cur_price = get_current_price()
-
     amount = round(amount_crypto * cur_price)
-
     buy_price = round(cur_price * (1 - conf.change))
     sell_price = round(cur_price * (1 + conf.change))
 
@@ -473,7 +476,7 @@ def create_market_sell_order(amount_crypto: float):
             if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
                 new_order = exchange.create_market_sell_order(conf.pair, amount)
             elif conf.exchange == 'kraken':
-                new_order = exchange.create_market_sell_order(conf.pair, amount_crypto, {'leverage': 2})
+                new_order = exchange.create_market_sell_order(conf.pair, amount_crypto, {'leverage': conf.leverage_default})
             elif conf.exchange == 'liquid':
                 new_order = exchange.create_market_sell_order(conf.pair, amount,
                                                               {'leverage_level': conf.leverage_default})
@@ -483,8 +486,8 @@ def create_market_sell_order(amount_crypto: float):
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         # insufficient funds
-        if "nsufficient" in str(error.args):
-            log.error('Insufficient funds - not selling ' + str(amount))
+        if "nsufficient" or "not_enough_free" in str(error.args):
+            log.error('Insufficient balance/funds - not selling ' + str(amount))
             return
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
@@ -501,9 +504,7 @@ def create_market_buy_order(amount_crypto: float):
     global curr_buy_order
 
     cur_price = get_current_price()
-
     amount = round(amount_crypto * cur_price)
-
     buy_price = round(cur_price * (1 - conf.change))
     sell_price = round(cur_price * (1 + conf.change))
 
@@ -512,7 +513,7 @@ def create_market_buy_order(amount_crypto: float):
             if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
                 new_order = exchange.create_market_buy_order(conf.pair, amount)
             elif conf.exchange == 'kraken':
-                new_order = exchange.create_market_buy_order(conf.pair, amount_crypto, {'leverage': 2, 'oflags': 'fcib'})
+                new_order = exchange.create_market_buy_order(conf.pair, amount_crypto, {'leverage': conf.leverage_default, 'oflags': 'fcib'})
             elif conf.exchange == 'liquid':
                 new_order = exchange.create_market_buy_order(conf.pair, amount_crypto,
                                                              {'leverage_level': conf.leverage_default,
@@ -522,9 +523,10 @@ def create_market_buy_order(amount_crypto: float):
             curr_buy_order = None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        if "not_enough_free" in str(error.args) and conf.exchange == 'liquid':
-            log.error('Not enough free balanace ' + type(error).__name__ + str(error.args))
+        if "not_enough_free" or "free_margin_below" in str(error.args):
+            log.error('Not enough free margin/balance ' + type(error).__name__ + str(error.args))
             return
+
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
         return create_market_buy_order(amount_crypto)
@@ -535,10 +537,14 @@ def get_margin_leverage():
     Fetch the leverage
     """
     try:
-        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
             return exchange.fetch_balance()['info'][0]['marginLeverage']
         elif conf.exchange == 'kraken':
             return float(exchange.private_post_tradebalance()['result']['ml'])
+        elif conf.exchange == 'liquid':
+            # TODO poi = get_position_info()
+            log.error("get_margin_leverage() not yet implemented for " + conf.exchange)
+            return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -556,11 +562,11 @@ def get_wallet_balance():
         elif conf.exchange == 'kraken':
             return float(exchange.private_post_tradebalance()['result']['tb'])
         elif conf.exchange == 'liquid':
-            log.error("get_wallet_balance() not yet implemented for " + conf.exchange)
-            # TODO check
-            for b in exchange.private_get_accounts_balance():
-                if b['currency'] == conf.base:
-                    return b['balance']
+            result = exchange.private_get_accounts_balance()
+            if result is not None:
+                for b in result:
+                    if b['currency'] == conf.base:
+                        return float(b['balance'])
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -580,11 +586,20 @@ def get_balance():
                 bal['used'] = 0
             return bal
         else:
-            # TODO check
-            result = exchange.private_get_trades({'status': 'open', 'funding_currency': conf.base})
-            if result['models'] is not None and  len(result['models']):
-                bal = result['models'][0]
-                return {'used': float(bal['close_quantity']), 'free': float(bal['open_quantity']), 'total': float(bal['quantity'])}
+            bal = None
+            result = exchange.private_get_trading_accounts()
+            if result is not None:
+                for acc in result:
+                    if acc['currency_pair_code'] == conf.symbol and float(acc['margin']) > 0:
+                        bal = {'used': float(acc['margin']), 'free': float(acc['free_margin']), 'total': float(acc['equity'])}
+            if bal is None:
+                # no position => return wallet balance
+                result = exchange.private_get_accounts_balance()
+                if result is not None:
+                    for b in result:
+                        if b['currency'] == conf.base:
+                            bal = {'used': 0, 'free': float(b['balance']), 'total': float(b['balance'])}
+            return bal
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -594,7 +609,7 @@ def get_balance():
 
 def get_used_balance():
     """
-    Fetch the used balance in crypto.
+    Fetch the used balance in fiat.
     output: balance
     """
     try:
@@ -604,14 +619,7 @@ def get_used_balance():
             result = exchange.private_post_tradebalance()['result']
             return round(float(result['e']) - float(result['mf']))
         elif conf.exchange == 'liquid':
-            log.error("get_used_balance() not yet implemented for " + conf.exchange)
-            return None
-            # TODO check
-            # for b in exchange.private_get_accounts_balance():
-            #     if b['currency'] == conf.base:
-            #        return float(b['balance'])
-            # TODO timeout issue
-            # return exchange.private_get_trades()
+            return round(get_balance()['used'] * get_current_price())
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -631,6 +639,7 @@ def get_net_deposits():
             return (result['deposited'] - result['withdrawn']) * conf.satoshi_factor
         else:
             log.error("get_net_deposit() not yet implemented for " + conf.exchange)
+            return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
@@ -654,7 +663,8 @@ def get_position_info():
         elif conf.exchange == 'liquid':
             response = exchange.private_get_trading_accounts()
             for pos in response:
-                if pos['currency_pair_code'] == conf.symbol:
+                if pos['currency_pair_code'] == conf.symbol and pos['funding_currency'] == conf.base and \
+                        float(pos['margin']) > 0:
                     return pos
             return None
 
@@ -719,12 +729,14 @@ def get_margin_balance():
     Fetches the margin balance (free and total)
     """
     try:
-        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
             bal = exchange.fetch_balance()[conf.base]
         elif conf.exchange == 'kraken':
             bal = exchange.private_post_tradebalance({'asset': conf.quote})['result']
             bal['free'] = float(bal['mf'])
             bal['total'] = float(bal['e'])
+        elif conf.exchange == 'liquid':
+            bal = get_balance()
         return bal
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
@@ -874,11 +886,9 @@ def load_existing_orders(oos: OpenOrdersSummary):
     if not oos.sell_orders:
         sell_price = round(get_current_price() * (1 + conf.change))
         create_sell_order()
-
     # All buy orders executed
     elif not oos.buy_orders:
-        create_buy_order(get_current_price(),
-                         round(get_balance()['free'] / conf.quota * get_current_price()))
+        create_buy_order(get_current_price(), round(get_balance()['free'] / conf.quota * get_current_price()))
     del oos
     log.info('Initialization complete (using existing orders)')
     # No "compensate" necessary
@@ -914,10 +924,12 @@ def close_position(symbol: str):
     """
     try:
         log.info('close position ' + symbol)
-        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
             exchange.private_post_order_closeposition({'symbol': symbol})
         elif conf.exchange == 'kraken':
-            exchange.create_market_sell_order(conf.pair, 0.0, {'leverage': 2})
+            exchange.create_market_sell_order(conf.pair, 0.0, {'leverage': conf.leverage_default})
+        elif conf.exchange == 'liquid':
+            exchange.private_put_trades_close_all()
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         # no retry in case of "no volume to close position" (kraken specific error)
@@ -1009,7 +1021,12 @@ def print_position_info(oos: OpenOrdersSummary):
         log.info("Market price: {:>15.1f}".format(get_current_price()))
     elif conf.exchange == 'liquid':
         poi = get_position_info()
-        log.info("Position " + conf.base + ": {:>13.2f}".format(float(poi['position'])))
+        if float(poi['position']) > 0:
+            log.info("Position " + conf.base + ": {:>13.2f}".format(float(poi['position'])))
+        else:
+            log.info("Available balance is " + conf.base + ": {:>3} ".format(get_balance()['free']))
+            log.info("No position found, I will create one for you")
+            return False
     if not oos.orders:
         log.info("No open orders")
 
@@ -1062,7 +1079,7 @@ def is_crypto_amount_below_limit(amount_crypto: float):
     return False
 
 
-def to_kraken(amount: int, price: float):
+def to_crypto_amount(amount: int, price: float):
     return round(amount / price, 8)
 
 
@@ -1092,7 +1109,6 @@ def create_mail_content():
     Fetches the data required for the daily report email
     :return: mailcontent: str
     """
-
     performance_part = create_mail_part_performance()
     advice_part = create_mail_part_advice()
     settings_part = create_mail_part_settings()
@@ -1163,27 +1179,32 @@ def append_balances(part: []):
     sleep_for(2, 3)
 
     if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
-        wallet_balance = get_wallet_balance()
-        sleep_for(1, 2)
         net_deposits = get_net_deposits()
         if net_deposits is None:
-            part.append("Net deposits " + conf.base + ": {:>20}".format('n/a'))
-            part.append("Overall performance in " + conf.base + ": {:>10}".format('n/a'))
+            part.append("Net deposits " + conf.base + ": {:>17}".format('n/a'))
+            part.append("Overall performance in " + conf.base + ": {:>7}".format('n/a'))
         else:
             part.append("Net deposits " + conf.base + ": {:>20.4f}".format(net_deposits))
-            absolute_performance = wallet_balance - net_deposits
+            absolute_performance = bal['total'] - net_deposits
             relative_performance = round(100 / (net_deposits / absolute_performance), 2)
             sign = '+' if relative_performance > 0 else ''
-            part.append("Overall performance in " + conf.base + ": {:>10.4f} ({}%)".format(absolute_performance, sign + str(relative_performance)))
+            part.append("Overall performance in " + conf.base + ": {:>10.4f} ({}%)".format(absolute_performance, sign +
+                                                                                           str(relative_performance)))
         poi = get_position_info()
         sleep_for(1, 2)
-        part.append("Wallet balance " + conf.base + ": {:>18.4f}".format(wallet_balance))
+        part.append("Wallet balance " + conf.base + ": {:>18.4f}".format(get_wallet_balance()))
         append_price_and_margin_change(bal, part, conf.base)
-        part.append("Liquidation price: {:>16.1f}".format(poi['liquidationPrice']))
+        if 'liquidationPrice' in poi:
+            part.append("Liquidation price: {:>16.1f}".format(poi['liquidationPrice']))
         part.append("Used margin: {:>22.2f}%".format(calculate_used_margin_percentage(bal)))
-        part.append("Effective leverage: {:>15.2f}x".format(get_margin_leverage()))
+        if conf.exchange == 'liquid':
+            part.append("Effective leverage: {:>15}".format('n/a'))
+        else:
+            part.append("Effective leverage: {:>15.2f}x".format(get_margin_leverage()))
 
     elif conf.exchange == 'kraken':
+        part.append("Net deposits " + conf.base + ": {:>20}".format('n/a'))
+        part.append("Overall performance in " + conf.base + ": {:>10}".format('n/a'))
         append_price_and_margin_change(bal, part, conf.quote)
         part.append("Used margin: {:>22.2f}%".format(calculate_used_margin_percentage(bal)))
         part.append("Effective leverage: {:>16.1f}%".format(get_margin_leverage()))
