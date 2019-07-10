@@ -313,7 +313,7 @@ class HoldntradeTest(unittest.TestCase):
         conf.change = 0.005
         conf.quota = 4
         conf.spread_factor = 2
-        conf.order_btc_min = 0.0025
+        conf.order_crypto_min = 0.0025
         conf.bot_instance = 'test'
         return conf
 
