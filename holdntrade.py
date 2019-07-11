@@ -1200,8 +1200,8 @@ def append_balances(part: []):
             part.append("Effective leverage: {:>15.2f}x".format(get_margin_leverage()))
 
     elif conf.exchange == 'kraken':
-        part.append("Net deposits " + conf.base + ": {:>20}".format('n/a'))
-        part.append("Overall performance in " + conf.base + ": {:>10}".format('n/a'))
+        part.append("Net deposits " + conf.base + ": {:>17}".format('n/a'))
+        part.append("Overall performance in " + conf.base + ": {:>7}".format('n/a'))
         append_price_and_margin_change(bal, part, conf.quote)
         part.append("Used margin: {:>22.2f}%".format(calculate_used_margin_percentage(bal)))
         part.append("Effective leverage: {:>16.1f}%".format(get_margin_leverage()))
@@ -1216,7 +1216,7 @@ def append_price_and_margin_change(bal: dict, part: [], currency: str):
     formatter = 18.4 if currency == conf.base else 16.2
     m_bal = "Margin balance " + currency + ": {0:>{1}f}".format(today['mBal'], formatter)
     if 'mBalChan24' in today:
-        m_bal += " ("
+        m_bal += " (" if currency == conf.base else "   ("
         m_bal += "{0:{1}.2f}%".format(today['mBalChan24'], '+' if today['mBalChan24'] else '')
         if 'mBalChan48' in today:
             m_bal += ", {0:{1}.2f}%".format(today['mBalChan48'], '+' if today['mBalChan48'] else '')
@@ -1234,16 +1234,12 @@ def append_price_and_margin_change(bal: dict, part: [], currency: str):
 
 
 def write_csv(performance_part: dict, advice_part: dict, settings_part: dict):
-
     csv = conf.bot_instance + ';' + str(datetime.datetime.utcnow().replace(microsecond=0)) + ' UTC;' + (';'.join(performance_part) + ';' + ';'.join(
         advice_part) + ';' + ';'.join(settings_part) + '\n').replace('  ', '').replace(':', ':;')
 
-    if int(datetime.date.today().strftime("%j")) != 1:
-        with open(conf.bot_instance + '.csv', 'a') as f:
-            f.write(csv)
-    else:
-        with open(conf.bot_instance + '.csv', 'w') as f:
-            f.write(csv)
+    write_mode = 'a' if int(datetime.date.today().strftime("%j")) != 1 else 'w'
+    with open(conf.bot_instance + '.csv', write_mode) as f:
+        f.write(csv)
 
 
 def send_mail(subject: str, text: str, filename: str = None):
