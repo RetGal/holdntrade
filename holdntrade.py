@@ -1096,7 +1096,8 @@ def daily_report(immediately: bool = False):
 
     if conf.send_emails:
         now = datetime.datetime.utcnow()
-        if immediately or datetime.datetime(2012, 1, 17, 12, 20).time() > now.time() \
+        if (immediately and datetime.datetime(2012, 1, 17, 12, 20).time() < now.time()) \
+                or datetime.datetime(2012, 1, 17, 12, 20).time() > now.time() \
                 > datetime.datetime(2012, 1, 17, 12, 10).time() and email_sent != now.day:
             subject = "Daily report for {}".format(conf.bot_instance)
             filename = conf.bot_instance + '.csv'
