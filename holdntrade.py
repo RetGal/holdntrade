@@ -451,7 +451,8 @@ def delay_buy_order(crypto_price: float, price: float):
     """
     sleep_for(90, 180)
     daily_report()
-    adjust_leverage()
+    if conf.auto_leverage:
+        adjust_leverage()
     new_amount = round(get_balance()['free'] / conf.quota * get_current_price())  # recalculate order size
     return create_buy_order(update_price(crypto_price, price), new_amount)
 
