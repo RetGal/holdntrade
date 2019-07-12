@@ -50,7 +50,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.14"
+            self.bot_version = "1.12.15"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1087,15 +1087,15 @@ def write_control_file(filename: str):
         f.write(str(os.getpid()) + ' ' + filename)
 
 
-def daily_report():
+def daily_report(immediately: bool = False):
     """
-    Creates a daily report email around 12:10 UTC
+    Creates a daily report email around 12:10 UTC or immediately if told to do so
     """
     global email_sent
 
     if conf.send_emails:
         now = datetime.datetime.utcnow()
-        if datetime.datetime(2012, 1, 17, 12, 15).time() > now.time() \
+        if immediately or datetime.datetime(2012, 1, 17, 12, 20).time() > now.time() \
                 > datetime.datetime(2012, 1, 17, 12, 10).time() and email_sent != now.day:
             subject = "Daily report for {}".format(conf.bot_instance)
             filename = conf.bot_instance + '.csv'
@@ -1121,7 +1121,8 @@ def create_mail_content():
     bcs_url = 'https://bitcoin-schweiz.ch/bot/'
     text = '\n'.join(performance) + '\n'.join(advice) + '\n'.join(settings) + '\n'.join(general) + bcs_url + '\n\n'
 
-    write_csv(performance_part, advice_part, settings_part)
+    if not is_already_written():
+        write_csv(performance_part, advice_part, settings_part)
 
     return text
 
@@ -1245,6 +1246,12 @@ def write_csv(performance_part: dict, advice_part: dict, settings_part: dict):
     write_mode = 'a' if int(datetime.date.today().strftime("%j")) != 1 else 'w'
     with open(conf.bot_instance + '.csv', write_mode) as f:
         f.write(csv)
+
+
+def is_already_written():
+    with open(conf.bot_instance + '.csv', 'r') as f:
+        last_line = list(f)[-1]
+        return str(datetime.date.today().isoformat()) in last_line
 
 
 def send_mail(subject: str, text: str, filename: str = None):
@@ -1408,6 +1415,8 @@ if __name__ == '__main__':
         if len(sys.argv) > 2:
             if sys.argv[2] == '-ac':
                 auto_conf = True
+            elif sys.argv[2] == '-eo':
+                email_only = True
     else:
         filename = os.path.basename(input('Filename with API Keys (config): ') or 'config')
 
@@ -1418,6 +1427,10 @@ if __name__ == '__main__':
     log.info('Holdntrade version: {}'.format(conf.bot_version))
     exchange = connect_to_exchange(conf)
     stats = load_statistics()
+
+    if email_only:
+        daily_report(True)
+        exit(0)
 
     loop = init_orders(False, auto_conf)
 
