@@ -1129,10 +1129,10 @@ def create_mail_content():
 def create_mail_part_settings():
     return ["Rate change: {:>22.1f}%".format(conf.change*100),
             "Quota: {:>28}".format('1/' + str(conf.quota)),
-            "Leverage default: {:>17}".format(str(conf.leverage_default)),
+            "Leverage default: {:>17}x".format(str(conf.leverage_default)),
             "Auto leverage: {:>20}".format(str('Y' if conf.auto_leverage is True else 'N')),
-            "Leverage low: {:>21}".format(str(conf.leverage_low)),
-            "Leverage high: {:>20}".format(str(conf.leverage_high)),
+            "Leverage low: {:>21}x".format(str(conf.leverage_low)),
+            "Leverage high: {:>20}x".format(str(conf.leverage_high)),
             "Mayer multiple floor: {:>13}".format(str(conf.mm_floor)),
             "Mayer multiple ceil: {:>14}".format(str(conf.mm_ceil))]
 
@@ -1185,10 +1185,13 @@ def append_balances(part: []):
         else:
             part.append("Net deposits " + conf.base + ": {:>20.4f}".format(net_deposits))
             absolute_performance = bal['total'] - net_deposits
-            relative_performance = round(100 / (net_deposits / absolute_performance), 2)
-            sign = '+' if relative_performance > 0 else ''
-            part.append("Overall performance in " + conf.base + ": {:>10.4f} ({}%)".format(absolute_performance, sign +
-                                                                                           str(relative_performance)))
+            if absolute_performance < 0:
+                part.append("Overall performance in " + conf.base + ": {:>10}".format('n/a'))
+            else:
+                relative_performance = round(100 / (net_deposits / absolute_performance), 2)
+                sign = '+' if relative_performance > 0 else ''
+                part.append("Overall performance in " + conf.base + ": {:>10.4f} ({}%)".format(absolute_performance, sign +
+                                                                                               str(relative_performance)))
         poi = get_position_info()
         sleep_for(1, 2)
         part.append("Wallet balance " + conf.base + ": {:>18.4f}".format(get_wallet_balance()))
@@ -1388,7 +1391,7 @@ def set_leverage(new_leverage: float):
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if any(e in str(error.args) for e in no_recall):
-            log.warning('Insufficient available balance - not lowering leverage ' + str(amount))
+            log.warning('Insufficient available balance - not lowering leverage to ' + str(new_leverage))
             return
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
