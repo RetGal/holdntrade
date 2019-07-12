@@ -30,6 +30,7 @@ curr_buy_order_size = 0
 reset_counter = 0
 loop = False
 auto_conf = False
+email_only = False
 email_sent = 0
 started = datetime.datetime.utcnow().replace(microsecond=0)
 stats = None
@@ -1420,7 +1421,9 @@ if __name__ == '__main__':
     else:
         filename = os.path.basename(input('Filename with API Keys (config): ') or 'config')
 
-    write_control_file(filename)
+    if not email_only:
+        write_control_file(filename)
+
     log = function_logger(logging.DEBUG, filename, logging.INFO)
     log.info('-------------------------------')
     conf = ExchangeConfig(filename)
