@@ -50,7 +50,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.12"
+            self.bot_version = "1.12.13"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -449,8 +449,9 @@ def delay_buy_order(crypto_price: float, price: float):
     :param crypto_price: the crypto rate with which price was calculated
     :param price: the price of the original buy order to be created
     """
-    sleep_for(60, 120)
+    sleep_for(90, 180)
     daily_report()
+    adjust_leverage()
     new_amount = round(get_balance()['free'] / conf.quota * get_current_price())  # recalculate order size
     return create_buy_order(update_price(crypto_price, price), new_amount)
 
@@ -1325,7 +1326,11 @@ def fetch_mayer(tries: int = 0):
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, requests.exceptions.ReadTimeout) as error:
         log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
         sleep_for(4, 6)
-        return fetch_mayer(tries+1) if tries < 4 else None
+        if tries < 4:
+            return fetch_mayer(tries+1)
+        else:
+            log.warning('Failed to fetch Mayer multiple, giving up after 4 attempts')
+            return None
 
 
 def print_mayer():
