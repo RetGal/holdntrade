@@ -3,6 +3,7 @@ import configparser
 import datetime
 import inspect
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 import pickle
 import random
@@ -14,7 +15,6 @@ from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from logging.handlers import RotatingFileHandler
 
 import ccxt
 import requests
@@ -51,7 +51,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.15"
+            self.bot_version = "1.12.16"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -94,27 +94,26 @@ class OpenOrdersSummary:
         self.total_sell_order_value = 0
         self.total_buy_order_value = 0
 
-        if len(open_orders):
-            for oo in open_orders:
-                o = Order(oo)
-                self.orders.append(o)
-                if o.side == 'sell':
-                    if conf.exchange == 'kraken':
-                        self.total_sell_order_value += o.amount * o.price
-                    else:
-                        self.total_sell_order_value += o.amount
-                    self.sell_orders.append(o)
-                elif o.side == 'buy':
-                    if conf.exchange == 'kraken':
-                        self.total_buy_order_value += o.amount * o.price
-                    else:
-                        self.total_buy_order_value += o.amount
-                    self.buy_orders.append(o)
+        for oo in open_orders:
+            o = Order(oo)
+            self.orders.append(o)
+            if o.side == 'sell':
+                if conf.exchange == 'kraken':
+                    self.total_sell_order_value += o.amount * o.price
                 else:
-                    log.error(inspect.stack()[1][3], ' ?!?')
+                    self.total_sell_order_value += o.amount
+                self.sell_orders.append(o)
+            elif o.side == 'buy':
+                if conf.exchange == 'kraken':
+                    self.total_buy_order_value += o.amount * o.price
+                else:
+                    self.total_buy_order_value += o.amount
+                self.buy_orders.append(o)
+            else:
+                log.error(inspect.stack()[1][3], ' ?!?')
 
-            self.sell_orders = sorted(self.sell_orders, key=lambda order: order.price, reverse=True)  # desc
-            self.buy_orders = sorted(self.buy_orders, key=lambda order: order.price, reverse=True)  # desc
+        self.sell_orders = sorted(self.sell_orders, key=lambda order: order.price, reverse=True)  # desc
+        self.buy_orders = sorted(self.buy_orders, key=lambda order: order.price, reverse=True)  # desc
 
 
 class Order:
@@ -241,7 +240,7 @@ def sell_executed(price: float, amount: int):
                 sell_orders.remove(order)
             log.info('Sell executed')
             adjust_leverage()
-            if len(sell_orders) == 0:
+            if not sell_orders:
                 create_divided_sell_order()
             cancel_current_buy_order()
             if not create_buy_order(price, amount):
@@ -294,7 +293,7 @@ def create_sell_order(fixed_order_size: int = None):
                 rate = get_current_price()
                 new_order = exchange.create_limit_sell_order(conf.pair, to_crypto_amount(order_size, rate), sell_price,
                                                              {'leverage_level': conf.leverage_default,
-                                                             'funding_currency': conf.base})
+                                                              'funding_currency': conf.base})
             order = Order(new_order)
             sell_orders.append(order)
             log.info('Created ' + str(order))
@@ -303,7 +302,7 @@ def create_sell_order(fixed_order_size: int = None):
         if any(e in str(error.args) for e in no_recall):
             log.error('Insufficient funds - not selling ' + str(order_size))
             return
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sell_price = round(get_current_price() * (1 + conf.change))
         return create_sell_order(fixed_order_size)
 
@@ -331,7 +330,7 @@ def create_divided_sell_order():
                 rate = get_current_price()
                 new_order = exchange.create_limit_sell_order(conf.pair, to_crypto_amount(amount, rate), sell_price,
                                                              {'leverage_level': conf.leverage_default,
-                                                             'funding_currency': conf.base})
+                                                              'funding_currency': conf.base})
             order = Order(new_order)
             sell_orders.append(order)
             log.info('Created ' + str(order))
@@ -340,7 +339,7 @@ def create_divided_sell_order():
         if any(e in str(error.args) for e in no_recall):
             log.error('Insufficient funds - not selling ' + str(amount))
             return
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sell_price = round(get_current_price() * (1 + conf.change))
         return create_divided_sell_order()
 
@@ -355,7 +354,7 @@ def fetch_order_status(order_id: str):
         return exchange.fetch_order_status(order_id)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return fetch_order_status(order_id)
 
@@ -370,13 +369,13 @@ def cancel_order(order: Order):
             if status == 'open':
                 exchange.cancel_order(order.id)
             else:
-                log.warning('Order to be canceled {} was in state '.format(order.id) + status)
+                log.warning('Order to be canceled %s was in state %s', order.id, status)
 
     except ccxt.OrderNotFound as error:
-        log.error('Order to be canceled not found ' + order.id + error.args)
+        log.error('Order to be canceled not found %s %s', order.id, str(error.args))
         return
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return cancel_order(order)
 
@@ -413,32 +412,31 @@ def create_buy_order(price: float, amount: int):
             elif conf.exchange == 'liquid':
                 new_order = exchange.create_limit_buy_order(conf.pair, to_crypto_amount(amount, curr_price), buy_price,
                                                             {'leverage_level': conf.leverage_default,
-                                                            'funding_currency': conf.base})
+                                                             'funding_currency': conf.base})
             order = Order(new_order)
             log.info('Created ' + str(order))
             curr_buy_order = order
             buy_orders.append(order)
             return True
-        elif len(sell_orders) > 0:
+        if sell_orders:
             log.info('Could not create buy order, waiting for a sell order to be realised')
             return delay_buy_order(curr_price, price)
-        else:
-            log.warning('Could not create buy order over {} and there are no open sell orders, reset required'
-                        .format(str(amount)))
-            return False
+
+        log.warning('Could not create buy order over %s and there are no open sell orders, reset required', str(amount))
+        return False
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if any(e in str(error.args) for e in no_recall):
-            if len(sell_orders) > 0:
+            if sell_orders:
                 log.info(
-                    'Could not create buy order over {}, insufficient margin, waiting for a sell order to be realised'.format(
-                        str(amount)))
+                    'Could not create buy order over %s, insufficient margin, waiting for a sell order to be realised',
+                    str(amount))
                 return delay_buy_order(curr_price, price)
-            else:
-                log.warning('Could not create buy order over {}, insufficient margin'.format(str(amount)))
-                return False
+
+            log.warning('Could not create buy order over %s, insufficient margin', str(amount))
+            return False
         else:
-            log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+            log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
             sleep_for(4, 6)
             return create_buy_order(update_price(curr_price, price), amount)
 
@@ -487,9 +485,9 @@ def create_market_sell_order(amount_crypto: float):
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if any(e in str(error.args) for e in no_recall):
-            log.error('Insufficient balance/funds - not selling ' + str(amount))
+            log.error('Insufficient balance/funds - not selling %s', str(amount))
             return
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return create_market_sell_order(amount_crypto)
 
@@ -513,7 +511,8 @@ def create_market_buy_order(amount_crypto: float):
             if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
                 new_order = exchange.create_market_buy_order(conf.pair, amount)
             elif conf.exchange == 'kraken':
-                new_order = exchange.create_market_buy_order(conf.pair, amount_crypto, {'leverage': conf.leverage_default, 'oflags': 'fcib'})
+                new_order = exchange.create_market_buy_order(conf.pair, amount_crypto,
+                                                             {'leverage': conf.leverage_default, 'oflags': 'fcib'})
             elif conf.exchange == 'liquid':
                 new_order = exchange.create_market_buy_order(conf.pair, amount_crypto,
                                                              {'leverage_level': conf.leverage_default,
@@ -524,10 +523,10 @@ def create_market_buy_order(amount_crypto: float):
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if "not_enough_free" or "free_margin_below" in str(error.args):
-            log.error('Not enough free margin/balance ' + type(error).__name__ + str(error.args))
+            log.error('Not enough free margin/balance %s %s', type(error).__name__, str(error.args))
             return
 
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return create_market_buy_order(amount_crypto)
 
@@ -539,15 +538,15 @@ def get_margin_leverage():
     try:
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
             return exchange.fetch_balance()['info'][0]['marginLeverage']
-        elif conf.exchange == 'kraken':
+        if conf.exchange == 'kraken':
             return float(exchange.private_post_tradebalance()['result']['ml'])
-        elif conf.exchange == 'liquid':
+        if conf.exchange == 'liquid':
             # TODO poi = get_position_info()
-            log.error("get_margin_leverage() not yet implemented for " + conf.exchange)
+            log.error("get_margin_leverage() not yet implemented for %s", conf.exchange)
             return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_margin_leverage()
 
@@ -559,9 +558,9 @@ def get_wallet_balance():
     try:
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
             return exchange.fetch_balance()['info'][0]['walletBalance'] * conf.satoshi_factor
-        elif conf.exchange == 'kraken':
+        if conf.exchange == 'kraken':
             return float(exchange.private_post_tradebalance()['result']['tb'])
-        elif conf.exchange == 'liquid':
+        if conf.exchange == 'liquid':
             result = exchange.private_get_accounts_balance()
             if result is not None:
                 for b in result:
@@ -569,7 +568,7 @@ def get_wallet_balance():
                         return float(b['balance'])
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_wallet_balance()
 
@@ -585,24 +584,25 @@ def get_balance():
             if bal['used'] is None:
                 bal['used'] = 0
             return bal
-        else:
-            bal = None
-            result = exchange.private_get_trading_accounts()
+
+        bal = None
+        result = exchange.private_get_trading_accounts()
+        if result is not None:
+            for acc in result:
+                if acc['currency_pair_code'] == conf.symbol and float(acc['margin']) > 0:
+                    bal = {'used': float(acc['margin']), 'free': float(acc['free_margin']),
+                           'total': float(acc['equity'])}
+        if bal is None:
+            # no position => return wallet balance
+            result = exchange.private_get_accounts_balance()
             if result is not None:
-                for acc in result:
-                    if acc['currency_pair_code'] == conf.symbol and float(acc['margin']) > 0:
-                        bal = {'used': float(acc['margin']), 'free': float(acc['free_margin']), 'total': float(acc['equity'])}
-            if bal is None:
-                # no position => return wallet balance
-                result = exchange.private_get_accounts_balance()
-                if result is not None:
-                    for b in result:
-                        if b['currency'] == conf.base:
-                            bal = {'used': 0, 'free': float(b['balance']), 'total': float(b['balance'])}
-            return bal
+                for b in result:
+                    if b['currency'] == conf.base:
+                        bal = {'used': 0, 'free': float(b['balance']), 'total': float(b['balance'])}
+        return bal
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_balance()
 
@@ -615,14 +615,14 @@ def get_used_balance():
     try:
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
             return exchange.private_get_position()[0]['currentQty']
-        elif conf.exchange == 'kraken':
+        if conf.exchange == 'kraken':
             result = exchange.private_post_tradebalance()['result']
             return round(float(result['e']) - float(result['mf']))
-        elif conf.exchange == 'liquid':
+        if conf.exchange == 'liquid':
             return round(get_balance()['used'] * get_current_price())
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_used_balance()
 
@@ -637,12 +637,11 @@ def get_net_deposits():
             currency = conf.base if conf.base != 'BTC' else 'XBt'
             result = exchange.private_get_user_wallet({'currency': currency})
             return (result['deposited'] - result['withdrawn']) * conf.satoshi_factor
-        else:
-            log.error("get_net_deposit() not yet implemented for " + conf.exchange)
-            return None
+        log.error("get_net_deposit() not yet implemented for %s", conf.exchange)
+        return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_net_deposits()
 
@@ -657,10 +656,10 @@ def get_position_info():
             if response and response[0] and response[0]['avgEntryPrice']:
                 return response[0]
             return None
-        elif conf.exchange == 'kraken':
+        if conf.exchange == 'kraken':
             log.error("get_position_info() not yet implemented for kraken")
             return
-        elif conf.exchange == 'liquid':
+        if conf.exchange == 'liquid':
             response = exchange.private_get_trading_accounts()
             for pos in response:
                 if pos['currency_pair_code'] == conf.symbol and pos['funding_currency'] == conf.base and \
@@ -669,7 +668,7 @@ def get_position_info():
             return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_position_info()
 
@@ -688,7 +687,7 @@ def compensate():
             bal['used'] = float(bal['m'])
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return compensate()
 
@@ -711,7 +710,7 @@ def spread(market_price: float):
     If so, then the highest buy order is canceled and a new buy and sell order are created with the configured offset
     to the market price
     """
-    if len(buy_orders) > 0 and len(sell_orders) > 0:
+    if buy_orders and sell_orders:
         highest_buy_order = sorted(buy_orders, key=lambda order: order.price, reverse=True)[0]
         if highest_buy_order.price < market_price * (1 - conf.change * conf.spread_factor):
             lowest_sell_order = sorted(sell_orders, key=lambda order: order.price)[0]
@@ -740,7 +739,7 @@ def get_margin_balance():
         return bal
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_margin_balance()
 
@@ -763,10 +762,9 @@ def calc_avg_entry_price(open_orders: [Order]):
     """
     total_amount = 0
     total_price = 0
-    if len(open_orders) > 0:
-        for o in open_orders:
-            total_amount += o.amount
-            total_price += o.price * o.amount
+    for o in open_orders:
+        total_amount += o.amount
+        total_price += o.price * o.amount
     if total_amount > 0:
         return total_price / total_amount
     return 0
@@ -782,7 +780,7 @@ def get_current_price():
         return exchange.fetch_ticker(conf.pair)['bid']
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         return get_current_price()
 
 
@@ -837,20 +835,20 @@ def init_orders(force_close: bool, auto_conf: bool):
                 init = input('There are open orders! Would you like to load them? (y/n) ')
             if not force_close and (auto_conf or init.lower() in ['y', 'yes']):
                 return load_existing_orders(oos)
+
+            log.info('Unrealised PNL: {} {}'.format(str(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor), conf.base))
+            if force_close:
+                cancel_orders(oos.orders)
             else:
-                log.info('Unrealised PNL: {} {}'.format(str(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor), conf.base))
-                if force_close:
+                clear_position = input('There is an open ' + conf.base + ' position! Would you like to close it? (y/n) ')
+                if clear_position.lower() in ['y', 'yes']:
                     cancel_orders(oos.orders)
+                    close_position(conf.symbol)
                 else:
-                    clear_position = input('There is an open ' + conf.base + ' position! Would you like to close it? (y/n) ')
-                    if clear_position.lower() in ['y', 'yes']:
-                        cancel_orders(oos.orders)
-                        close_position(conf.symbol)
-                    else:
-                        compensate_position = input('Would you like to compensate to 50%? (y/n) ')
-                        if compensate_position.lower() in ['n', 'no']:
-                            # No "compensate" wanted
-                            return True
+                    compensate_position = input('Would you like to compensate to 50%? (y/n) ')
+                    if compensate_position.lower() in ['n', 'no']:
+                        # No "compensate" wanted
+                        return True
 
         # Handle open positions if no orders are open
         elif not force_close and not auto_conf and get_open_position(conf.symbol) is not None:
@@ -861,7 +859,7 @@ def init_orders(force_close: bool, auto_conf: bool):
                 close_position(conf.symbol)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return init_orders(force_close, auto_conf)
 
@@ -907,13 +905,13 @@ def cancel_orders(orders: [Order]):
             if status == 'open':
                 exchange.cancel_order(o.id)
             else:
-                log.warning('Cancel ' + str(o) + ' was in state ' + status)
+                log.warning('Cancel %s was in state %s', str(o), status)
 
     except ccxt.OrderNotFound as error:
-        log.error('Cancel ' + str(o) + ' not found :' + error.args)
+        log.error('Cancel %s not found : %s', str(o), str(error.args))
         return
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return cancel_orders(orders)
 
@@ -935,7 +933,7 @@ def close_position(symbol: str):
         # no retry in case of "no volume to close position" (kraken specific error)
         if "volume to close position" in str(error.args):
             return
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return close_position(symbol)
 
@@ -964,7 +962,7 @@ def get_open_position(symbol: str):
         return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_open_position(symbol)
 
@@ -978,7 +976,7 @@ def get_open_orders():
         return OpenOrdersSummary(exchange.fetch_open_orders(conf.pair, since=None, limit=None, params={}))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_open_orders()
 
@@ -992,11 +990,10 @@ def get_unrealised_pnl(symbol: str):
     try:
         if get_open_position(symbol) is not None:
             return float(get_open_position(symbol)['unrealisedPnl'])
-        else:
-            return 0.0
+        return 0.0
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_unrealised_pnl(symbol)
 
@@ -1074,7 +1071,7 @@ def is_order_below_limit(amount: int, price: float):
 
 def is_crypto_amount_below_limit(amount_crypto: float):
     if abs(amount_crypto) < conf.order_crypto_min:
-        log.info('Per order volume below limit: ' + str(abs(amount_crypto)))
+        log.info('Per order volume below limit: %s', str(abs(amount_crypto)))
         return True
     return False
 
@@ -1091,6 +1088,7 @@ def write_control_file(filename: str):
 def daily_report(immediately: bool = False):
     """
     Creates a daily report email around 12:10 UTC or immediately if told to do so
+    It also triggers the creation of the daily stats, which will be persisted
     """
     global email_sent
 
@@ -1100,44 +1098,55 @@ def daily_report(immediately: bool = False):
                 or datetime.datetime(2012, 1, 17, 12, 20).time() > now.time() \
                 > datetime.datetime(2012, 1, 17, 12, 10).time() and email_sent != now.day:
             subject = "Daily report for {}".format(conf.bot_instance)
-            filename = conf.bot_instance + '.csv'
-            send_mail(subject, create_mail_content(), filename)
+            content = create_mail_content()
+            filename_csv = conf.bot_instance + '.csv'
+            write_csv(content['csv'], filename_csv)
+            send_mail(subject, content['text'], filename_csv)
             email_sent = now.day
 
 
 def create_mail_content():
     """
-    Fetches the data required for the daily report email
-    :return: mailcontent: str
+    Fetches and formats the data required for the daily report email
+    :return: dict: text: str, csv: str
     """
-    performance_part = create_mail_part_performance()
-    advice_part = create_mail_part_advice()
-    settings_part = create_mail_part_settings()
+    performance_part = create_report_part_performance()
+    advice_part = create_report_part_advice()
+    settings_part = create_report_part_settings()
     general_part = create_mail_part_general()
 
-    performance = ["Performance", "-----------", '\n'.join(performance_part) + '\n* (change within 24 hours, 48 hours)', '\n\n']
-    advice = ["Assessment / advice", "-------------------", '\n'.join(advice_part), '\n\n']
-    settings = ["Your settings", "-------------", '\n'.join(settings_part), '\n\n']
+    performance = ["Performance", "-----------", '\n'.join(performance_part['mail']) + '\n* (change within 24 hours, 48 hours)', '\n\n']
+    advice = ["Assessment / advice", "-------------------", '\n'.join(advice_part['mail']), '\n\n']
+    settings = ["Your settings", "-------------", '\n'.join(settings_part['mail']), '\n\n']
     general = ["General", "-------", '\n'.join(general_part), '\n\n']
 
     bcs_url = 'https://bitcoin-schweiz.ch/bot/'
-    text = '\n'.join(performance) + '\n'.join(advice) + '\n'.join(settings) + '\n'.join(general) + bcs_url + '\n\n'
+    explanation = 'Erläuterungen zu diesem Rapport: https://bitcoin-schweiz.ch/wp-content/uploads/2019/07/Tagesrapport.pdf'
+    text = '\n'.join(performance) + '\n'.join(advice) + '\n'.join(settings) + '\n'.join(general) + bcs_url + '\n\n' + explanation + '\n'
 
-    if not is_already_written():
-        write_csv(performance_part, advice_part, settings_part)
+    csv = conf.bot_instance + ';' + str(datetime.datetime.utcnow().replace(microsecond=0)) + ' UTC;' + (';'.join(performance_part) + ';' + ';'.join(
+        advice_part) + ';' + ';'.join(settings_part) + '\n')
 
-    return text
+    return {'text': text, 'csv': csv}
 
 
-def create_mail_part_settings():
-    return ["Rate change: {:>22.1f}%".format(conf.change*100),
-            "Quota: {:>28}".format('1/' + str(conf.quota)),
-            "Leverage default: {:>17}x".format(str(conf.leverage_default)),
-            "Auto leverage: {:>20}".format(str('Y' if conf.auto_leverage is True else 'N')),
-            "Leverage low: {:>21}x".format(str(conf.leverage_low)),
-            "Leverage high: {:>20}x".format(str(conf.leverage_high)),
-            "Mayer multiple floor: {:>13}".format(str(conf.mm_floor)),
-            "Mayer multiple ceil: {:>14}".format(str(conf.mm_ceil))]
+def create_report_part_settings():
+    return {'mail': ["Rate change: {:>22.1f}%".format(conf.change * 100),
+                     "Quota: {:>28}".format('1/' + str(conf.quota)),
+                     "Leverage default: {:>17}x".format(str(conf.leverage_default)),
+                     "Auto leverage: {:>20}".format(str('Y' if conf.auto_leverage is True else 'N')),
+                     "Leverage low: {:>21}x".format(str(conf.leverage_low)),
+                     "Leverage high: {:>20}x".format(str(conf.leverage_high)),
+                     "Mayer multiple floor: {:>13}".format(str(conf.mm_floor)),
+                     "Mayer multiple ceil: {:>14}".format(str(conf.mm_ceil))],
+            'csv': ["Rate change:; {:.1f}%".format(float(conf.change * 100)),
+                    "Quota:; {:.3f}".format(1 / conf.quota),
+                    "Leverage default:; {}".format(str(conf.leverage_default)),
+                    "Auto leverage:; {}".format(str('Y' if conf.auto_leverage is True else 'N')),
+                    "Leverage low:; {}".format(str(conf.leverage_low)),
+                    "Leverage high:; {}".format(str(conf.leverage_high)),
+                    "Mayer multiple floor:; {}".format(str(conf.mm_floor)),
+                    "Mayer multiple ceil:; {}".format(str(conf.mm_ceil))]}
 
 
 def create_mail_part_general():
@@ -1152,28 +1161,33 @@ def create_mail_part_general():
     return general
 
 
-def create_mail_part_advice():
-    part = ["Moving average 144d/21d: {:>10}".format('n/a')]
+def create_report_part_advice():
+    part = {'mail':["Moving average 144d/21d: {:>10}".format('n/a')],
+            'csv':["Moving average 144d/21d:; {}".format('n/a')]}
     append_mayer(part)
     return part
 
 
-def create_mail_part_performance():
-    part = []
+def create_report_part_performance():
+    part = {'mail': [], 'csv': []}
     append_balances(part)
     append_orders(part)
     return part
 
 
-def append_orders(part: []):
+def append_orders(part: dict):
     oos = get_open_orders()
-    part.append("Value of buy orders " + conf.quote + ": {:>10}".format(int(oos.total_buy_order_value)))
-    part.append("Value of sell orders " + conf.quote + ": {:>9}".format(int(oos.total_sell_order_value)))
-    part.append("No. of buy orders: {:>16}".format(len(oos.buy_orders)))
-    part.append("No. of sell orders: {:>15}".format(len(oos.sell_orders)))
+    part['mail'].append("Value of buy orders " + conf.quote + ": {:>10}".format(int(oos.total_buy_order_value)))
+    part['mail'].append("Value of sell orders " + conf.quote + ": {:>9}".format(int(oos.total_sell_order_value)))
+    part['mail'].append("No. of buy orders: {:>16}".format(len(oos.buy_orders)))
+    part['mail'].append("No. of sell orders: {:>15}".format(len(oos.sell_orders)))
+    part['csv'].append("Value of buy orders " + conf.quote + ":; {}".format(int(oos.total_buy_order_value)))
+    part['csv'].append("Value of sell orders " + conf.quote + ":; {}".format(int(oos.total_sell_order_value)))
+    part['csv'].append("No. of buy orders:; {}".format(len(oos.buy_orders)))
+    part['csv'].append("No. of sell orders:; {}".format(len(oos.sell_orders)))
 
 
-def append_balances(part: []):
+def append_balances(part: dict):
     """
     Adds liquidation price, wallet balance, margin balance (including stats), used margin and leverage information
     """
@@ -1183,41 +1197,59 @@ def append_balances(part: []):
     if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
         net_deposits = get_net_deposits()
         if net_deposits is None:
-            part.append("Net deposits " + conf.base + ": {:>17}".format('n/a'))
-            part.append("Overall performance in " + conf.base + ": {:>7}".format('n/a'))
+            part['mail'].append("Net deposits " + conf.base + ": {:>17}".format('n/a'))
+            part['mail'].append("Overall performance in " + conf.base + ": {:>7}".format('n/a'))
+            part['csv'].append("Net deposits " + conf.base + ":; {}".format('n/a'))
+            part['csv'].append("Overall performance in " + conf.base + ":; {}".format('n/a'))
         else:
-            part.append("Net deposits " + conf.base + ": {:>20.4f}".format(net_deposits))
-            absolute_performance = bal['total'] - net_deposits
-            if absolute_performance < 0:
-                part.append("Overall performance in " + conf.base + ": {:>10}".format('n/a'))
+            part['mail'].append("Net deposits " + conf.base + ": {:>20.4f}".format(net_deposits))
+            part['csv'].append("Net deposits " + conf.base + ":; {:.4f}".format(net_deposits))
+            if net_deposits < 0:
+                part['mail'].append("Overall performance in " + conf.base + ": {:>10}".format('n/a'))
+                part['csv'].append("Overall performance in " + conf.base + ":; {}".format('n/a'))
             else:
+                absolute_performance = bal['total'] - net_deposits
                 relative_performance = round(100 / (net_deposits / absolute_performance), 2)
                 sign = '+' if relative_performance > 0 else ''
-                part.append("Overall performance in " + conf.base + ": {:>10.4f} ({}%)".format(absolute_performance, sign +
-                                                                                               str(relative_performance)))
+                part['mail'].append(
+                    "Overall performance in " + conf.base + ": {:>10.4f} ({}%)".format(absolute_performance, sign +
+                                                                                       str(relative_performance)))
+                part['csv'].append(
+                    "Overall performance in " + conf.base + ":; {:.4f} ({}%)".format(absolute_performance, sign +
+                                                                                     str(relative_performance)))
         poi = get_position_info()
         sleep_for(1, 2)
-        part.append("Wallet balance " + conf.base + ": {:>18.4f}".format(get_wallet_balance()))
+        part['mail'].append("Wallet balance " + conf.base + ": {:>18.4f}".format(get_wallet_balance()))
+        part['csv'].append("Wallet balance " + conf.base + ":; {:.4f}".format(get_wallet_balance()))
         append_price_and_margin_change(bal, part, conf.base)
         if 'liquidationPrice' in poi:
-            part.append("Liquidation price: {:>16.1f}".format(poi['liquidationPrice']))
-        part.append("Used margin: {:>22.2f}%".format(calculate_used_margin_percentage(bal)))
+            part['mail'].append("Liquidation price: {:>16.1f}".format(poi['liquidationPrice']))
+            part['csv'].append("Liquidation price:; {:.1f}".format(poi['liquidationPrice']))
+        part['mail'].append("Used margin: {:>22.2f}%".format(calculate_used_margin_percentage(bal)))
+        part['csv'].append("Used margin:; {:.2f}%".format(calculate_used_margin_percentage(bal)))
         if conf.exchange == 'liquid':
-            part.append("Effective leverage: {:>15}".format('n/a'))
+            part['mail'].append("Effective leverage: {:>15}".format('n/a'))
+            part['csv'].append("Effective leverage:; {}".format('n/a'))
         else:
-            part.append("Effective leverage: {:>15.2f}x".format(get_margin_leverage()))
+            part['mail'].append("Effective leverage: {:>15.2f}x".format(get_margin_leverage()))
+            part['csv'].append("Effective leverage:; {:.2f}".format(get_margin_leverage()))
 
     elif conf.exchange == 'kraken':
-        part.append("Net deposits " + conf.base + ": {:>17}".format('n/a'))
-        part.append("Overall performance in " + conf.base + ": {:>7}".format('n/a'))
+        part['mail'].append("Net deposits " + conf.base + ": {:>17}".format('n/a'))
+        part['mail'].append("Overall performance in " + conf.base + ": {:>7}".format('n/a'))
+        part['csv'].append("Net deposits " + conf.base + ":; {}".format('n/a'))
+        part['csv'].append("Overall performance in " + conf.base + ":; {}".format('n/a'))
         append_price_and_margin_change(bal, part, conf.quote)
-        part.append("Used margin: {:>22.2f}%".format(calculate_used_margin_percentage(bal)))
-        part.append("Effective leverage: {:>16.1f}%".format(get_margin_leverage()))
+        part['mail'].append("Used margin: {:>22.2f}%".format(calculate_used_margin_percentage(bal)))
+        part['mail'].append("Effective leverage: {:>16.1f}%".format(get_margin_leverage()))
+        part['csv'].append("Used margin:; {:.2f}%".format(calculate_used_margin_percentage(bal)))
+        part['csv'].append("Effective leverage:; {:.1f}%".format(get_margin_leverage()))
 
-    part.append("Position " + conf.quote + ": {:>21}".format(get_used_balance()))
+    part['mail'].append("Position " + conf.quote + ": {:>21}".format(get_used_balance()))
+    part['csv'].append("Position " + conf.quote + ":; {}".format(get_used_balance()))
 
 
-def append_price_and_margin_change(bal: dict, part: [], currency: str):
+def append_price_and_margin_change(bal: dict, part: dict, currency: str):
     price = get_current_price()
     today = calculate_daily_statistics(bal['total'], price)
 
@@ -1229,7 +1261,8 @@ def append_price_and_margin_change(bal: dict, part: [], currency: str):
         if 'mBalChan48' in today:
             m_bal += ", {0:{1}.2f}%".format(today['mBalChan48'], '+' if today['mBalChan48'] else '')
         m_bal += ")*"
-    part.append(m_bal)
+    part['mail'].append(m_bal)
+    part['csv'].append(m_bal.replace('*', '').replace('  ', '').replace(':', ':;'))
 
     rate = conf.base + " price " + conf.quote + ": {:>20.1f}".format(price)
     if 'priceChan24' in today:
@@ -1238,20 +1271,19 @@ def append_price_and_margin_change(bal: dict, part: [], currency: str):
         if 'priceChan48' in today:
             rate += ", {0:{1}.2f}%".format(today['priceChan48'], '+' if today['priceChan48'] else '')
         rate += ")*"
-    part.append(rate)
+    part['mail'].append(rate)
+    part['csv'].append(rate.replace('*', '').replace('  ', '').replace(':', ':;'))
 
 
-def write_csv(performance_part: dict, advice_part: dict, settings_part: dict):
-    csv = conf.bot_instance + ';' + str(datetime.datetime.utcnow().replace(microsecond=0)) + ' UTC;' + (';'.join(performance_part) + ';' + ';'.join(
-        advice_part) + ';' + ';'.join(settings_part) + '\n').replace('  ', '').replace(':', ':;')
-
-    write_mode = 'a' if int(datetime.date.today().strftime("%j")) != 1 else 'w'
-    with open(conf.bot_instance + '.csv', write_mode) as f:
-        f.write(csv)
+def write_csv(csv: str, filename_csv: str):
+    if not is_already_written(filename_csv):
+        write_mode = 'a' if int(datetime.date.today().strftime("%j")) != 1 else 'w'
+        with open(filename_csv, write_mode) as f:
+            f.write(csv)
 
 
-def is_already_written():
-    with open(conf.bot_instance + '.csv', 'r') as f:
+def is_already_written(filename_csv: str):
+    with open(filename_csv, 'r') as f:
         last_line = list(f)[-1]
         return str(datetime.date.today().isoformat()) in last_line
 
@@ -1264,19 +1296,18 @@ def send_mail(subject: str, text: str, filename: str = None):
     msg['To'] = recipients
 
     readable_part = MIMEMultipart('alternative')
-    readable_part.attach(MIMEText(text, 'plain'))
+    readable_part.attach(MIMEText(text, 'plain', 'utf-8'))
     html = '<html><body><pre style="font:monospace">' + text + '</pre></body></html>'
-    readable_part.attach(MIMEText(html, 'html'))
+    readable_part.attach(MIMEText(html, 'html', 'utf-8'))
     msg.attach(readable_part)
 
-    if filename:
-        if os.path.isfile(filename):
-            part = MIMEBase('application', 'octet-stream')
-            with open(filename, "rb") as f:
-                part.set_payload(f.read())
-            encoders.encode_base64(part)
-            part.add_header('Content-Disposition', "attachment; filename= %s" % filename)
-            msg.attach(part)
+    if filename and os.path.isfile(filename):
+        part = MIMEBase('application', 'octet-stream')
+        with open(filename, "rb") as f:
+            part.set_payload(f.read())
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition', "attachment; filename={}".format(filename))
+        msg.attach(part)
 
     server = smtplib.SMTP(conf.mail_server, 587)
     server.starttls()
@@ -1284,7 +1315,7 @@ def send_mail(subject: str, text: str, filename: str = None):
     server.login(conf.sender_address, conf.sender_password)
     server.send_message(msg)
     server.quit()
-    log.info("Sent email to {}".format(recipients))
+    log.info("Sent email to %s", recipients)
 
 
 def calculate_daily_statistics(m_bal: float, price: float):
@@ -1337,13 +1368,12 @@ def fetch_mayer(tries: int = 0):
         return float(r.json()['data']['current_mayer_multiple'])
 
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, requests.exceptions.ReadTimeout) as error:
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         if tries < 4:
             return fetch_mayer(tries+1)
-        else:
-            log.warning('Failed to fetch Mayer multiple, giving up after 4 attempts')
-            return None
+        log.warning('Failed to fetch Mayer multiple, giving up after 4 attempts')
+        return None
 
 
 def print_mayer():
@@ -1351,17 +1381,17 @@ def print_mayer():
     if mayer is not None:
         if mayer < 1.39:
             return "Mayer multiple: {:>19.2f} (low: buy)".format(mayer)
-        elif mayer > 2.4:
+        if mayer > 2.4:
             return "Mayer multiple: {:>19.2f} (high: sell)".format(mayer)
-        else:
-            return "Mayer multiple: {:>19.2f} (hold)".format(mayer)
+        return "Mayer multiple: {:>19.2f} (hold)".format(mayer)
     return
 
 
-def append_mayer(part: []):
+def append_mayer(part: dict):
     text = print_mayer()
     if text is not None:
-        part.append(text)
+        part['mail'].append(text)
+        part['csv'].append(text.replace('  ', '').replace(':', ':;'))
 
 
 def adjust_leverage():
@@ -1381,7 +1411,7 @@ def adjust_leverage():
                 elif leverage < conf.leverage_default:
                     set_leverage(leverage + 0.1)
         else:
-            log.error("adjust_leverage() not yet implemented for " + conf.exchange)
+            log.error("adjust_leverage() not yet implemented for %s", conf.exchange)
 
 
 def get_leverage():
@@ -1389,7 +1419,7 @@ def get_leverage():
         return float(exchange.private_get_position({'symbol': conf.symbol})[0]['leverage'])
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_leverage()
 
@@ -1400,9 +1430,9 @@ def set_leverage(new_leverage: float):
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if any(e in str(error.args) for e in no_recall):
-            log.warning('Insufficient available balance - not lowering leverage to ' + str(new_leverage))
+            log.warning('Insufficient available balance - not lowering leverage to {:.1f}'.format(new_leverage))
             return
-        log.error('Got an error ' + type(error).__name__ + str(error.args) + ', retrying in about 5 seconds...')
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return set_leverage(new_leverage)
 
@@ -1428,7 +1458,7 @@ if __name__ == '__main__':
     log = function_logger(logging.DEBUG, filename, logging.INFO)
     log.info('-------------------------------')
     conf = ExchangeConfig(filename)
-    log.info('Holdntrade version: {}'.format(conf.bot_version))
+    log.info('Holdntrade version: %s', conf.bot_version)
     exchange = connect_to_exchange(conf)
     stats = load_statistics()
 
@@ -1446,7 +1476,7 @@ if __name__ == '__main__':
             daily_report()
             buy_executed(market_price, amount)
             sell_executed(market_price, amount)
-            if len(sell_orders) == 0:
+            if not sell_orders:
                 log.info('No sell orders, resetting all orders')
                 loop = init_orders(True, False)
             else:
