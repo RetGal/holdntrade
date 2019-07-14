@@ -3,7 +3,6 @@ import configparser
 import datetime
 import inspect
 import logging
-from logging.handlers import RotatingFileHandler
 import os
 import pickle
 import random
@@ -15,6 +14,7 @@ from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from logging.handlers import RotatingFileHandler
 
 import ccxt
 import requests
@@ -51,7 +51,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.17"
+            self.bot_version = "1.12.18"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -202,8 +202,8 @@ def buy_executed(price: float, amount: int):
     log.debug('-------------------------------')
     log.debug(time.ctime())
     if status == 'open':
-        log.debug('Open Buy Order! Amount: {} @ {}'.format(curr_buy_order_size, buy_price))
-        log.debug('Current Price: {}'.format(price))
+        log.debug('Open Buy Order! Amount: %d @ %.1f', int(curr_buy_order_size), float(buy_price))
+        log.debug('Current Price: %.1f', price)
     elif status in ['closed', 'canceled']:
         log.info('Buy executed, starting follow up')
         if curr_buy_order in buy_orders:
@@ -217,7 +217,7 @@ def buy_executed(price: float, amount: int):
             log.warning('Resetting')
             init_orders(True, False)
     else:
-        log.warning('You should not be here, order state: ' + status)
+        log.warning('You should not be here, order state: %s', status)
 
 
 def sell_executed(price: float, amount: int):
@@ -260,7 +260,7 @@ def cancel_current_buy_order():
         cancel_order(curr_buy_order)
         if curr_buy_order in buy_orders:
             buy_orders.remove(curr_buy_order)
-        log.info('Canceled current ' + str(curr_buy_order))
+        log.info('Canceled current %s', str(curr_buy_order))
         curr_buy_order = None if not buy_orders else buy_orders[0]
 
 
@@ -278,7 +278,7 @@ def create_sell_order(fixed_order_size: int = None):
     stock = get_used_balance()
     if stock < order_size:
         # sold out - the main loop will re-init if there are no other sell orders open
-        log.warning('Not executing sell order over {} (only {} left)'.format(float(order_size), float(stock)))
+        log.warning('Not executing sell order over %d (only %d left)', order_size, stock)
         return
 
     try:
@@ -300,7 +300,7 @@ def create_sell_order(fixed_order_size: int = None):
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if any(e in str(error.args) for e in no_recall):
-            log.error('Insufficient funds - not selling ' + str(order_size))
+            log.error('Insufficient funds - not selling %d', order_size)
             return
         log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sell_price = round(get_current_price() * (1 + conf.change))
@@ -337,7 +337,7 @@ def create_divided_sell_order():
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if any(e in str(error.args) for e in no_recall):
-            log.error('Insufficient funds - not selling ' + str(amount))
+            log.error('Insufficient funds - not selling %d', amount)
             return
         log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sell_price = round(get_current_price() * (1 + conf.change))
@@ -422,7 +422,7 @@ def create_buy_order(price: float, amount: int):
             log.info('Could not create buy order, waiting for a sell order to be realised')
             return delay_buy_order(curr_price, price)
 
-        log.warning('Could not create buy order over %s and there are no open sell orders, reset required', str(amount))
+        log.warning('Could not create buy order over %d and there are no open sell orders, reset required', amount)
         return False
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
@@ -433,7 +433,7 @@ def create_buy_order(price: float, amount: int):
                     str(amount))
                 return delay_buy_order(curr_price, price)
 
-            log.warning('Could not create buy order over %s, insufficient margin', str(amount))
+            log.warning('Could not create buy order over %d, insufficient margin', amount)
             return False
         else:
             log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
@@ -480,12 +480,12 @@ def create_market_sell_order(amount_crypto: float):
                 new_order = exchange.create_market_sell_order(conf.pair, amount,
                                                               {'leverage_level': conf.leverage_default})
             order = Order(new_order)
-            log.info('Created market ' + str(order))
+            log.info('Created market %s', str(order))
             sell_orders.append(order)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if any(e in str(error.args) for e in no_recall):
-            log.error('Insufficient balance/funds - not selling %s', str(amount))
+            log.error('Insufficient balance/funds - not selling %d', amount)
             return
         log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
@@ -717,9 +717,9 @@ def spread(market_price: float):
         if highest_buy_order.price < market_price * (1 - conf.change * conf.spread_factor):
             lowest_sell_order = sorted(sell_orders, key=lambda order: order.price)[0]
             if lowest_sell_order.price > market_price * (1 + conf.change * conf.spread_factor):
-                log.info("Orders above spread tolerance min sell: {} max buy: {} current rate: {}".format(
-                    lowest_sell_order.price, highest_buy_order.price, market_price))
-                log.info("Canceling highest " + str(highest_buy_order))
+                log.info("Orders above spread tolerance min sell: %f max buy: %f current rate: %f",
+                         lowest_sell_order.price, highest_buy_order.price, market_price)
+                log.info("Canceling highest %s", str(highest_buy_order))
                 cancel_order(highest_buy_order)
                 if create_buy_order(market_price, highest_buy_order.amount):
                     create_divided_sell_order()
@@ -902,7 +902,7 @@ def cancel_orders(orders: [Order]):
     """
     try:
         for o in orders:
-            log.debug('Cancel ' + str(o))
+            log.debug('Cancel %s', str(o))
             status = exchange.fetch_order_status(o.id)
             if status == 'open':
                 exchange.cancel_order(o.id)
@@ -1073,7 +1073,7 @@ def is_order_below_limit(amount: int, price: float):
 
 def is_crypto_amount_below_limit(amount_crypto: float):
     if abs(amount_crypto) < conf.order_crypto_min:
-        log.info('Per order volume below limit: %s', str(abs(amount_crypto)))
+        log.info('Per order volume below limit: %f', abs(amount_crypto))
         return True
     return False
 
@@ -1206,19 +1206,20 @@ def append_balances(part: dict):
         else:
             part['mail'].append("Net deposits " + conf.base + ": {:>20.4f}".format(net_deposits))
             part['csv'].append("Net deposits " + conf.base + ":; {:.4f}".format(net_deposits))
-            if net_deposits < 0:
-                part['mail'].append("Overall performance in " + conf.base + ": {:>10}".format('n/a'))
-                part['csv'].append("Overall performance in " + conf.base + ":; {}".format('n/a'))
-            else:
-                absolute_performance = bal['total'] - net_deposits
+            absolute_performance = bal['total'] - net_deposits
+            if net_deposits > 0:
                 relative_performance = round(100 / (net_deposits / absolute_performance), 2)
-                sign = '+' if relative_performance > 0 else ''
                 part['mail'].append(
-                    "Overall performance in " + conf.base + ": {:>10.4f} ({}%)".format(absolute_performance, sign +
-                                                                                       str(relative_performance)))
+                    "Overall performance in " + conf.base + ": {:>+10.4f} ({:+.2f}%)".format(absolute_performance,
+                                                                                             relative_performance))
                 part['csv'].append(
-                    "Overall performance in " + conf.base + ":; {:.4f} ({}%)".format(absolute_performance, sign +
-                                                                                     str(relative_performance)))
+                    "Overall performance in " + conf.base + ":; {:.4f} ({:.2f}%)".format(absolute_performance,
+                                                                                         relative_performance))
+            else:
+                part['mail'].append(
+                    "Overall performance in " + conf.base + ": {:>+10.4f} (n/a)".format(absolute_performance))
+                part['csv'].append(
+                    "Overall performance in " + conf.base + ":; {:.4f} (n/a)".format(absolute_performance))
         poi = get_position_info()
         sleep_for(1, 2)
         part['mail'].append("Wallet balance " + conf.base + ": {:>18.4f}".format(get_wallet_balance()))
@@ -1256,12 +1257,12 @@ def append_price_and_margin_change(bal: dict, part: dict, currency: str):
     today = calculate_daily_statistics(bal['total'], price)
 
     formatter = 18.4 if currency == conf.base else 16.2
-    m_bal = "Margin balance " + currency + ": {0:>{1}f}".format(today['mBal'], formatter)
+    m_bal = "Margin balance " + currency + ": {:>{}f}".format(today['mBal'], formatter)
     if 'mBalChan24' in today:
         m_bal += " (" if currency == conf.base else "   ("
-        m_bal += "{0:{1}.2f}%".format(today['mBalChan24'], '+' if today['mBalChan24'] else '')
+        m_bal += "{:+.2f}%".format(today['mBalChan24'])
         if 'mBalChan48' in today:
-            m_bal += ", {0:{1}.2f}%".format(today['mBalChan48'], '+' if today['mBalChan48'] else '')
+            m_bal += ", {:+.2f}%".format(today['mBalChan48'])
         m_bal += ")*"
     part['mail'].append(m_bal)
     part['csv'].append(m_bal.replace('*', '').replace('  ', '').replace(':', ':;'))
@@ -1269,9 +1270,9 @@ def append_price_and_margin_change(bal: dict, part: dict, currency: str):
     rate = conf.base + " price " + conf.quote + ": {:>20.1f}".format(price)
     if 'priceChan24' in today:
         rate += "    ("
-        rate += "{0:{1}.2f}%".format(today['priceChan24'], '+' if today['priceChan24'] else '')
+        rate += "{:+.2f}%".format(today['priceChan24'])
         if 'priceChan48' in today:
-            rate += ", {0:{1}.2f}%".format(today['priceChan48'], '+' if today['priceChan48'] else '')
+            rate += ", {:+.2f}%".format(today['priceChan48'])
         rate += ")*"
     part['mail'].append(rate)
     part['csv'].append(rate.replace('*', '').replace('  ', '').replace(':', ':;'))
