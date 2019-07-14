@@ -583,6 +583,8 @@ def get_balance():
             bal = exchange.fetch_balance()[conf.base]
             if bal['used'] is None:
                 bal['used'] = 0
+            if bal['free'] is None:
+                bal['free'] = 0
             return bal
 
         bal = None
