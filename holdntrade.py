@@ -51,7 +51,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.16"
+            self.bot_version = "1.12.17"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1124,8 +1124,8 @@ def create_mail_content():
     explanation = 'Erläuterungen zu diesem Rapport: https://bitcoin-schweiz.ch/wp-content/uploads/2019/07/Tagesrapport.pdf'
     text = '\n'.join(performance) + '\n'.join(advice) + '\n'.join(settings) + '\n'.join(general) + bcs_url + '\n\n' + explanation + '\n'
 
-    csv = conf.bot_instance + ';' + str(datetime.datetime.utcnow().replace(microsecond=0)) + ' UTC;' + (';'.join(performance_part) + ';' + ';'.join(
-        advice_part) + ';' + ';'.join(settings_part) + '\n')
+    csv = conf.bot_instance + ';' + str(datetime.datetime.utcnow().replace(microsecond=0)) + ' UTC;' + (';'.join(performance_part['csv']) + ';' + ';'.join(
+        advice_part['csv']) + ';' + ';'.join(settings_part['csv']) + '\n')
 
     return {'text': text, 'csv': csv}
 
