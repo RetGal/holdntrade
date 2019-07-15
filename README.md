@@ -1,4 +1,5 @@
 # holdntrade
+ [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=holdntrade&metric=alert_status)](https://sonarcloud.io/dashboard?id=holdntrade)
 
 ## Voraussetzungen
 
