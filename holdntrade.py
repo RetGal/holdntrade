@@ -51,7 +51,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.18"
+            self.bot_version = "1.12.19"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1286,9 +1286,11 @@ def write_csv(csv: str, filename_csv: str):
 
 
 def is_already_written(filename_csv: str):
-    with open(filename_csv, 'r') as f:
-        last_line = list(f)[-1]
-        return str(datetime.date.today().isoformat()) in last_line
+    if os.path.isfile(filename_csv):
+        with open(filename_csv, 'r') as f:
+            last_line = list(f)[-1]
+            return str(datetime.date.today().isoformat()) in last_line
+    return False
 
 
 def send_mail(subject: str, text: str, filename: str = None):
