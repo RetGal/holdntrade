@@ -51,7 +51,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.19"
+            self.bot_version = "1.12.20"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
