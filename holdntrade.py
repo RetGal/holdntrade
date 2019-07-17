@@ -51,7 +51,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.20"
+            self.bot_version = "1.12.21"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -553,13 +553,14 @@ def get_margin_leverage():
 
 def get_wallet_balance():
     """
-    Fetch the wallet balance
+    Fetch the wallet balance in crypto
     """
     try:
         if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
             return exchange.fetch_balance()['info'][0]['walletBalance'] * conf.satoshi_factor
         if conf.exchange == 'kraken':
-            return float(exchange.private_post_tradebalance()['result']['tb'])
+            asset = conf.base if conf.base != 'BTC' else 'XBt'
+            return float(exchange.private_post_tradebalance({'asset': asset})['result']['tb'])
         if conf.exchange == 'liquid':
             result = exchange.private_get_accounts_balance()
             if result is not None:
@@ -1231,13 +1232,9 @@ def append_balances(part: dict):
                 part['csv'].append(
                     "Overall performance in " + conf.base + ":; {:.4f} (% n/a)".format(absolute_performance))
         poi = get_position_info()
-        if conf.exchange == 'kraken':
-            part['mail'].append("Wallet balance " + conf.base + ": {:>15}".format('n/a'))
-            part['csv'].append("Wallet balance " + conf.base + ":; {}".format('n/a'))
-        else:
-            wallet_balance = get_wallet_balance()
-            part['mail'].append("Wallet balance " + conf.base + ": {:>18.4f}".format(wallet_balance))
-            part['csv'].append("Wallet balance " + conf.base + ":; {:.4f}".format(wallet_balance))
+        wallet_balance = get_wallet_balance()
+        part['mail'].append("Wallet balance " + conf.base + ": {:>18.4f}".format(wallet_balance))
+        part['csv'].append("Wallet balance " + conf.base + ":; {:.4f}".format(wallet_balance))
         append_price_and_margin_change(bal, part, conf.base)
         if poi is not None and 'liquidationPrice' in poi:
             part['mail'].append("Liquidation price: {:>16.1f}".format(poi['liquidationPrice']))
