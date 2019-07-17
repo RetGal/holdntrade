@@ -142,13 +142,12 @@ class Stats:
 
     def add_day(self, day_of_year: int, data: dict):
         existing = self.get_day(day_of_year)
-        if existing is not None:
-            self.days.remove(existing)
-        data['day'] = day_of_year
-        if len(self.days) > 2:
-            self.days = sorted(self.days, key=lambda data: data['day'], reverse=True)  # desc
-            self.days.pop()
-        self.days.append(data)
+        if existing is None:
+            data['day'] = day_of_year
+            if len(self.days) > 2:
+                self.days = sorted(self.days, key=lambda data: data['day'], reverse=True)  # desc
+                self.days.pop()
+            self.days.append(data)
 
     def get_day(self, day_of_year: int):
         matched = filter(lambda element: element['day'] == day_of_year, self.days)
@@ -838,8 +837,8 @@ def init_orders(force_close: bool, auto_conf: bool):
         print_position_info(oos)
 
         if oos.orders:
-            log.info("Value of buy orders " + conf.base + ": {:>2}".format(int(oos.total_buy_order_value)))
-            log.info("Value of sell orders " + conf.base + ": {:>1}".format(int(oos.total_sell_order_value)))
+            log.info("Value of buy orders {}: {:>2}".format(conf.base, int(oos.total_buy_order_value)))
+            log.info("Value of sell orders {}: {:>1}".format(conf.base, int(oos.total_sell_order_value)))
             log.info("No. of buy orders: {:>8}".format(len(oos.buy_orders)))
             log.info("No. of sell orders: {:>7}".format(len(oos.sell_orders)))
             log.info('-------------------------------')
@@ -849,7 +848,7 @@ def init_orders(force_close: bool, auto_conf: bool):
             if not force_close and (auto_conf or init.lower() in ['y', 'yes']):
                 return load_existing_orders(oos)
 
-            log.info('Unrealised PNL: {} {}'.format(str(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor), conf.base))
+            log.info('Unrealised PNL: %s %s', str(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor), conf.base)
             if force_close:
                 cancel_orders(oos.orders)
             else:
@@ -1016,25 +1015,25 @@ def print_position_info(oos: OpenOrdersSummary):
         sleep_for(1, 2)
         poi = get_position_info()
         if poi:
-            log.info("Position " + conf.quote + ": {:>13}".format(poi['currentQty']))
+            log.info("Position {}: {:>13}".format(conf.quote, poi['currentQty']))
             log.info("Entry price: {:>16.1f}".format(poi['avgEntryPrice']))
             log.info("Market price: {:>15.1f}".format(poi['markPrice']))
             log.info("Liquidation price: {:>10.1f}".format(poi['liquidationPrice']))
             del poi
         else:
-            log.info("Available balance is " + conf.base + ": {:>3} ".format(get_balance()['free']))
+            log.info("Available balance is {}: {:>3} ".format(conf.base , get_balance()['free']))
             log.info("No position found, I will create one for you")
             return False
     elif conf.exchange == 'kraken':
-        log.info("Position " + conf.quote + ": {:>13}".format(get_used_balance()))
+        log.info("Position {}: {:>13}".format(conf.quote, get_used_balance()))
         log.info("Entry price: {:>16.1f}".format(calc_avg_entry_price(oos.orders)))
         log.info("Market price: {:>15.1f}".format(get_current_price()))
     elif conf.exchange == 'liquid':
         poi = get_position_info()
         if float(poi['position']) > 0:
-            log.info("Position " + conf.base + ": {:>13.2f}".format(float(poi['position'])))
+            log.info("Position {}: {:>13.2f}".format(conf.base, float(poi['position'])))
         else:
-            log.info("Available balance is " + conf.base + ": {:>3} ".format(get_balance()['free']))
+            log.info("Available balance is {}: {:>3} ".format(conf.base, get_balance()['free']))
             log.info("No position found, I will create one for you")
             return False
     if not oos.orders:
@@ -1067,9 +1066,9 @@ def connect_to_exchange(conf: ExchangeConfig):
         if 'test' in exchange.urls:
             exchange.urls['api'] = exchange.urls['test']
         else:
-            raise SystemExit('Test not supported by ' + conf.exchange)
+            raise SystemExit('Test not supported by %s', conf.exchange)
 
-    log.info('Connecting to ' + conf.exchange)
+    log.info('Connecting to %s', conf.exchange)
     return exchange
 
 
@@ -1183,12 +1182,17 @@ def create_report_part_advice():
 
 def create_report_part_performance():
     part = {'mail': [], 'csv': []}
-    append_balances(part)
+    balance = get_margin_balance()
+    append_performance(part, balance['total'])
+    append_balances(part, balance)
     append_orders(part)
     return part
 
 
 def append_orders(part: dict):
+    """
+    Appends order statistics
+    """
     oos = get_open_orders()
     part['mail'].append("Value of buy orders " + conf.quote + ": {:>10}".format(int(oos.total_buy_order_value)))
     part['mail'].append("Value of sell orders " + conf.quote + ": {:>9}".format(int(oos.total_sell_order_value)))
@@ -1200,70 +1204,75 @@ def append_orders(part: dict):
     part['csv'].append("No. of sell orders:; {}".format(len(oos.sell_orders)))
 
 
-def append_balances(part: dict):
+def append_balances(part: dict, bal: dict):
     """
-    Adds liquidation price, wallet balance, margin balance (including stats), used margin and leverage information
+    Appends liquidation price, wallet balance, margin balance (including stats), used margin and leverage information
     """
-    bal = get_margin_balance()
-    sleep_for(2, 3)
+    poi = get_position_info()
+    wallet_balance = get_wallet_balance()
+    part['mail'].append("Wallet balance " + conf.base + ": {:>18.4f}".format(wallet_balance))
+    part['csv'].append("Wallet balance " + conf.base + ":; {:.4f}".format(wallet_balance))
+    append_price_and_margin_change(bal['total'], part, conf.base)
+    if poi is not None and 'liquidationPrice' in poi:
+        part['mail'].append("Liquidation price: {:>16.1f}".format(poi['liquidationPrice']))
+        part['csv'].append("Liquidation price:; {:.1f}".format(poi['liquidationPrice']))
+    else:
+        part['mail'].append("Liquidation price: {:>16}".format('n/a'))
+        part['csv'].append("Liquidation price:; {}".format('n/a'))
+    used_margin = calculate_used_margin_percentage(bal)
+    part['mail'].append("Used margin: {:>22.2f}%".format(used_margin))
+    part['csv'].append("Used margin:; {:.2f}%".format(used_margin))
+    if conf.exchange == 'kraken':
+        actual_leverage = get_margin_leverage()
+        part['mail'].append("Actual leverage: {:>18.2f}%".format(actual_leverage))
+        part['csv'].append("Actual leverage:; {:.2f}%".format(actual_leverage))
+    elif conf.exchange == 'liquid':
+        part['mail'].append("Actual leverage: {:>18}".format('n/a'))
+        part['csv'].append("Actual leverage:; {}".format('n/a'))
+    else:
+        actual_leverage = get_margin_leverage()
+        part['mail'].append("Actual leverage: {:>18.2f}x".format(actual_leverage))
+        part['csv'].append("Actual leverage:; {:.2f}".format(actual_leverage))
+    used_balance = get_used_balance()
+    part['mail'].append("Position " + conf.quote + ": {:>21}".format(used_balance))
+    part['csv'].append("Position " + conf.quote + ":; {}".format(used_balance))
 
-    if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'kraken', 'liquid']:
-        net_deposits = get_net_deposits()
-        if net_deposits is None:
-            part['mail'].append("Net deposits " + conf.base + ": {:>17}".format('n/a'))
-            part['mail'].append("Overall performance in " + conf.base + ": {:>7}".format('n/a'))
-            part['csv'].append("Net deposits " + conf.base + ":; {}".format('n/a'))
-            part['csv'].append("Overall performance in " + conf.base + ":; {}".format('n/a'))
-        else:
-            part['mail'].append("Net deposits " + conf.base + ": {:>20.4f}".format(net_deposits))
-            part['csv'].append("Net deposits " + conf.base + ":; {:.4f}".format(net_deposits))
-            absolute_performance = bal['total'] - net_deposits
-            if net_deposits > 0:
-                relative_performance = round(100 / (net_deposits / absolute_performance), 2)
-                part['mail'].append(
-                    "Overall performance in " + conf.base + ": {:>+10.4f} ({:+.2f}%)".format(absolute_performance,
-                                                                                             relative_performance))
-                part['csv'].append(
-                    "Overall performance in " + conf.base + ":; {:.4f} ({:.2f}%)".format(absolute_performance,
+
+def append_performance(part: dict, margin_balance: float):
+    """
+    Calculates and appends the absolute and relative overall performance
+    """
+    net_deposits = get_net_deposits()
+    if net_deposits is None:
+        part['mail'].append("Net deposits " + conf.base + ": {:>17}".format('n/a'))
+        part['mail'].append("Overall performance in " + conf.base + ": {:>7}".format('n/a'))
+        part['csv'].append("Net deposits " + conf.base + ":; {}".format('n/a'))
+        part['csv'].append("Overall performance in " + conf.base + ":; {}".format('n/a'))
+    else:
+        part['mail'].append("Net deposits " + conf.base + ": {:>20.4f}".format(net_deposits))
+        part['csv'].append("Net deposits " + conf.base + ":; {:.4f}".format(net_deposits))
+        absolute_performance = margin_balance - net_deposits
+        if net_deposits > 0:
+            relative_performance = round(100 / (net_deposits / absolute_performance), 2)
+            part['mail'].append(
+                "Overall performance in " + conf.base + ": {:>+10.4f} ({:+.2f}%)".format(absolute_performance,
                                                                                          relative_performance))
-            else:
-                part['mail'].append(
-                    "Overall performance in " + conf.base + ": {:>+10.4f} (% n/a)".format(absolute_performance))
-                part['csv'].append(
-                    "Overall performance in " + conf.base + ":; {:.4f} (% n/a)".format(absolute_performance))
-        poi = get_position_info()
-        wallet_balance = get_wallet_balance()
-        part['mail'].append("Wallet balance " + conf.base + ": {:>18.4f}".format(wallet_balance))
-        part['csv'].append("Wallet balance " + conf.base + ":; {:.4f}".format(wallet_balance))
-        append_price_and_margin_change(bal, part, conf.base)
-        if poi is not None and 'liquidationPrice' in poi:
-            part['mail'].append("Liquidation price: {:>16.1f}".format(poi['liquidationPrice']))
-            part['csv'].append("Liquidation price:; {:.1f}".format(poi['liquidationPrice']))
+            part['csv'].append(
+                "Overall performance in " + conf.base + ":; {:.4f} ({:.2f}%)".format(absolute_performance,
+                                                                                     relative_performance))
         else:
-            part['mail'].append("Liquidation price: {:>16}".format('n/a'))
-            part['csv'].append("Liquidation price:; {}".format('n/a'))
-        used_margin = calculate_used_margin_percentage(bal)
-        part['mail'].append("Used margin: {:>22.2f}%".format(used_margin))
-        part['csv'].append("Used margin:; {:.2f}%".format(used_margin))
-        if conf.exchange == 'kraken':
-            actual_leverage = get_margin_leverage()
-            part['mail'].append("Actual leverage: {:>18.2f}%".format(actual_leverage))
-            part['csv'].append("Actual leverage:; {:.2f}%".format(actual_leverage))
-        elif conf.exchange == 'liquid':
-            part['mail'].append("Actual leverage: {:>18}".format('n/a'))
-            part['csv'].append("Actual leverage:; {}".format('n/a'))
-        else:
-            actual_leverage = get_margin_leverage()
-            part['mail'].append("Actual leverage: {:>18.2f}x".format(actual_leverage))
-            part['csv'].append("Actual leverage:; {:.2f}".format(actual_leverage))
-        used_balance = get_used_balance()
-        part['mail'].append("Position " + conf.quote + ": {:>21}".format(used_balance))
-        part['csv'].append("Position " + conf.quote + ":; {}".format(used_balance))
+            part['mail'].append(
+                "Overall performance in " + conf.base + ": {:>+10.4f} (% n/a)".format(absolute_performance))
+            part['csv'].append(
+                "Overall performance in " + conf.base + ":; {:.4f} (% n/a)".format(absolute_performance))
 
 
-def append_price_and_margin_change(bal: dict, part: dict, currency: str):
+def append_price_and_margin_change(margin_balance: float, part: dict, currency: str):
+    """
+    Appends price and margin changes
+    """
     price = get_current_price()
-    today = calculate_daily_statistics(bal['total'], price)
+    today = calculate_daily_statistics(margin_balance, price)
 
     formatter = 18.4 if currency == conf.base else 16.2
     m_bal = "Margin balance " + currency + ": {:>{}f}".format(today['mBal'], formatter)
