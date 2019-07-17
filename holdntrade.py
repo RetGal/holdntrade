@@ -233,7 +233,7 @@ def sell_executed(price: float, amount: int):
         time.sleep(0.5)
         status = fetch_order_status(order.id)
         if status == 'open':
-            log.debug('Sell still ' + status)
+            log.debug('Sell still open')
         elif status in ['closed', 'canceled']:
             if order in sell_orders:
                 sell_orders.remove(order)
@@ -246,7 +246,7 @@ def sell_executed(price: float, amount: int):
                 log.warning('Resetting')
                 init_orders(True, False)
         else:
-            log.warning('You should not be here, order state: ' + status)
+            log.warning('You should not be here, order state: %s', status)
 
 
 def cancel_current_buy_order():
@@ -295,7 +295,7 @@ def create_sell_order(fixed_order_size: int = None):
                                                               'funding_currency': conf.base})
             order = Order(new_order)
             sell_orders.append(order)
-            log.info('Created ' + str(order))
+            log.info('Created %s', str(order))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if any(e in str(error.args) for e in no_recall):
@@ -332,7 +332,7 @@ def create_divided_sell_order():
                                                               'funding_currency': conf.base})
             order = Order(new_order)
             sell_orders.append(order)
-            log.info('Created ' + str(order))
+            log.info('Created %s', str(order))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if any(e in str(error.args) for e in no_recall):
@@ -413,7 +413,7 @@ def create_buy_order(price: float, amount: int):
                                                             {'leverage_level': conf.leverage_default,
                                                              'funding_currency': conf.base})
             order = Order(new_order)
-            log.info('Created ' + str(order))
+            log.info('Created %s', str(order))
             curr_buy_order = order
             buy_orders.append(order)
             return True
@@ -434,10 +434,9 @@ def create_buy_order(price: float, amount: int):
 
             log.warning('Could not create buy order over %d, insufficient margin', amount)
             return False
-        else:
-            log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
-            sleep_for(4, 6)
-            return create_buy_order(update_price(curr_price, price), amount)
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        sleep_for(4, 6)
+        return create_buy_order(update_price(curr_price, price), amount)
 
 
 def delay_buy_order(crypto_price: float, price: float):
