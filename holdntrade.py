@@ -1387,7 +1387,8 @@ def persist_statistics():
 def fetch_mayer(tries: int = 0):
     try:
         r = requests.get('https://mayermultiple.info/current.json')
-        return float(r.json()['data']['current_mayer_multiple'])
+        mayer = r.json()['data']
+        return {'current': float(mayer['current_mayer_multiple']), 'average': float(mayer['average_mayer_multiple'])}
 
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, requests.exceptions.ReadTimeout) as error:
         log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
@@ -1401,11 +1402,11 @@ def fetch_mayer(tries: int = 0):
 def print_mayer():
     mayer = fetch_mayer()
     if mayer is not None:
-        if mayer < 1.39:
-            return "Mayer multiple: {:>19.2f} (low: buy)".format(mayer)
+        if mayer['current'] < mayer['average']:
+            return "Mayer multiple: {:>19.2f} (< {:.2f} = BUY)".format(mayer['current'], mayer['average'])
         if mayer > 2.4:
-            return "Mayer multiple: {:>19.2f} (high: sell)".format(mayer)
-        return "Mayer multiple: {:>19.2f} (hold)".format(mayer)
+            return "Mayer multiple: {:>19.2f} (> 2.4 = SELL)".format(mayer['current'])
+        return "Mayer multiple: {:>19.2f} (> {:.2f} and < 2.4 = HOLD)".format(mayer['current'], mayer['average'])
     return
 
 
@@ -1421,13 +1422,13 @@ def adjust_leverage():
         if conf.exchange == 'bitmex':
             mm = fetch_mayer()
             leverage = get_leverage()
-            if mm is not None and mm > conf.mm_ceil:
+            if mm is not None and mm['current'] > conf.mm_ceil:
                 if leverage > conf.leverage_low:
                     set_leverage(leverage - 0.1)
-            elif mm is not None and mm < conf.mm_floor:
+            elif mm is not None and mm['current'] < conf.mm_floor:
                 if leverage < conf.leverage_high:
                     set_leverage(leverage + 0.1)
-            elif mm is not None and mm < conf.mm_ceil:
+            elif mm is not None and mm['current'] < conf.mm_ceil:
                 if leverage > conf.leverage_default:
                     set_leverage(leverage - 0.1)
                 elif leverage < conf.leverage_default:
