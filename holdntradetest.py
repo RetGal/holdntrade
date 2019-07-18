@@ -125,8 +125,8 @@ class HoldntradeTest(unittest.TestCase):
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
-    @mock.patch.object(holdntrade, 'get_used_balance')
-    def test_create_sell_order_should_not_create_order_if_order_is_below_limit(self, mock_get_used_balance,
+    @mock.patch.object(holdntrade, 'get_balance')
+    def test_create_sell_order_should_not_create_order_if_order_is_below_limit(self, mock_get_balance,
                                                                                mock_create_limit_sell_order,
                                                                                mock_logging):
         holdntrade.sell_price = 8000
@@ -135,7 +135,7 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.log = mock_logging
         holdntrade.conf = self.create_default_conf()
 
-        mock_get_used_balance.return_value = 20
+        mock_get_balance.return_value = {'free': 20}
 
         holdntrade.create_sell_order(holdntrade.conf.change)
 
@@ -143,8 +143,8 @@ class HoldntradeTest(unittest.TestCase):
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
-    @mock.patch.object(holdntrade, 'get_used_balance')
-    def test_create_sell_order_should_not_create_order_if_order_is_bigger_than_used_balance(self, mock_get_used_balance,
+    @mock.patch.object(holdntrade, 'get_balance')
+    def test_create_sell_order_should_not_create_order_if_order_is_bigger_than_used_balance(self, mock_get_balance,
                                                                                mock_create_limit_sell_order,
                                                                                mock_logging):
         holdntrade.sell_price = 4000
@@ -153,7 +153,7 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.log = mock_logging
         holdntrade.conf = self.create_default_conf()
 
-        mock_get_used_balance.return_value = 9
+        mock_get_balance.return_value = {'free': 9}
 
         holdntrade.create_sell_order(holdntrade.conf.change)
 
@@ -161,8 +161,8 @@ class HoldntradeTest(unittest.TestCase):
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
-    @mock.patch.object(holdntrade, 'get_used_balance')
-    def test_create_sell_order_should_create_order(self, mock_get_used_balance, mock_create_limit_sell_order,
+    @mock.patch.object(holdntrade, 'get_balance')
+    def test_create_sell_order_should_create_order(self, mock_get_balance, mock_create_limit_sell_order,
                                                    mock_logging):
         holdntrade.sell_price = 4000
         holdntrade.sell_orders = []
@@ -170,7 +170,7 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.log = mock_logging
         holdntrade.conf = self.create_default_conf()
 
-        mock_get_used_balance.return_value = 20
+        mock_get_balance.return_value = {'free': 20}
 
         holdntrade.create_sell_order()
 
