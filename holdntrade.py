@@ -51,7 +51,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.12.22"
+            self.bot_version = "1.13.0"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -276,10 +276,10 @@ def create_sell_order(fixed_order_size: int = None):
 
     order_size = curr_buy_order_size if fixed_order_size is None else fixed_order_size
 
-    stock = get_used_balance()
-    if stock < order_size:
+    available = get_balance()['free'] * sell_price
+    if available < order_size:
         # sold out - the main loop will re-init if there are no other sell orders open
-        log.warning('Not executing sell order over %d (only %d left)', order_size, stock)
+        log.warning('Not executing sell order over %d (only %d left)', order_size, available)
         return
 
     try:
@@ -737,7 +737,7 @@ def spread(market_price: float):
                 log.info("Canceling highest %s", str(highest_buy_order))
                 cancel_order(highest_buy_order)
                 if create_buy_order(market_price, highest_buy_order.amount):
-                    create_divided_sell_order()
+                    create_sell_order()
 
 
 def get_margin_balance():
@@ -1415,7 +1415,7 @@ def print_mayer():
     if mayer is not None:
         if mayer['current'] < mayer['average']:
             return "Mayer multiple: {:>19.2f} (< {:.2f} = BUY)".format(mayer['current'], mayer['average'])
-        if mayer > 2.4:
+        if mayer['current'] > 2.4:
             return "Mayer multiple: {:>19.2f} (> 2.4 = SELL)".format(mayer['current'])
         return "Mayer multiple: {:>19.2f} (> {:.2f} and < 2.4 = HOLD)".format(mayer['current'], mayer['average'])
     return
@@ -1433,7 +1433,7 @@ def boost_leverage():
         if conf.exchange != 'bitmex':
             log.error("boost_leverage() not yet implemented for %s", conf.exchange)
             return
-        leverage = get_leverage()
+        leverage = get_margin_leverage()
         if leverage < conf.leverage_overdrive:
             log.info('Boosting leverage to {:.1f} (max: {:.1f})'.format(leverage + 0.1, conf.leverage_overdrive))
             set_leverage(leverage + 0.1)
@@ -1445,7 +1445,7 @@ def adjust_leverage():
             log.error("Adjust_leverage() not yet implemented for %s", conf.exchange)
             return
         mm = fetch_mayer()
-        leverage = get_leverage()
+        leverage = get_margin_leverage()
         if mm is not None and mm['current'] > conf.mm_ceil:
             if leverage > conf.leverage_low:
                 set_leverage(leverage - 0.1)
