@@ -51,7 +51,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.0"
+            self.bot_version = "1.13.1"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1151,6 +1151,7 @@ def create_mail_content():
 def create_report_part_settings():
     return {'mail': ["Rate change: {:>22.1f}%".format(conf.change * 100),
                      "Quota: {:>28}".format('1/' + str(conf.quota)),
+                     "Spread factor: {:>20}".format(str(conf.spread_factor)),
                      "Leverage default: {:>17}x".format(str(conf.leverage_default)),
                      "Auto leverage: {:>20}".format(str('Y' if conf.auto_leverage is True else 'N')),
                      "Auto leverage overdrive: {:>10}".format(str('Y' if conf.auto_leverage_overdrive is True else 'N')),
@@ -1161,6 +1162,7 @@ def create_report_part_settings():
                      "Mayer multiple ceil: {:>14}".format(str(conf.mm_ceil))],
             'csv': ["Rate change:; {:.1f}%".format(float(conf.change * 100)),
                     "Quota:; {:.3f}".format(1 / conf.quota),
+                    "Spread factor: {}".format(str(conf.spread_factor)),
                     "Leverage default:; {}".format(str(conf.leverage_default)),
                     "Auto leverage:; {}".format(str('Y' if conf.auto_leverage is True else 'N')),
                     "Auto leverage overdrive: {}".format(str('Y' if conf.auto_leverage_overdrive is True else 'N')),
