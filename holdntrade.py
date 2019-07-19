@@ -51,7 +51,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.1"
+            self.bot_version = "1.13.2"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -554,6 +554,19 @@ def get_margin_leverage():
         log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_margin_leverage()
+
+
+def get_relevant_leverage():
+    """
+    Returns the higher of the two leverages - used to adjust the leverage
+    """
+    position_leverage = get_leverage()
+    margin_leverage = get_margin_leverage()
+    if position_leverage is None:
+        return margin_leverage
+    if margin_leverage is None:
+        return position_leverage
+    return position_leverage if position_leverage > margin_leverage else margin_leverage
 
 
 def get_wallet_balance():
@@ -1435,7 +1448,7 @@ def boost_leverage():
         if conf.exchange != 'bitmex':
             log.error("boost_leverage() not yet implemented for %s", conf.exchange)
             return
-        leverage = get_margin_leverage()
+        leverage = get_relevant_leverage()
         if leverage < conf.leverage_overdrive:
             log.info('Boosting leverage to {:.1f} (max: {:.1f})'.format(leverage + 0.1, conf.leverage_overdrive))
             set_leverage(leverage + 0.1)
@@ -1447,7 +1460,7 @@ def adjust_leverage():
             log.error("Adjust_leverage() not yet implemented for %s", conf.exchange)
             return
         mm = fetch_mayer()
-        leverage = get_margin_leverage()
+        leverage = get_relevant_leverage()
         if mm is not None and mm['current'] > conf.mm_ceil:
             if leverage > conf.leverage_low:
                 set_leverage(leverage - 0.1)
