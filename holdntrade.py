@@ -51,7 +51,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.3"
+            self.bot_version = "1.13.4"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1200,8 +1200,13 @@ def create_mail_part_general():
 
 
 def create_report_part_advice():
-    part = {'mail':["Moving average 144d/21d: {:>10}".format('n/a')],
-            'csv':["Moving average 144d/21d:; {}".format('n/a')]}
+    quotient = read_quotient()
+    if quotient is not None:
+        part = {'mail':["Moving average 144d/21d: {:>10.2f}".format(quotient)],
+                'csv':["Moving average 144d/21d:; {:.2f}".format(quotient)]}
+    else:
+        part = {'mail':["Moving average 144d/21d: {:>10}".format('n/a')],
+                'csv':["Moving average 144d/21d:; {}".format('n/a')]}
     append_mayer(part)
     return part
 
@@ -1378,17 +1383,21 @@ def calculate_daily_statistics(m_bal: float, price: float):
 
     today = {'mBal': m_bal, 'price': price}
     if stats is None:
-        stats = Stats(int(datetime.date.today().strftime("%j")), today)
+        stats = Stats(int(datetime.date.today().strftime("%Y%j")), today)
         persist_statistics()
     else:
-        stats.add_day(int(datetime.date.today().strftime("%j")), today)
+        stats.add_day(int(datetime.date.today().strftime("%Y%j")), today)
         persist_statistics()
-        before_24h = stats.get_day(int(datetime.date.today().strftime("%j"))-1)
+        before_24h = stats.get_day(int(datetime.date.today().strftime("%Y%j"))-1)
+        if before_24h is None:
+            before_24h = stats.get_day(int(datetime.date.today().strftime("%j"))-1)
         if before_24h is not None:
             today['mBalChan24'] = round((today['mBal']/before_24h['mBal']-1) * 100, 2)
             if 'price' in before_24h:
                 today['priceChan24'] = round((today['price']/before_24h['price']-1) * 100, 2)
-            before_48h = stats.get_day(int(datetime.date.today().strftime("%j"))-2)
+            before_48h = stats.get_day(int(datetime.date.today().strftime("%Y%j"))-2)
+            if before_48h is None:
+                before_48h = stats.get_day(int(datetime.date.today().strftime("%j"))-2)
             if before_48h is not None:
                 today['mBalChan48'] = round((today['mBal']/before_48h['mBal']-1) * 100, 2)
                 if 'price' in before_48h:
@@ -1409,6 +1418,16 @@ def persist_statistics():
     stats_file = conf.bot_instance + '.pkl'
     with open(stats_file, "wb") as f:
         pickle.dump(stats, f)
+
+
+def read_quotient():
+    quotient_file = 'quotient'
+    if os.path.isfile(quotient_file):
+        with open(quotient_file, "rt") as f:
+            content = f.read()
+        if content is not None:
+            return float(content)
+    return None
 
 
 def fetch_mayer(tries: int = 0):
