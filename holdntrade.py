@@ -1476,7 +1476,9 @@ def adjust_leverage():
 
 def get_leverage():
     try:
-        return float(exchange.private_get_position({'symbol': conf.symbol})[0]['leverage'])
+        if conf.exchange == 'bitmex':
+            return float(exchange.private_get_position({'symbol': conf.symbol})[0]['leverage'])
+        log.error("get_leverage() not yet implemented for %s", conf.exchange)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
