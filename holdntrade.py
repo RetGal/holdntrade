@@ -51,7 +51,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.2"
+            self.bot_version = "1.13.3"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -212,6 +212,7 @@ def buy_executed(price: float, amount: int):
         # default case: use amount of last (previous) buy order for next sell order
         # else last buy was compensation order: use same amount for next sell order as the buy order to be created next
         last_buy_size = curr_buy_order_size if curr_buy_order is not None else amount
+        adjust_leverage()
         if create_buy_order(price, amount):
             create_sell_order(last_buy_size)
         else:
