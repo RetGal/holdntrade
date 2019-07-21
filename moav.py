@@ -128,10 +128,10 @@ def do_work():
         ma21 = round(stats.get_ma(21))
         if ma144 > ma21:
             sign = '>'
-            action = 'BUY'
+            action = 'SELL'
         elif ma144 < ma21:
             sign = '<'
-            action = 'SELL'
+            action = 'BUY'
         else:
             sign = '='
             action = 'HOLD'
