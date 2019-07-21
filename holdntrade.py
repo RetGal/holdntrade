@@ -1202,11 +1202,12 @@ def create_mail_part_general():
 def create_report_part_advice():
     moving_average = read_moving_average()
     if moving_average is not None:
-        part = {'mail':["Moving average 144d/21d: {:>25}".format(moving_average)],
-                'csv':["Moving average 144d/21d:; {}".format(moving_average)]}
+        padding = 6 + len(moving_average)
+        part = {'mail': ["Moving average 144d/21d: {:>{}}".format(moving_average, padding)],
+                'csv': ["Moving average 144d/21d:; {}".format(moving_average)]}
     else:
-        part = {'mail':["Moving average 144d/21d: {:>10}".format('n/a')],
-                'csv':["Moving average 144d/21d:; {}".format('n/a')]}
+        part = {'mail': ["Moving average 144d/21d: {:>10}".format('n/a')],
+                'csv': ["Moving average 144d/21d:; {}".format('n/a')]}
     append_mayer(part)
     return part
 
