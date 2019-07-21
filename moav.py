@@ -123,6 +123,9 @@ def update_history():
 
 def do_work():
     stats = update_history()
+    parts = read_since()
+    old_action = parts[0]
+    since = parts[1]
     if stats is not None:
         ma144 = round(stats.get_ma(144))
         ma21 = round(stats.get_ma(21))
@@ -135,7 +138,10 @@ def do_work():
         else:
             sign = '='
             action = 'HOLD'
-        advice = "{} {} {} = {}".format(ma144, sign, ma21, action)
+        if action != old_action:
+            since = datetime.date.today().isoformat()
+            write_since(action, since)
+        advice = "{} {} {} = {} (since {})".format(ma144, sign, ma21, action, since)
         write_result(advice)
         log.info(advice)
         exit(0)
@@ -144,8 +150,24 @@ def do_work():
 
 
 def write_result(text: str):
-    with open('maverage', 'w') as f:
+    with open('maverage', 'wt') as f:
         f.write(text)
+
+
+def read_since():
+    since_file = 'since'
+    if os.path.isfile(since_file):
+        with open(since_file, "rt") as f:
+            content = f.read()
+            parts = content.split(' ')
+        return parts
+    return ['SNAFU', '1929-10-25']
+
+
+def write_since(action: str, date: str):
+    since_file = 'since'
+    with open(since_file, "wt") as f:
+        f.write(action + ' ' + date)
 
 
 def connect_to_exchange(conf: ExchangeConfig):
