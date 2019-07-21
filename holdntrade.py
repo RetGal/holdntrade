@@ -51,7 +51,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.5"
+            self.bot_version = "1.13.6"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1200,10 +1200,10 @@ def create_mail_part_general():
 
 
 def create_report_part_advice():
-    quotient = read_moving_average()
-    if quotient is not None:
-        part = {'mail':["Moving average 144d/21d: {:>16}".format(quotient)],
-                'csv':["Moving average 144d/21d:; {}".format(quotient)]}
+    moving_average = read_moving_average()
+    if moving_average is not None:
+        part = {'mail':["Moving average 144d/21d: {:>25}".format(moving_average)],
+                'csv':["Moving average 144d/21d:; {}".format(moving_average)]}
     else:
         part = {'mail':["Moving average 144d/21d: {:>10}".format('n/a')],
                 'csv':["Moving average 144d/21d:; {}".format('n/a')]}
