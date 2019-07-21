@@ -51,7 +51,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.4"
+            self.bot_version = "1.13.5"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1200,10 +1200,10 @@ def create_mail_part_general():
 
 
 def create_report_part_advice():
-    quotient = read_quotient()
+    quotient = read_moving_average()
     if quotient is not None:
-        part = {'mail':["Moving average 144d/21d: {:>10.2f}".format(quotient)],
-                'csv':["Moving average 144d/21d:; {:.2f}".format(quotient)]}
+        part = {'mail':["Moving average 144d/21d: {:>16}".format(quotient)],
+                'csv':["Moving average 144d/21d:; {}".format(quotient)]}
     else:
         part = {'mail':["Moving average 144d/21d: {:>10}".format('n/a')],
                 'csv':["Moving average 144d/21d:; {}".format('n/a')]}
@@ -1420,13 +1420,12 @@ def persist_statistics():
         pickle.dump(stats, f)
 
 
-def read_quotient():
-    quotient_file = 'quotient'
-    if os.path.isfile(quotient_file):
-        with open(quotient_file, "rt") as f:
+def read_moving_average():
+    ma_file = 'maverage'
+    if os.path.isfile(ma_file):
+        with open(ma_file, "rt") as f:
             content = f.read()
-        if content is not None:
-            return float(content)
+        return content
     return None
 
 
