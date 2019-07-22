@@ -51,7 +51,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.6"
+            self.bot_version = "1.13.7"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -66,11 +66,11 @@ class ExchangeConfig:
                 self.quota = 1
             self.spread_factor = abs(float(props['spread_factor'].strip('"')))
             self.auto_leverage = bool(props['auto_leverage'].strip('"').lower() == 'true')
-            self.auto_leverage_overdrive = bool(props['auto_leverage_overdrive'].strip('"').lower() == 'true')
+            self.auto_leverage_escape = bool(props['auto_leverage_escape'].strip('"').lower() == 'true')
             self.leverage_default = abs(float(props['leverage_default'].strip('"')))
             self.leverage_low = abs(float(props['leverage_low'].strip('"')))
             self.leverage_high = abs(float(props['leverage_high'].strip('"')))
-            self.leverage_overdrive = abs(float(props['leverage_overdrive'].strip('"')))
+            self.leverage_escape = abs(float(props['leverage_escape'].strip('"')))
             self.mm_floor = abs(float(props['mm_floor'].strip('"')))
             self.mm_ceil = abs(float(props['mm_ceil'].strip('"')))
             currency = self.pair.split("/")
@@ -453,7 +453,7 @@ def delay_buy_order(crypto_price: float, price: float):
     daily_report()
     new_amount = round(get_balance()['free'] / conf.quota * get_current_price())  # recalculate order size
     if is_order_below_limit(new_amount, update_price(crypto_price, price)):
-        if conf.auto_leverage and conf.auto_leverage_overdrive:
+        if conf.auto_leverage and conf.auto_leverage_escape:
             boost_leverage()
             new_amount = round(get_balance()['free'] / conf.quota * get_current_price())  # recalculate order size
         elif conf.auto_leverage:
@@ -1168,10 +1168,10 @@ def create_report_part_settings():
                      "Spread factor: {:>20}".format(str(conf.spread_factor)),
                      "Leverage default: {:>17}x".format(str(conf.leverage_default)),
                      "Auto leverage: {:>20}".format(str('Y' if conf.auto_leverage is True else 'N')),
-                     "Auto leverage overdrive: {:>10}".format(str('Y' if conf.auto_leverage_overdrive is True else 'N')),
+                     "Auto leverage escape: {:>13}".format(str('Y' if conf.auto_leverage_escape is True else 'N')),
                      "Leverage low: {:>21}x".format(str(conf.leverage_low)),
                      "Leverage high: {:>20}x".format(str(conf.leverage_high)),
-                     "Leverage overdrive: {:>15}x".format(str(conf.leverage_high)),
+                     "Leverage escape: {:>18}x".format(str(conf.leverage_high)),
                      "Mayer multiple floor: {:>13}".format(str(conf.mm_floor)),
                      "Mayer multiple ceil: {:>14}".format(str(conf.mm_ceil))],
             'csv': ["Rate change:; {:.1f}%".format(float(conf.change * 100)),
@@ -1179,10 +1179,10 @@ def create_report_part_settings():
                     "Spread factor: {}".format(str(conf.spread_factor)),
                     "Leverage default:; {}".format(str(conf.leverage_default)),
                     "Auto leverage:; {}".format(str('Y' if conf.auto_leverage is True else 'N')),
-                    "Auto leverage overdrive: {}".format(str('Y' if conf.auto_leverage_overdrive is True else 'N')),
+                    "Auto leverage escape: {}".format(str('Y' if conf.auto_leverage_escape is True else 'N')),
                     "Leverage low:; {}".format(str(conf.leverage_low)),
                     "Leverage high:; {}".format(str(conf.leverage_high)),
-                    "Leverage overdrive:; {}".format(str(conf.leverage_overdrive)),
+                    "Leverage escape:; {}".format(str(conf.leverage_escape)),
                     "Mayer multiple floor:; {}".format(str(conf.mm_floor)),
                     "Mayer multiple ceil:; {}".format(str(conf.mm_ceil))]}
 
@@ -1464,13 +1464,13 @@ def append_mayer(part: dict):
 
 
 def boost_leverage():
-    if conf.auto_leverage_overdrive:
+    if conf.auto_leverage_escape:
         if conf.exchange != 'bitmex':
             log.error("boost_leverage() not yet implemented for %s", conf.exchange)
             return
         leverage = get_relevant_leverage()
-        if leverage < conf.leverage_overdrive:
-            log.info('Boosting leverage to {:.1f} (max: {:.1f})'.format(leverage + 0.1, conf.leverage_overdrive))
+        if leverage < conf.leverage_escape:
+            log.info('Boosting leverage to {:.1f} (max: {:.1f})'.format(leverage + 0.1, conf.leverage_escape))
             set_leverage(leverage + 0.1)
 
 

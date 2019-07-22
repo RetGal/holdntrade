@@ -20,8 +20,8 @@ leverage_low = 0.8
 leverage_high = 1.8
 mm_floor = 1.0
 mm_ceil = 2.2
-auto_leverage_overdrive = False
-leverage_overdrive = 4
+auto_leverage_escape = False
+leverage_escape = 4
 
 # email properties
 send_emails = True
