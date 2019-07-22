@@ -212,7 +212,6 @@ class HoldntradeTest(unittest.TestCase):
 
         mock_create_limit_buy_order.assert_called_with(holdntrade.conf.pair, amount, holdntrade.buy_price)
 
-
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'fetch_order_status')
     def test_cancel_current_buy_order_should_remove_order_from_buy_orders_and_clear_current_buy_order(self, mock_fetch_order_status, mock_logging):
@@ -231,6 +230,35 @@ class HoldntradeTest(unittest.TestCase):
         self.assertFalse(holdntrade.curr_buy_order)
         self.assertFalse(holdntrade.buy_orders)
         self.assertTrue(len(holdntrade.buy_orders) == 0)
+
+    def test_stats_add_same_again_day(self):
+        today = {'mBal': 0.999, 'price': 10000}
+        stats = holdntrade.Stats(int(datetime.date.today().strftime("%Y%j")), today)
+        same_day = {'mBal': 0.666, 'price': 9000}
+
+        stats.add_day(int(datetime.date.today().strftime("%Y%j")), same_day)
+
+        day = stats.get_day(int(datetime.date.today().strftime("%Y%j")))
+        self.assertTrue(day['mBal'] == 0.999)
+        self.assertTrue(day['price'] == 10000)
+
+    def test_stats_add_day_removes_oldest(self):
+        h72 = {'mBal': 0.720, 'price': 10072}
+        h48 = {'mBal': 0.480, 'price': 10048}
+        h24 = {'mBal': 0.240, 'price': 10024}
+        today = {'mBal': 0.000, 'price': 10000}
+        stats = holdntrade.Stats(int(datetime.date.today().strftime("%Y%j"))-3, h72)
+        stats.add_day(int(datetime.date.today().strftime("%Y%j"))-2, h48)
+        stats.add_day(int(datetime.date.today().strftime("%Y%j"))-1, h24)
+        self.assertTrue(len(stats.days) == 3)
+
+        stats.add_day(int(datetime.date.today().strftime("%Y%j")), today)
+
+        self.assertTrue(len(stats.days) == 3)
+        self.assertTrue(stats.get_day(int(datetime.date.today().strftime("%Y%j"))-3) is None)
+        self.assertTrue(stats.get_day(int(datetime.date.today().strftime("%Y%j"))-2) is not None)
+        self.assertTrue(stats.get_day(int(datetime.date.today().strftime("%Y%j"))-1) is not None)
+        self.assertTrue(stats.get_day(int(datetime.date.today().strftime("%Y%j"))) is not None)
 
     def test_calculate_statistics_first_day(self):
         holdntrade.conf = self.create_default_conf()
