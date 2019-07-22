@@ -62,14 +62,14 @@ class Stats:
         scope = self.days[:amount]
         size = len(scope)
         if size != amount:
-            log.warning('Not enought historical data, requested %d, found %d', amount, size)
+            log.warning('Not enough historical data, requested %d, found %d', amount, size)
         if scope[-1]['day'] != int(datetime.date.today().strftime("%Y%j")) - (size - 1):
             log.warning('Incomplete historical data, earliest day requested %d, found %d',
                         int(datetime.date.today().strftime("%Y%j")) - (size - 1), scope[-1]['day'])
         avg = 0
         for day in scope:
             avg += day['rate']
-        return avg / size
+        return round(avg / size)
 
 
 def function_logger(console_level: int, filename: str, file_level: int = None):
@@ -124,11 +124,15 @@ def update_history():
 def do_work():
     stats = update_history()
     parts = read_since()
+    exit(0) if advise(stats, parts) else exit(1)
+
+
+def advise(stats: Stats, parts: [str]):
     old_action = parts[0]
     since = parts[1]
     if stats is not None:
-        ma144 = round(stats.get_ma(144))
-        ma21 = round(stats.get_ma(21))
+        ma144 = stats.get_ma(144)
+        ma21 = stats.get_ma(21)
         if ma144 > ma21:
             sign = '>'
             action = 'SELL'
@@ -143,10 +147,10 @@ def do_work():
             write_since(action, since)
         advice = "{} {} {} = {} (since {})".format(ma144, sign, ma21, action, since)
         write_result(advice)
-        log.info(advice)
-        exit(0)
+        log.info(advice.replace('(', '').replace(')', ''))
+        return True
     log.error('Unable to update advise')
-    exit(1)
+    return False
 
 
 def write_result(text: str):
