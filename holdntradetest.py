@@ -265,18 +265,18 @@ class HoldntradeTest(unittest.TestCase):
 
         today = holdntrade.calculate_daily_statistics(100, 8000.0)
 
-        self.assertTrue(today['day'] == int(datetime.date.today().strftime("%j")))
+        self.assertTrue(today['day'] == int(datetime.date.today().strftime("%Y%j")))
         self.assertTrue(today['mBal'] == 100)
         self.assertTrue(today['price'] == 8000.0)
 
     def test_calculate_statistics_positive_change(self):
         holdntrade.conf = self.create_default_conf()
-        holdntrade.stats = holdntrade.Stats(int(datetime.date.today().strftime("%j"))-2, {'mBal': 75.15, 'price': 4400.0})
-        holdntrade.stats.add_day(int(datetime.date.today().strftime("%j"))-1, {'mBal': 50.1, 'price': 8000.0})
+        holdntrade.stats = holdntrade.Stats(int(datetime.date.today().strftime("%Y%j"))-2, {'mBal': 75.15, 'price': 4400.0})
+        holdntrade.stats.add_day(int(datetime.date.today().strftime("%Y%j"))-1, {'mBal': 50.1, 'price': 8000.0})
 
         today = holdntrade.calculate_daily_statistics(100.2, 8800.0)
 
-        self.assertTrue(today['day'] == int(datetime.date.today().strftime("%j")))
+        self.assertTrue(today['day'] == int(datetime.date.today().strftime("%Y%j")))
         self.assertTrue(today['mBal'] == 100.2)
         self.assertTrue(today['price'] == 8800.0)
         self.assertTrue(today['mBalChan24'] == 100.0)
@@ -286,11 +286,11 @@ class HoldntradeTest(unittest.TestCase):
 
     def test_calculate_statistics_negative_change(self):
         holdntrade.conf = self.create_default_conf()
-        holdntrade.stats = holdntrade.Stats(int(datetime.date.today().strftime("%j"))-1, {'mBal': 150.3, 'price': 8000.0})
+        holdntrade.stats = holdntrade.Stats(int(datetime.date.today().strftime("%Y%j"))-1, {'mBal': 150.3, 'price': 8000.0})
 
         today = holdntrade.calculate_daily_statistics(100.2, 7600.0)
 
-        self.assertTrue(today['day'] == int(datetime.date.today().strftime("%j")))
+        self.assertTrue(today['day'] == int(datetime.date.today().strftime("%Y%j")))
         self.assertTrue(today['mBal'] == 100.2)
         self.assertTrue(today['price'] == 7600.0)
         self.assertTrue(today['mBalChan24'] == -33.33)
