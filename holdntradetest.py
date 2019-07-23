@@ -1,10 +1,10 @@
-import datetime
-import time
 import unittest
 from unittest import mock
-from unittest.mock import patch
 
 import ccxt
+import datetime
+import time
+from unittest.mock import patch
 
 import holdntrade
 
@@ -145,8 +145,8 @@ class HoldntradeTest(unittest.TestCase):
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
     @mock.patch.object(holdntrade, 'get_balance')
     def test_create_sell_order_should_not_create_order_if_order_is_bigger_than_used_balance(self, mock_get_balance,
-                                                                               mock_create_limit_sell_order,
-                                                                               mock_logging):
+                                                                                            mock_create_limit_sell_order,
+                                                                                            mock_logging):
         holdntrade.sell_price = 4000
         holdntrade.sell_orders = []
         holdntrade.curr_buy_order_size = 10
@@ -214,9 +214,11 @@ class HoldntradeTest(unittest.TestCase):
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'fetch_order_status')
-    def test_cancel_current_buy_order_should_remove_order_from_buy_orders_and_clear_current_buy_order(self, mock_fetch_order_status, mock_logging):
+    def test_cancel_current_buy_order_should_remove_order_from_buy_orders_and_clear_current_buy_order(self,
+                                                                                                      mock_fetch_order_status,
+                                                                                                      mock_logging):
         new_order = {'id': '3f463352-8339-cfbb-3bde-45a63ba43e6c', 'price': 99, 'amount': 20, 'side': 'buy',
-                 'datetime': datetime.datetime.now()}
+                     'datetime': datetime.datetime.now()}
         order = holdntrade.Order(new_order)
         holdntrade.buy_orders = [order]
         holdntrade.curr_buy_order = order
@@ -247,17 +249,17 @@ class HoldntradeTest(unittest.TestCase):
         h48 = {'mBal': 0.480, 'price': 10048}
         h24 = {'mBal': 0.240, 'price': 10024}
         today = {'mBal': 0.000, 'price': 10000}
-        stats = holdntrade.Stats(int(datetime.date.today().strftime("%Y%j"))-3, h72)
-        stats.add_day(int(datetime.date.today().strftime("%Y%j"))-2, h48)
-        stats.add_day(int(datetime.date.today().strftime("%Y%j"))-1, h24)
+        stats = holdntrade.Stats(int(datetime.date.today().strftime("%Y%j")) - 3, h72)
+        stats.add_day(int(datetime.date.today().strftime("%Y%j")) - 2, h48)
+        stats.add_day(int(datetime.date.today().strftime("%Y%j")) - 1, h24)
         self.assertTrue(len(stats.days) == 3)
 
         stats.add_day(int(datetime.date.today().strftime("%Y%j")), today)
 
         self.assertTrue(len(stats.days) == 3)
-        self.assertTrue(stats.get_day(int(datetime.date.today().strftime("%Y%j"))-3) is None)
-        self.assertTrue(stats.get_day(int(datetime.date.today().strftime("%Y%j"))-2) is not None)
-        self.assertTrue(stats.get_day(int(datetime.date.today().strftime("%Y%j"))-1) is not None)
+        self.assertTrue(stats.get_day(int(datetime.date.today().strftime("%Y%j")) - 3) is None)
+        self.assertTrue(stats.get_day(int(datetime.date.today().strftime("%Y%j")) - 2) is not None)
+        self.assertTrue(stats.get_day(int(datetime.date.today().strftime("%Y%j")) - 1) is not None)
         self.assertTrue(stats.get_day(int(datetime.date.today().strftime("%Y%j"))) is not None)
 
     def test_calculate_statistics_first_day(self):
@@ -271,8 +273,9 @@ class HoldntradeTest(unittest.TestCase):
 
     def test_calculate_statistics_positive_change(self):
         holdntrade.conf = self.create_default_conf()
-        holdntrade.stats = holdntrade.Stats(int(datetime.date.today().strftime("%Y%j"))-2, {'mBal': 75.15, 'price': 4400.0})
-        holdntrade.stats.add_day(int(datetime.date.today().strftime("%Y%j"))-1, {'mBal': 50.1, 'price': 8000.0})
+        holdntrade.stats = holdntrade.Stats(int(datetime.date.today().strftime("%Y%j")) - 2,
+                                            {'mBal': 75.15, 'price': 4400.0})
+        holdntrade.stats.add_day(int(datetime.date.today().strftime("%Y%j")) - 1, {'mBal': 50.1, 'price': 8000.0})
 
         today = holdntrade.calculate_daily_statistics(100.2, 8800.0)
 
@@ -286,7 +289,8 @@ class HoldntradeTest(unittest.TestCase):
 
     def test_calculate_statistics_negative_change(self):
         holdntrade.conf = self.create_default_conf()
-        holdntrade.stats = holdntrade.Stats(int(datetime.date.today().strftime("%Y%j"))-1, {'mBal': 150.3, 'price': 8000.0})
+        holdntrade.stats = holdntrade.Stats(int(datetime.date.today().strftime("%Y%j")) - 1,
+                                            {'mBal': 150.3, 'price': 8000.0})
 
         today = holdntrade.calculate_daily_statistics(100.2, 7600.0)
 
@@ -295,6 +299,20 @@ class HoldntradeTest(unittest.TestCase):
         self.assertTrue(today['price'] == 7600.0)
         self.assertTrue(today['mBalChan24'] == -33.33)
         self.assertTrue(today['priceChan24'] == -5.0)
+
+    def test_shall_hibernate(self):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.conf.mm_stop_buy = 2.3
+        mayer = {'current': 2.4}
+
+        self.assertTrue(holdntrade.shall_hibernate(mayer))
+
+    def test_shall_not_hibernate(self):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.conf.mm_stop_buy = 2.3
+        mayer = {'current': 1.8}
+
+        self.assertFalse(holdntrade.shall_hibernate(mayer))
 
     # @patch('holdntrade.logging')
     # @mock.patch.object(ccxt.bitmex, 'cancel_order')
@@ -331,7 +349,6 @@ class HoldntradeTest(unittest.TestCase):
     #
     #     mock_fetch_order_status.assert_called_with(buy2.id)
     #     mock_cancel_order.assert_called_with(buy2.id)
-
 
     @staticmethod
     def create_default_conf():
