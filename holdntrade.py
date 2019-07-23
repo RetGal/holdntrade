@@ -1197,7 +1197,8 @@ def create_report_part_settings():
                      "Leverage high: {:>20}x".format(str(conf.leverage_high)),
                      "Leverage escape: {:>18}x".format(str(conf.leverage_high)),
                      "Mayer multiple floor: {:>13}".format(str(conf.mm_floor)),
-                     "Mayer multiple ceil: {:>14}".format(str(conf.mm_ceil))],
+                     "Mayer multiple ceil: {:>14}".format(str(conf.mm_ceil)),
+                     "Mayer multiple stop buy: {:>10}".format(str(conf.mm_stop_buy))],
             'csv': ["Rate change:; {:.1f}%".format(float(conf.change * 100)),
                     "Quota:; {:.3f}".format(1 / conf.quota),
                     "Spread factor: {}".format(str(conf.spread_factor)),
@@ -1208,7 +1209,8 @@ def create_report_part_settings():
                     "Leverage high:; {}".format(str(conf.leverage_high)),
                     "Leverage escape:; {}".format(str(conf.leverage_escape)),
                     "Mayer multiple floor:; {}".format(str(conf.mm_floor)),
-                    "Mayer multiple ceil:; {}".format(str(conf.mm_ceil))]}
+                    "Mayer multiple ceil:; {}".format(str(conf.mm_ceil)),
+                    "Mayer multiple stop buy: {:}".format(str(conf.mm_stop_buy))]}
 
 
 def create_mail_part_general():
