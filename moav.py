@@ -200,8 +200,7 @@ def get_current_price(tries: int = 0):
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.debug('Got an error %s %s, retrying in 5 seconds...', type(error).__name__, str(error.args))
         sleep(5)
-        tries += 1
-        return get_current_price(tries)
+        return get_current_price(tries+1)
 
 
 if __name__ == "__main__":
