@@ -34,6 +34,7 @@ email_only = False
 email_sent = 0
 started = datetime.datetime.utcnow().replace(microsecond=0)
 stats = None
+hibernate = False
 no_recall = ['nsufficient', 'too low', 'not_enough_free_balance', 'margin_below']
 
 # ------------------------------------------------------------------------------
@@ -51,7 +52,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.7"
+            self.bot_version = "1.13.8"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -73,6 +74,7 @@ class ExchangeConfig:
             self.leverage_escape = abs(float(props['leverage_escape'].strip('"')))
             self.mm_floor = abs(float(props['mm_floor'].strip('"')))
             self.mm_ceil = abs(float(props['mm_ceil'].strip('"')))
+            self.mm_stop_buy = abs(float(props['mm_stop_buy'].strip('"')))
             currency = self.pair.split("/")
             self.base = currency[0]
             self.quote = currency[1]
@@ -194,6 +196,7 @@ def buy_executed(price: float, amount: int):
     """
     global curr_buy_order_size
     global buy_orders
+    global hibernate
 
     if curr_buy_order is None:
         status = 'closed'
@@ -212,12 +215,16 @@ def buy_executed(price: float, amount: int):
         # default case: use amount of last (previous) buy order for next sell order
         # else last buy was compensation order: use same amount for next sell order as the buy order to be created next
         last_buy_size = curr_buy_order_size if curr_buy_order is not None else amount
-        adjust_leverage()
-        if create_buy_order(price, amount):
-            create_sell_order(last_buy_size)
-        else:
-            log.warning('Resetting')
-            init_orders(True, False)
+        mm = fetch_mayer()
+        hibernate = shall_hibernate(mm)
+        if not hibernate:
+            adjust_leverage(mm)
+
+            if create_buy_order(price, amount):
+                create_sell_order(last_buy_size)
+            else:
+                log.warning('Resetting')
+                init_orders(True, False)
     else:
         log.warning('You should not be here, order state: %s', status)
 
@@ -231,6 +238,7 @@ def sell_executed(price: float, amount: int):
     cancel it on Bitmex and create a new buy order.
     """
     global sell_orders
+    global hibernate
 
     for order in sell_orders:
         time.sleep(0.5)
@@ -241,15 +249,30 @@ def sell_executed(price: float, amount: int):
             if order in sell_orders:
                 sell_orders.remove(order)
             log.info('Sell executed')
-            adjust_leverage()
-            if not sell_orders:
-                create_divided_sell_order()
-            cancel_current_buy_order()
-            if not create_buy_order(price, amount):
-                log.warning('Resetting')
-                init_orders(True, False)
+            mm = fetch_mayer()
+            hibernate = shall_hibernate(mm)
+            if not hibernate:
+                adjust_leverage(mm)
+                if not sell_orders:
+                    create_divided_sell_order()
+                cancel_current_buy_order()
+                if not create_buy_order(price, amount):
+                    log.warning('Resetting')
+                    init_orders(True, False)
         else:
             log.warning('You should not be here, order state: %s', status)
+
+
+def shall_hibernate(mayer: dict = None):
+    global hibernate
+
+    if mayer is None:
+        mayer = fetch_mayer()
+    if mayer is not None and mayer['current']:
+        if mayer['current'] > conf.mm_stop_buy:
+            return True
+        return False
+    return hibernate
 
 
 def cancel_current_buy_order():
@@ -457,7 +480,8 @@ def delay_buy_order(crypto_price: float, price: float):
             boost_leverage()
             new_amount = round(get_balance()['free'] / conf.quota * get_current_price())  # recalculate order size
         elif conf.auto_leverage:
-            adjust_leverage()
+            mm = fetch_mayer()
+            adjust_leverage(mm)
             new_amount = round(get_balance()['free'] / conf.quota * get_current_price())  # recalculate order size
     return create_buy_order(update_price(crypto_price, price), new_amount)
 
@@ -1474,20 +1498,19 @@ def boost_leverage():
             set_leverage(leverage + 0.1)
 
 
-def adjust_leverage():
+def adjust_leverage(mayer: dict):
     if conf.auto_leverage:
         if conf.exchange != 'bitmex':
             log.error("Adjust_leverage() not yet implemented for %s", conf.exchange)
             return
-        mm = fetch_mayer()
         leverage = get_relevant_leverage()
-        if mm is not None and mm['current'] > conf.mm_ceil:
+        if mayer is not None and mayer['current'] > conf.mm_ceil:
             if leverage > conf.leverage_low:
                 set_leverage(leverage - 0.1)
-        elif mm is not None and mm['current'] < conf.mm_floor:
+        elif mayer is not None and mayer['current'] < conf.mm_floor:
             if leverage < conf.leverage_high:
                 set_leverage(leverage + 0.1)
-        elif mm is not None and mm['current'] < conf.mm_ceil:
+        elif mayer is not None and mayer['current'] < conf.mm_ceil:
             if leverage > conf.leverage_default:
                 set_leverage(leverage - 0.1)
             elif leverage < conf.leverage_default:
@@ -1551,19 +1574,24 @@ if __name__ == '__main__':
     loop = init_orders(False, auto_conf)
 
     while True:
-        market_price = get_current_price()
-        amount = round(get_balance()['free'] / conf.quota * market_price)
+        if not hibernate:
+            market_price = get_current_price()
+            amount = round(get_balance()['free'] / conf.quota * market_price)
 
-        if loop:
-            daily_report()
-            buy_executed(market_price, amount)
-            sell_executed(market_price, amount)
-            if not sell_orders:
-                log.info('No sell orders, resetting all orders')
-                loop = init_orders(True, False)
-            else:
-                spread(market_price)
+            if loop:
+                daily_report()
+                buy_executed(market_price, amount)
+                sell_executed(market_price, amount)
+                if not sell_orders:
+                    log.info('No sell orders, resetting all orders')
+                    loop = init_orders(True, False)
+                else:
+                    spread(market_price)
 
-        if not loop:
-            compensate()
-            loop = True
+            if not loop:
+                compensate()
+                loop = True
+        else:
+            log.info('Going to hibernate')
+            sleep_for(600, 900)
+            hibernate = shall_hibernate()

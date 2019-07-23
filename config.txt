@@ -20,6 +20,7 @@ leverage_low = 0.8
 leverage_high = 1.8
 mm_floor = 1.0
 mm_ceil = 2.2
+mm_stop_buy = 2.3
 auto_leverage_escape = False
 leverage_escape = 4
 
