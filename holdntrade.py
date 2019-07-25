@@ -1201,7 +1201,7 @@ def create_report_part_settings():
                      "Mayer multiple stop buy: {:>10}".format(str(conf.mm_stop_buy))],
             'csv': ["Rate change:; {:.1f}%".format(float(conf.change * 100)),
                     "Quota:; {:.3f}".format(1 / conf.quota),
-                    "Spread factor: {}".format(str(conf.spread_factor)),
+                    "Spread factor:; {}".format(str(conf.spread_factor)),
                     "Leverage default:; {}".format(str(conf.leverage_default)),
                     "Auto leverage:; {}".format(str('Y' if conf.auto_leverage is True else 'N')),
                     "Auto leverage escape: {}".format(str('Y' if conf.auto_leverage_escape is True else 'N')),
