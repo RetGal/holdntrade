@@ -129,7 +129,7 @@ def do_work():
 
 def advise(stats: Stats, parts: [str]):
     old_action = parts[0]
-    since = parts[1]
+    since = parts[1].rstrip()
     if stats is not None:
         ma144 = stats.get_ma(144)
         ma21 = stats.get_ma(21)
@@ -147,7 +147,7 @@ def advise(stats: Stats, parts: [str]):
             write_since(action, since)
         advice = "{} {} {} = {} (since {})".format(ma144, sign, ma21, action, since)
         write_result(advice)
-        log.info(advice.replace('(', '').replace(')', ''))
+        log.info(advice)
         return True
     log.error('Unable to update advise')
     return False
