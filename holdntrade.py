@@ -1210,7 +1210,7 @@ def create_report_part_settings():
                     "Leverage escape:; {}".format(str(conf.leverage_escape)),
                     "Mayer multiple floor:; {}".format(str(conf.mm_floor)),
                     "Mayer multiple ceil:; {}".format(str(conf.mm_ceil)),
-                    "Mayer multiple stop buy: {:}".format(str(conf.mm_stop_buy))]}
+                    "Mayer multiple stop buy:; {}".format(str(conf.mm_stop_buy))]}
 
 
 def create_mail_part_general():
