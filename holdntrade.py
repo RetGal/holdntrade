@@ -161,7 +161,7 @@ class Stats:
         return None
 
 
-def function_logger(console_level: int, filename: str, file_level: int = None):
+def function_logger(console_level: int, log_filename: str, file_level: int = None):
     function_name = inspect.stack()[1][3]
     logger = logging.getLogger(function_name)
     # By default log all messages
@@ -175,7 +175,7 @@ def function_logger(console_level: int, filename: str, file_level: int = None):
     logger.addHandler(ch)
 
     if file_level is not None:
-        fh = RotatingFileHandler("{}.log".format(filename), mode='a', maxBytes=5 * 1024 * 1024, backupCount=4,
+        fh = RotatingFileHandler("{}.log".format(log_filename), mode='a', maxBytes=5 * 1024 * 1024, backupCount=4,
                                  encoding=None, delay=0)
         fh.setLevel(file_level)
         fh_format = logging.Formatter('%(asctime)s - %(lineno)4d - %(levelname)-8s - %(message)s')
@@ -1555,11 +1555,15 @@ if __name__ == '__main__':
                 email_only = True
     else:
         filename = os.path.basename(input('Filename with API Keys (config): ') or 'config')
+    log_filename = 'log' + os.path.sep + filename
 
     if not email_only:
         write_control_file(filename)
 
-    log = function_logger(logging.DEBUG, filename, logging.INFO)
+    if not os.path.exists('log'):
+        os.makedirs('log')
+
+    log = function_logger(logging.DEBUG, log_filename, logging.INFO)
     log.info('-------------------------------')
     conf = ExchangeConfig(filename)
     log.info('Holdntrade version: %s', conf.bot_version)
