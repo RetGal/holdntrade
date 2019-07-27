@@ -1,5 +1,8 @@
-import datetime
 import unittest
+from unittest import mock
+
+import ccxt
+import datetime
 from unittest.mock import patch
 
 import moav
@@ -100,3 +103,28 @@ class MoavTest(unittest.TestCase):
         moav.advise(mock_stats, parts)
 
         mock_write_result.assert_called_with("7999 < 8000 = BUY (since {})".format(today))
+
+    @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
+    @patch('moav.logging')
+    def test_get_current_price(self, mock_logging, mock_fetch_ticker):
+        moav.conf = self.create_default_conf()
+        moav.log = mock_logging
+        moav.exchange = moav.connect_to_exchange(moav.conf)
+        market_price = 9000
+        mock_fetch_ticker.return_value = {'bid': market_price}
+
+        price = moav.get_current_price()
+
+        mock_fetch_ticker.assert_called()
+        self.assertTrue(price == market_price)
+
+    @staticmethod
+    def create_default_conf():
+        conf = moav.ExchangeConfig
+        conf.exchange = 'bitmex'
+        conf.api_key = '1234'
+        conf.api_secret = 'secret'
+        return conf
+
+    if __name__ == '__main__':
+        unittest.main()
