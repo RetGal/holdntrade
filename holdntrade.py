@@ -52,7 +52,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.8"
+            self.bot_version = "1.13.9"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -774,6 +774,7 @@ def spread(market_price: float):
                          lowest_sell_order.price, highest_buy_order.price, market_price)
                 log.info("Canceling highest %s", str(highest_buy_order))
                 cancel_order(highest_buy_order)
+                buy_orders.remove(highest_buy_order)
                 if create_buy_order(market_price, highest_buy_order.amount):
                     create_sell_order()
 
@@ -930,10 +931,10 @@ def load_existing_orders(oos: OpenOrdersSummary):
     global sell_orders, sell_price, buy_orders, curr_buy_order, buy_price, curr_buy_order_size
     if oos.sell_orders:
         sell_orders = oos.sell_orders
-        sell_price = sell_orders[0].price  # lowest if several
+        sell_price = sell_orders[-1].price  # lowest if several
     if oos.buy_orders:
         buy_orders = oos.buy_orders
-        curr_buy_order = buy_orders[-1]  # highest if several
+        curr_buy_order = buy_orders[0]  # highest if several
         buy_price = curr_buy_order.price
         curr_buy_order_size = curr_buy_order.amount
     # All sell orders executed
@@ -1065,7 +1066,7 @@ def print_position_info(oos: OpenOrdersSummary):
             log.info("Liquidation price: {:>10.1f}".format(poi['liquidationPrice']))
             del poi
         else:
-            log.info("Available balance is {}: {:>3} ".format(conf.base , get_balance()['free']))
+            log.info("Available balance is {}: {:>3} ".format(conf.base, get_balance()['free']))
             log.info("No position found, I will create one for you")
             return False
     elif conf.exchange == 'kraken':
@@ -1416,15 +1417,11 @@ def calculate_daily_statistics(m_bal: float, price: float):
         stats.add_day(int(datetime.date.today().strftime("%Y%j")), today)
         persist_statistics()
         before_24h = stats.get_day(int(datetime.date.today().strftime("%Y%j"))-1)
-        if before_24h is None:
-            before_24h = stats.get_day(int(datetime.date.today().strftime("%j"))-1)
         if before_24h is not None:
             today['mBalChan24'] = round((today['mBal']/before_24h['mBal']-1) * 100, 2)
             if 'price' in before_24h:
                 today['priceChan24'] = round((today['price']/before_24h['price']-1) * 100, 2)
             before_48h = stats.get_day(int(datetime.date.today().strftime("%Y%j"))-2)
-            if before_48h is None:
-                before_48h = stats.get_day(int(datetime.date.today().strftime("%j"))-2)
             if before_48h is not None:
                 today['mBalChan48'] = round((today['mBal']/before_48h['mBal']-1) * 100, 2)
                 if 'price' in before_48h:
