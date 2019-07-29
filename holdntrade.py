@@ -1247,7 +1247,7 @@ def create_report_part_performance():
     poi = get_position_info()
     wallet_balance = get_wallet_balance()
     oos = get_open_orders()
-    all_sold_balance = calculate_all_sold_balance(poi, oos, wallet_balance, margin_balance['total'], net_deposits)
+    all_sold_balance = calculate_all_sold_balance(poi, oos.sell_orders, wallet_balance, margin_balance['total'], net_deposits)
     append_balances(part, margin_balance, poi, wallet_balance, all_sold_balance)
     append_orders(part, oos)
     return part
@@ -1367,10 +1367,10 @@ def append_price_change(part: dict, today: dict, price: float):
     part['csv'].append(rate.replace('*', '').replace('  ', '').replace(':', ':;'))
 
 
-def calculate_all_sold_balance(poi: dict, oos: OpenOrdersSummary, wallet_balance: float, margin_balance: float,
+def calculate_all_sold_balance(poi: dict, sell_orders: [Order], wallet_balance: float, margin_balance: float,
                                net_deposits: float):
     if conf.exchange == 'bitmex':
-        sells = calculate_avg_entry_price_and_total_quantity(oos.sell_orders)
+        sells = calculate_avg_entry_price_and_total_quantity(sell_orders)
         avg_sell_price = float(sells['avg'])
         tot_sell_quantity = float(sells['qty'])
         return ((float(poi['homeNotional']) - wallet_balance + margin_balance) * avg_sell_price - tot_sell_quantity) / avg_sell_price + net_deposits

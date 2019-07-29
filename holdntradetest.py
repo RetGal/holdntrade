@@ -337,6 +337,22 @@ class HoldntradeTest(unittest.TestCase):
         mock_fetch_balance.assert_called()
         self.assertTrue(percentage == 80)
 
+    @patch('holdntrade.logging')
+    @patch('holdntrade.calculate_avg_entry_price_and_total_quantity')
+    def test_calculate_all_sold_balance(self, mock_calculate_avg, mock_logging):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.log = mock_logging
+        holdntrade.exchange = holdntrade.connect_to_exchange(holdntrade.conf)
+        poi = {'homeNotional': 0.464}
+        mock_calculate_avg.return_value = {'avg': 40000, 'qty': 4444}
+        wallet_balance = 0.1995
+        margin_balance = 0.1166
+        net_deposits = 0.2
+
+        all_sold_balance = holdntrade.calculate_all_sold_balance(poi, [], wallet_balance, margin_balance,net_deposits)
+
+        self.assertAlmostEqual(all_sold_balance, 0.47, 2)
+
     def test_shall_hibernate(self):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.mm_stop_buy = 2.3
