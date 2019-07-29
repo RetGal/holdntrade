@@ -52,7 +52,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.9"
+            self.bot_version = "1.13.10"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -812,9 +812,9 @@ def calculate_used_margin_percentage(bal=None):
     return float(100 - (bal['free'] / bal['total']) * 100)
 
 
-def calc_avg_entry_price(open_orders: [Order]):
+def calculate_avg_entry_price_and_total_quantity(open_orders: [Order]):
     """"
-    Calculates the average entry price of the remaining amount of all open orders (required for kraken only)
+    Calculates the average price and the quantity of the remaining amount of all open orders
     :param open_orders: [Order]
     """
     total_amount = 0
@@ -823,8 +823,8 @@ def calc_avg_entry_price(open_orders: [Order]):
         total_amount += o.amount
         total_price += o.price * o.amount
     if total_amount > 0:
-        return total_price / total_amount
-    return 0
+        return {'avg':  total_price / total_amount, 'qty': total_amount}
+    return {'avg': 0, 'qty': 0}
 
 
 def get_current_price():
@@ -1071,7 +1071,7 @@ def print_position_info(oos: OpenOrdersSummary):
             return False
     elif conf.exchange == 'kraken':
         log.info("Position {}: {:>13}".format(conf.quote, get_used_balance()))
-        log.info("Entry price: {:>16.1f}".format(calc_avg_entry_price(oos.orders)))
+        log.info("Entry price: {:>16.1f}".format(calculate_avg_entry_price_and_total_quantity(oos.orders)['avg']))
         log.info("Market price: {:>15.1f}".format(get_current_price()))
     elif conf.exchange == 'liquid':
         poi = get_position_info()
@@ -1241,18 +1241,34 @@ def create_report_part_advice():
 
 def create_report_part_performance():
     part = {'mail': [], 'csv': []}
-    balance = get_margin_balance()
-    append_performance(part, balance['total'])
-    append_balances(part, balance)
-    append_orders(part)
+    margin_balance = get_margin_balance()
+    net_deposits = get_net_deposits()
+    append_performance(part, margin_balance['total'], net_deposits)
+    poi = get_position_info()
+    wallet_balance = get_wallet_balance()
+    oos = get_open_orders()
+
+    all_sold_balance = calculate_all_sold_balance(poi, oos, wallet_balance, margin_balance['total'], net_deposits)
+
+    append_balances(part, margin_balance, poi, wallet_balance, all_sold_balance)
+    append_orders(part, oos)
     return part
 
 
-def append_orders(part: dict):
+def calculate_all_sold_balance(poi: dict, oos: OpenOrdersSummary, wallet_balance: float, margin_balance: float,
+                               net_deposits: float):
+    if conf.exchange == 'bitmex':
+        sells = calculate_avg_entry_price_and_total_quantity(oos.sell_orders)
+        avg_sell_price = float(sells['avg'])
+        tot_sell_quantity = float(sells['qty'])
+        return ((float(poi['homeNotional']) - wallet_balance + margin_balance) * avg_sell_price - tot_sell_quantity) / avg_sell_price + net_deposits
+    return None
+
+
+def append_orders(part: dict, oos: OpenOrdersSummary):
     """
     Appends order statistics
     """
-    oos = get_open_orders()
     part['mail'].append("Value of buy orders " + conf.quote + ": {:>10}".format(int(oos.total_buy_order_value)))
     part['mail'].append("Value of sell orders " + conf.quote + ": {:>9}".format(int(oos.total_sell_order_value)))
     part['mail'].append("No. of buy orders: {:>16}".format(len(oos.buy_orders)))
@@ -1263,22 +1279,25 @@ def append_orders(part: dict):
     part['csv'].append("No. of sell orders:; {}".format(len(oos.sell_orders)))
 
 
-def append_balances(part: dict, bal: dict):
+def append_balances(part: dict, margin_balancel: dict, poi: dict, wallet_balance: float, all_sold_balance: float):
     """
     Appends liquidation price, wallet balance, margin balance (including stats), used margin and leverage information
     """
-    poi = get_position_info()
-    wallet_balance = get_wallet_balance()
     part['mail'].append("Wallet balance " + conf.base + ": {:>18.4f}".format(wallet_balance))
     part['csv'].append("Wallet balance " + conf.base + ":; {:.4f}".format(wallet_balance))
-    append_price_and_margin_change(bal['total'], part, conf.base)
+    price = get_current_price()
+    today = calculate_daily_statistics(margin_balancel['total'], price)
+    append_margin_change(part, today, conf.base)
+    part['mail'].append("All sold balance " + conf.base + ": {:>16.4f}".format(all_sold_balance))
+    part['csv'].append("All sold balance " + conf.base + ":; {:.4f}".format(all_sold_balance))
+    append_price_change(part, today, price)
     if poi is not None and 'liquidationPrice' in poi:
         part['mail'].append("Liquidation price: {:>16.1f}".format(poi['liquidationPrice']))
         part['csv'].append("Liquidation price:; {:.1f}".format(poi['liquidationPrice']))
     else:
         part['mail'].append("Liquidation price: {:>16}".format('n/a'))
         part['csv'].append("Liquidation price:; {}".format('n/a'))
-    used_margin = calculate_used_margin_percentage(bal)
+    used_margin = calculate_used_margin_percentage(margin_balancel)
     part['mail'].append("Used margin: {:>22.2f}%".format(used_margin))
     part['csv'].append("Used margin:; {:.2f}%".format(used_margin))
     if conf.exchange == 'kraken':
@@ -1297,11 +1316,10 @@ def append_balances(part: dict, bal: dict):
     part['csv'].append("Position " + conf.quote + ":; {}".format(used_balance))
 
 
-def append_performance(part: dict, margin_balance: float):
+def append_performance(part: dict, margin_balance: float, net_deposits: float):
     """
     Calculates and appends the absolute and relative overall performance
     """
-    net_deposits = get_net_deposits()
     if net_deposits is None:
         part['mail'].append("Net deposits " + conf.base + ": {:>17}".format('n/a'))
         part['mail'].append("Overall performance in " + conf.base + ": {:>7}".format('n/a'))
@@ -1326,13 +1344,10 @@ def append_performance(part: dict, margin_balance: float):
                 "Overall performance in " + conf.base + ":; {:.4f} (% n/a)".format(absolute_performance))
 
 
-def append_price_and_margin_change(margin_balance: float, part: dict, currency: str):
+def append_margin_change(part: dict, today: dict, currency: str):
     """
-    Appends price and margin changes
+    Appends margin changes
     """
-    price = get_current_price()
-    today = calculate_daily_statistics(margin_balance, price)
-
     formatter = 18.4 if currency == conf.base else 16.2
     m_bal = "Margin balance " + currency + ": {:>{}f}".format(today['mBal'], formatter)
     if 'mBalChan24' in today:
@@ -1344,6 +1359,11 @@ def append_price_and_margin_change(margin_balance: float, part: dict, currency: 
     part['mail'].append(m_bal)
     part['csv'].append(m_bal.replace('*', '').replace('  ', '').replace(':', ':;'))
 
+
+def append_price_change(part: dict, today: dict, price: float):
+    """
+    Appends price changes
+    """
     rate = conf.base + " price " + conf.quote + ": {:>20.1f}".format(price)
     if 'priceChan24' in today:
         rate += "    ("

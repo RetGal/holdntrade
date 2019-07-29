@@ -412,7 +412,7 @@ class HoldntradeTest(unittest.TestCase):
         self.assertTrue(holdntrade.buy_price == 8100)
 
     @patch('holdntrade.logging')
-    def test_calc_avg_entry_price(self, mock_logging):
+    def test_calculate_avg_entry_price_and_total_quantity(self, mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.log = mock_logging
         orders = [{'side': 'sell', 'id': '12345abcde', 'price': 10000, 'amount': 10,
@@ -422,9 +422,10 @@ class HoldntradeTest(unittest.TestCase):
                   {'side': 'buy', 'id': '12345abcdg', 'price': 5000, 'amount': 20,
                    'datetime': datetime.datetime.today().isoformat()}]
 
-        price = holdntrade.calc_avg_entry_price(holdntrade.OpenOrdersSummary(orders).orders)
+        avg_total = holdntrade.calculate_avg_entry_price_and_total_quantity(holdntrade.OpenOrdersSummary(orders).orders)
 
-        self.assertTrue(price == 8750)
+        self.assertTrue(avg_total['avg'] == 8750)
+        self.assertTrue(avg_total['qty'] == 40)
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'cancel_order')
