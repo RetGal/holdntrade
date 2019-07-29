@@ -1247,22 +1247,10 @@ def create_report_part_performance():
     poi = get_position_info()
     wallet_balance = get_wallet_balance()
     oos = get_open_orders()
-
     all_sold_balance = calculate_all_sold_balance(poi, oos, wallet_balance, margin_balance['total'], net_deposits)
-
     append_balances(part, margin_balance, poi, wallet_balance, all_sold_balance)
     append_orders(part, oos)
     return part
-
-
-def calculate_all_sold_balance(poi: dict, oos: OpenOrdersSummary, wallet_balance: float, margin_balance: float,
-                               net_deposits: float):
-    if conf.exchange == 'bitmex':
-        sells = calculate_avg_entry_price_and_total_quantity(oos.sell_orders)
-        avg_sell_price = float(sells['avg'])
-        tot_sell_quantity = float(sells['qty'])
-        return ((float(poi['homeNotional']) - wallet_balance + margin_balance) * avg_sell_price - tot_sell_quantity) / avg_sell_price + net_deposits
-    return None
 
 
 def append_orders(part: dict, oos: OpenOrdersSummary):
@@ -1288,8 +1276,12 @@ def append_balances(part: dict, margin_balancel: dict, poi: dict, wallet_balance
     price = get_current_price()
     today = calculate_daily_statistics(margin_balancel['total'], price)
     append_margin_change(part, today, conf.base)
-    part['mail'].append("All sold balance " + conf.base + ": {:>16.4f}".format(all_sold_balance))
-    part['csv'].append("All sold balance " + conf.base + ":; {:.4f}".format(all_sold_balance))
+    if all_sold_balance is not None:
+        part['mail'].append("All sold balance " + conf.base + ": {:>16.4f}".format(all_sold_balance))
+        part['csv'].append("All sold balance " + conf.base + ":; {:.4f}".format(all_sold_balance))
+    else:
+        part['mail'].append("All sold balance: {:>17}".format('n/a'))
+        part['csv'].append("All sold balance:; {}".format('n/a'))
     append_price_change(part, today, price)
     if poi is not None and 'liquidationPrice' in poi:
         part['mail'].append("Liquidation price: {:>16.1f}".format(poi['liquidationPrice']))
@@ -1373,6 +1365,16 @@ def append_price_change(part: dict, today: dict, price: float):
         rate += ")*"
     part['mail'].append(rate)
     part['csv'].append(rate.replace('*', '').replace('  ', '').replace(':', ':;'))
+
+
+def calculate_all_sold_balance(poi: dict, oos: OpenOrdersSummary, wallet_balance: float, margin_balance: float,
+                               net_deposits: float):
+    if conf.exchange == 'bitmex':
+        sells = calculate_avg_entry_price_and_total_quantity(oos.sell_orders)
+        avg_sell_price = float(sells['avg'])
+        tot_sell_quantity = float(sells['qty'])
+        return ((float(poi['homeNotional']) - wallet_balance + margin_balance) * avg_sell_price - tot_sell_quantity) / avg_sell_price + net_deposits
+    return None
 
 
 def write_csv(csv: str, filename_csv: str):
