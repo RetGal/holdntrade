@@ -882,8 +882,8 @@ def init_orders(force_close: bool, auto_conf: bool):
         print_position_info(oos)
 
         if oos.orders:
-            log.info("Value of buy orders {}: {:>2}".format(conf.base, int(oos.total_buy_order_value)))
-            log.info("Value of sell orders {}: {:>1}".format(conf.base, int(oos.total_sell_order_value)))
+            log.info("Value of buy orders {}: {:>2}".format(conf.quote, int(oos.total_buy_order_value)))
+            log.info("Value of sell orders {}: {:>1}".format(conf.quote, int(oos.total_sell_order_value)))
             log.info("No. of buy orders: {:>8}".format(len(oos.buy_orders)))
             log.info("No. of sell orders: {:>7}".format(len(oos.sell_orders)))
             log.info('-------------------------------')
