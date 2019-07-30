@@ -22,10 +22,10 @@ class HoldntradeTest(unittest.TestCase):
 
         exchange = holdntrade.connect_to_exchange(conf)
 
-        self.assertEqual(exchange.id, conf.exchange)
-        self.assertEqual(exchange.apiKey, conf.api_key)
-        self.assertEqual(exchange.secret, conf.api_secret)
-        self.assertEqual(exchange.urls['api'], exchange.urls['test'])
+        self.assertEqual(conf.exchange, exchange.id)
+        self.assertEqual(conf.api_key, exchange.apiKey)
+        self.assertEqual(conf.api_secret, exchange.secret)
+        self.assertEqual(exchange.urls['test'], exchange.urls['api'])
 
     @patch('holdntrade.logging')
     def test_connect_to_exchange_params_kraken(self, mock_logging):
@@ -38,9 +38,9 @@ class HoldntradeTest(unittest.TestCase):
 
         exchange = holdntrade.connect_to_exchange(conf)
 
-        self.assertEqual(exchange.id, conf.exchange)
-        self.assertEqual(exchange.apiKey, conf.api_key)
-        self.assertEqual(exchange.secret, conf.api_secret)
+        self.assertEqual(conf.exchange, exchange.id)
+        self.assertEqual(conf.api_key, exchange.apiKey)
+        self.assertEqual(conf.api_secret, exchange.secret)
 
     @patch('holdntrade.logging')
     def test_connect_to_exchange_params_liquid(self, mock_logging):
@@ -53,9 +53,9 @@ class HoldntradeTest(unittest.TestCase):
 
         exchange = holdntrade.connect_to_exchange(conf)
 
-        self.assertEqual(exchange.id, conf.exchange)
-        self.assertEqual(exchange.apiKey, conf.api_key)
-        self.assertEqual(exchange.secret, conf.api_secret)
+        self.assertEqual(conf.exchange, exchange.id)
+        self.assertEqual(conf.api_key, exchange.apiKey)
+        self.assertEqual(conf.api_secret, exchange.secret)
 
     @patch('holdntrade.logging')
     def test_connect_to_exchange_should_fail_if_param_test_is_true_but_not_supported(self, mock_logging):
@@ -134,9 +134,9 @@ class HoldntradeTest(unittest.TestCase):
 
         balance = holdntrade.get_balance()
 
-        self.assertTrue(balance['used'] == 0)
-        self.assertTrue(balance['free'] == 0)
-        self.assertTrue(balance['total'] == 100)
+        self.assertEqual(0, balance['used'])
+        self.assertEqual(0, balance['free'])
+        self.assertEqual(100, balance['total'])
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
@@ -246,7 +246,7 @@ class HoldntradeTest(unittest.TestCase):
 
         self.assertFalse(holdntrade.curr_buy_order)
         self.assertFalse(holdntrade.buy_orders)
-        self.assertTrue(len(holdntrade.buy_orders) == 0)
+        self.assertEqual(0, len(holdntrade.buy_orders))
 
     def test_stats_add_same_again_day(self):
         today = {'mBal': 0.999, 'price': 10000}
@@ -271,7 +271,7 @@ class HoldntradeTest(unittest.TestCase):
 
         stats.add_day(int(datetime.date.today().strftime("%Y%j")), today)
 
-        self.assertTrue(len(stats.days) == 3)
+        self.assertEqual(3, len(stats.days))
         self.assertTrue(stats.get_day(int(datetime.date.today().strftime("%Y%j")) - 3) is None)
         self.assertTrue(stats.get_day(int(datetime.date.today().strftime("%Y%j")) - 2) is not None)
         self.assertTrue(stats.get_day(int(datetime.date.today().strftime("%Y%j")) - 1) is not None)
@@ -294,13 +294,13 @@ class HoldntradeTest(unittest.TestCase):
 
         today = holdntrade.calculate_daily_statistics(100.2, 8800.0)
 
-        self.assertTrue(today['day'] == int(datetime.date.today().strftime("%Y%j")))
-        self.assertTrue(today['mBal'] == 100.2)
-        self.assertTrue(today['price'] == 8800.0)
-        self.assertTrue(today['mBalChan24'] == 100.0)
-        self.assertTrue(today['priceChan24'] == 10.0)
-        self.assertTrue(today['mBalChan48'] == 33.33)
-        self.assertTrue(today['priceChan48'] == 100.0)
+        self.assertEqual(int(datetime.date.today().strftime("%Y%j")), today['day'])
+        self.assertEqual(100.2, today['mBal'])
+        self.assertEqual(8800.0, today['price'])
+        self.assertEqual(100.0, today['mBalChan24'])
+        self.assertEqual(10.0, today['priceChan24'])
+        self.assertEqual(33.33, today['mBalChan48'])
+        self.assertEqual(100.0, today['priceChan48'])
 
     def test_calculate_statistics_negative_change(self):
         holdntrade.conf = self.create_default_conf()
@@ -309,18 +309,18 @@ class HoldntradeTest(unittest.TestCase):
 
         today = holdntrade.calculate_daily_statistics(100.2, 7600.0)
 
-        self.assertTrue(today['day'] == int(datetime.date.today().strftime("%Y%j")))
-        self.assertTrue(today['mBal'] == 100.2)
-        self.assertTrue(today['price'] == 7600.0)
-        self.assertTrue(today['mBalChan24'] == -33.33)
-        self.assertTrue(today['priceChan24'] == -5.0)
+        self.assertEqual(int(datetime.date.today().strftime("%Y%j")), today['day'])
+        self.assertEqual(100.2, today['mBal'])
+        self.assertEqual(7600.0, today['price'])
+        self.assertEqual(-33.33, today['mBalChan24'])
+        self.assertEqual(-5.0, today['priceChan24'])
 
     def test_calculate_used_margin_percentage(self):
         balance = {'total': 100, 'free': 20}
 
         percentage = holdntrade.calculate_used_margin_percentage(balance)
 
-        self.assertTrue(percentage == 80)
+        self.assertEqual(80, percentage)
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'fetch_balance')
@@ -338,20 +338,19 @@ class HoldntradeTest(unittest.TestCase):
         self.assertTrue(percentage == 80)
 
     @patch('holdntrade.logging')
-    @patch('holdntrade.calculate_avg_entry_price_and_total_quantity')
-    def test_calculate_all_sold_balance(self, mock_calculate_avg, mock_logging):
+    def test_calculate_all_sold_balance(self, mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.log = mock_logging
         holdntrade.exchange = holdntrade.connect_to_exchange(holdntrade.conf)
         poi = {'homeNotional': 0.464}
-        mock_calculate_avg.return_value = {'avg': 40000, 'qty': 4444}
+        orders = [holdntrade.Order({'side': 'sell', 'id': '1', 'price': 40000, 'amount': 4444, 'datetime': datetime.datetime.today().isoformat()})]
         wallet_balance = 0.1995
         margin_balance = 0.1166
         net_deposits = 0.2
 
-        all_sold_balance = holdntrade.calculate_all_sold_balance(poi, [], wallet_balance, margin_balance,net_deposits)
+        all_sold_balance = holdntrade.calculate_all_sold_balance(poi, orders, wallet_balance, margin_balance, net_deposits)
 
-        self.assertAlmostEqual(all_sold_balance, 0.47, 2)
+        self.assertAlmostEqual(0.47, all_sold_balance, 2)
 
     def test_shall_hibernate(self):
         holdntrade.conf = self.create_default_conf()
@@ -380,12 +379,12 @@ class HoldntradeTest(unittest.TestCase):
 
         open_orders_summary = holdntrade.OpenOrdersSummary(orders)
 
-        self.assertTrue(open_orders_summary.total_sell_order_value == 99)
-        self.assertTrue(open_orders_summary.total_buy_order_value == 199)
-        self.assertTrue(len(open_orders_summary.sell_orders) == 2)
-        self.assertTrue(len(open_orders_summary.buy_orders) == 2)
-        self.assertTrue(open_orders_summary.sell_orders[0].price == 10100)
-        self.assertTrue(open_orders_summary.buy_orders[0].price == 8100)
+        self.assertEqual(99, open_orders_summary.total_sell_order_value)
+        self.assertEqual(199, open_orders_summary.total_buy_order_value)
+        self.assertEqual(2, len(open_orders_summary.sell_orders))
+        self.assertEqual(2, len(open_orders_summary.buy_orders))
+        self.assertEqual(10100, open_orders_summary.sell_orders[0].price)
+        self.assertEqual(8100, open_orders_summary.buy_orders[0].price)
 
     def test_open_orders_summary_for_kraken_should_calculate_total_in_fiat_and_sort_orders_by_price(self):
         holdntrade.conf = self.create_default_conf()
@@ -401,12 +400,12 @@ class HoldntradeTest(unittest.TestCase):
 
         open_orders_summary = holdntrade.OpenOrdersSummary(orders)
 
-        self.assertTrue(open_orders_summary.total_sell_order_value == 150.5)
-        self.assertTrue(open_orders_summary.total_buy_order_value == 201.5)
-        self.assertTrue(len(open_orders_summary.sell_orders) == 2)
-        self.assertTrue(len(open_orders_summary.buy_orders) == 2)
-        self.assertTrue(open_orders_summary.sell_orders[0].price == 10100)
-        self.assertTrue(open_orders_summary.buy_orders[0].price == 8100)
+        self.assertEqual(150.5, open_orders_summary.total_sell_order_value)
+        self.assertEqual(201.5, open_orders_summary.total_buy_order_value)
+        self.assertEqual(2, len(open_orders_summary.sell_orders))
+        self.assertEqual(2, len(open_orders_summary.buy_orders))
+        self.assertEqual(10100, open_orders_summary.sell_orders[0].price)
+        self.assertEqual(8100, open_orders_summary.buy_orders[0].price)
 
     @patch('holdntrade.logging')
     def test_load_open_orders(self, mock_logging):
@@ -424,8 +423,8 @@ class HoldntradeTest(unittest.TestCase):
         result = holdntrade.load_existing_orders(holdntrade.OpenOrdersSummary(orders))
 
         self.assertTrue(result)
-        self.assertTrue(holdntrade.sell_price == 10000)
-        self.assertTrue(holdntrade.buy_price == 8100)
+        self.assertEqual(10000, holdntrade.sell_price)
+        self.assertEqual(8100, holdntrade.buy_price)
 
     @patch('holdntrade.logging')
     def test_calculate_avg_entry_price_and_total_quantity(self, mock_logging):
@@ -440,8 +439,8 @@ class HoldntradeTest(unittest.TestCase):
 
         avg_total = holdntrade.calculate_avg_entry_price_and_total_quantity(holdntrade.OpenOrdersSummary(orders).orders)
 
-        self.assertTrue(avg_total['avg'] == 8750)
-        self.assertTrue(avg_total['qty'] == 40)
+        self.assertEqual(8750, avg_total['avg'])
+        self.assertEqual(40, avg_total['qty'])
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'cancel_order')
@@ -678,9 +677,9 @@ class HoldntradeTest(unittest.TestCase):
         mock_cancel_order.assert_called_with(buy2.id)
         mock_create_limit_buy_order.assert_called_with('BTC/USD', 102, buy_price)
         mock_create_limit_sell_order.assert_called_with('BTC/USD', 102, sell_price)
-        self.assertTrue(len(holdntrade.buy_orders) == 2)
-        self.assertTrue(holdntrade.buy_price == buy_price)
-        self.assertTrue(len(holdntrade.sell_orders) == 3)
+        self.assertEqual(2, len(holdntrade.buy_orders))
+        self.assertEqual(buy_price, holdntrade.buy_price)
+        self.assertEqual(3, len(holdntrade.sell_orders))
 
     @staticmethod
     def create_default_conf():

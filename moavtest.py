@@ -21,8 +21,8 @@ class MoavTest(unittest.TestCase):
         stats.add_day(int(datetime.date.today().strftime("%Y%j")), same_day)
 
         day = stats.get_day(int(datetime.date.today().strftime("%Y%j")))
-        self.assertTrue(day['count'] == 2)
-        self.assertTrue(day['rate'] == 7500.00)
+        self.assertEqual(2, day['count'])
+        self.assertEqual(7500.00, day['rate'])
 
     @patch('moav.logging')
     def test_stats_add_same_day_weighted(self, mock_logging):
@@ -34,8 +34,8 @@ class MoavTest(unittest.TestCase):
         stats.add_day(int(datetime.date.today().strftime("%Y%j")), same_day)
 
         day = stats.get_day(int(datetime.date.today().strftime("%Y%j")))
-        self.assertTrue(day['count'] == 3)
-        self.assertTrue(round(day['rate']) == 8333)
+        self.assertEqual(3, day['count'])
+        self.assertAlmostEqual(8333.33, day['rate'], 2)
 
     @patch('moav.logging')
     def test_stats_get_ma(self, mock_logging):
@@ -45,9 +45,9 @@ class MoavTest(unittest.TestCase):
         another_day = {'rate': 5000.00, 'currency': 'USD', 'count': 1}
         stats.add_day(int(datetime.date.today().strftime("%Y%j")) - 1, another_day)
 
-        stats.get_ma(2)
+        ma = stats.get_ma(2)
 
-        self.assertTrue(stats.get_ma(2) == 7500.00)
+        self.assertEqual(7500.00, ma)
 
     @patch('moav.logging')
     def test_stats_get_ma_not_enough_data(self, mock_logging):
@@ -57,10 +57,10 @@ class MoavTest(unittest.TestCase):
         same_day = {'rate': 5000.00, 'currency': 'USD', 'count': 1}
         stats.add_day(int(datetime.date.today().strftime("%Y%j")), same_day)
 
-        stats.get_ma(2)
+        ma = stats.get_ma(2)
 
         mock_logging.warning.assert_called_with('Not enough historical data, requested %d, found %d', 2, 1)
-        self.assertTrue(stats.get_ma(2) == 7500.00)
+        self.assertTrue(ma == 7500.00)
 
     @patch('moav.logging')
     def test_stats_get_ma_not_incomplete_data(self, mock_logging):
@@ -71,11 +71,11 @@ class MoavTest(unittest.TestCase):
         stats.add_day(int(datetime.date.today().strftime("%Y%j")) - 2, same_day)
         earliest_day = int(datetime.date.today().strftime("%Y%j")) - 1
 
-        stats.get_ma(2)
+        ma = stats.get_ma(2)
 
         mock_logging.warning.assert_called_with('Incomplete historical data, earliest day requested %d, found %d',
                                                 earliest_day, earliest_day - 1)
-        self.assertTrue(stats.get_ma(2) == 7500.00)
+        self.assertEqual(7500.00, ma)
 
     @patch('moav.write_result')
     @patch('moav.Stats')
@@ -116,7 +116,35 @@ class MoavTest(unittest.TestCase):
         price = moav.get_current_price()
 
         mock_fetch_ticker.assert_called()
-        self.assertTrue(price == market_price)
+        self.assertEqual(market_price, price)
+
+    @patch('moav.os.path')
+    def test_load_history(self, mock_os_path):
+        mock_os_path.isfile.return_value = False
+
+        history = moav.load_history()
+
+        mock_os_path.isfile.assert_called_with('moav.pkl')
+        self.assertTrue(history is None)
+
+    @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
+    @patch('moav.load_history')
+    @patch('moav.persist_history')
+    @patch('moav.logging')
+    def test_update_history(self, mock_logging,  mock_persist_history, mock_load_history, mock_fetch_ticker):
+        moav.conf = self.create_default_conf()
+        moav.log = mock_logging
+        moav.exchange = moav.connect_to_exchange(moav.conf)
+        market_price = 9000
+        today = {'rate': market_price, 'currency': 'USD', 'count': 1}
+        mock_fetch_ticker.return_value = {'bid': market_price}
+        mock_load_history.return_value = Stats(int(datetime.date.today().strftime("%Y%j")), today)
+
+        history = moav.update_history()
+
+        mock_persist_history.assert_called()
+        self.assertEqual(market_price, history.days[0]['rate'])
+        self.assertEqual(2, history.days[0]['count'])
 
     @staticmethod
     def create_default_conf():

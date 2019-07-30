@@ -832,12 +832,12 @@ def get_current_price():
     Fetch the current crypto price
     output: last bid price
     """
-    sleep_for(4, 6)
     try:
         return exchange.fetch_ticker(conf.pair)['bid']
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        sleep_for(4, 6)
         return get_current_price()
 
 
@@ -1243,9 +1243,11 @@ def create_report_part_performance():
     part = {'mail': [], 'csv': []}
     margin_balance = get_margin_balance()
     net_deposits = get_net_deposits()
+    sleep_for(0, 1)
     append_performance(part, margin_balance['total'], net_deposits)
     poi = get_position_info()
     wallet_balance = get_wallet_balance()
+    sleep_for(0, 1)
     oos = get_open_orders()
     all_sold_balance = calculate_all_sold_balance(poi, oos.sell_orders, wallet_balance, margin_balance['total'], net_deposits)
     append_balances(part, margin_balance, poi, wallet_balance, all_sold_balance)
