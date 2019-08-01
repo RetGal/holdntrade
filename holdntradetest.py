@@ -491,6 +491,30 @@ class HoldntradeTest(unittest.TestCase):
         self.assertEqual(-0.01, rate)
 
     @patch('holdntrade.logging')
+    @mock.patch.object(holdntrade, 'get_relevant_leverage')
+    @mock.patch.object(holdntrade, 'set_leverage')
+    def test_boost_leverage_too_high(self, mock_set_leverage, mock_get_relevant_leverage, mock_logging):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.log = mock_logging
+        mock_get_relevant_leverage.return_value = 2.18
+
+        holdntrade.boost_leverage()
+
+        mock_set_leverage.assert_not_called()
+
+    @patch('holdntrade.logging')
+    @mock.patch.object(holdntrade, 'get_relevant_leverage')
+    @mock.patch.object(holdntrade, 'set_leverage')
+    def test_boost_leverage(self, mock_set_leverage, mock_get_relevant_leverage, mock_logging):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.log = mock_logging
+        mock_get_relevant_leverage.return_value = 2.08
+
+        holdntrade.boost_leverage()
+
+        mock_set_leverage.assert_called_with(2.18)
+
+    @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'fetch_order_status')
     def test_sell_executed_still_open(self, mock_fetch_order_status, mock_logging):
         holdntrade.conf = self.create_default_conf()
@@ -712,6 +736,8 @@ class HoldntradeTest(unittest.TestCase):
         conf.mm_stop_buy = 2.3
         conf.auto_leverage = False
         conf.leverage_default = 2
+        conf.leverage_escape = 2.2
+        conf.auto_leverage_escape = True
         return conf
 
 
