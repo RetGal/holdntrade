@@ -737,7 +737,7 @@ def get_interest_rate():
             today = datetime.date.today().isoformat()
             result = exchange.public_get_funding({'symbol': conf.symbol, 'startTime': today, 'count': 1})
             if result is not None:
-                return result[0]['fundingRate'] * 100
+                return result[0]['fundingRateDaily'] * -100
             return None
         log.error("get_interest_rate() not yet implemented for %s", conf.exchange)
 
@@ -751,19 +751,10 @@ def compensate():
     """
     Approaches the margin used towards 50% by selling or buying the difference to market price
     """
-    try:
-        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
-            bal = get_balance()
-        elif conf.exchange == 'kraken':
-            bal = exchange.private_post_tradebalance({'asset': conf.base})['result']
-            bal['free'] = float(bal['mf'])
-            bal['total'] = float(bal['e'])
-            bal['used'] = float(bal['m'])
-
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
-        sleep_for(4, 6)
-        return compensate()
+    if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+        bal = get_balance()
+    elif conf.exchange == 'kraken':
+        bal = get_margin_balance()
 
     used = float(100 - (bal['free'] / bal['total']) * 100)
     if used < 40 or used > 60:
@@ -810,6 +801,7 @@ def get_margin_balance():
             bal = exchange.private_post_tradebalance({'asset': conf.base})['result']
             bal['free'] = float(bal['mf'])
             bal['total'] = float(bal['e'])
+            bal['used'] = float(bal['m'])
         elif conf.exchange == 'liquid':
             bal = get_balance()
         return bal
