@@ -1537,10 +1537,10 @@ def boost_leverage():
         if conf.exchange != 'bitmex':
             log.error("boost_leverage() not yet implemented for %s", conf.exchange)
             return
-        leverage = get_relevant_leverage()
-        if leverage < conf.leverage_escape:
-            log.info('Boosting leverage to {:.1f} (max: {:.1f})'.format(leverage + 0.1, conf.leverage_escape))
-            set_leverage(leverage + 0.1)
+        leverage = get_relevant_leverage()+0.1
+        if leverage <= conf.leverage_escape:
+            log.info('Boosting leverage to {:.1f} (max: {:.1f})'.format(leverage, conf.leverage_escape))
+            set_leverage(leverage)
 
 
 def adjust_leverage(mayer: dict):
