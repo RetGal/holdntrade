@@ -52,7 +52,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.10"
+            self.bot_version = "1.13.11"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -728,6 +728,25 @@ def get_position_info():
         return get_position_info()
 
 
+def get_interest_rate():
+    """
+    Fetches and converts the interest rate
+    """
+    try:
+        if conf.exchange == 'bitmex':
+            today = datetime.date.today().isoformat()
+            result = exchange.public_get_funding({'symbol': conf.symbol, 'startTime': today, 'count': 1})
+            if result is not None:
+                return result[0]['fundingRate'] * 100
+            return None
+        log.error("get_interest_rate() not yet implemented for %s", conf.exchange)
+
+    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        sleep_for(4, 6)
+        return get_interest_rate()
+
+
 def compensate():
     """
     Approaches the margin used towards 50% by selling or buying the difference to market price
@@ -1105,7 +1124,7 @@ def connect_to_exchange(conf: ExchangeConfig):
         # 'verbose': True,
     })
 
-    # pprint(dir(exchange))
+    #pprint(dir(exchange))
 
     if hasattr(conf, 'test') & conf.test:
         if 'test' in exchange.urls:
@@ -1252,6 +1271,7 @@ def create_report_part_performance():
     all_sold_balance = calculate_all_sold_balance(poi, oos.sell_orders, wallet_balance, margin_balance['total'], net_deposits)
     append_balances(part, margin_balance, poi, wallet_balance, all_sold_balance)
     append_orders(part, oos)
+    append_interest_rate(part)
     return part
 
 
@@ -1267,6 +1287,16 @@ def append_orders(part: dict, oos: OpenOrdersSummary):
     part['csv'].append("Value of sell orders " + conf.quote + ":; {}".format(int(oos.total_sell_order_value)))
     part['csv'].append("No. of buy orders:; {}".format(len(oos.buy_orders)))
     part['csv'].append("No. of sell orders:; {}".format(len(oos.sell_orders)))
+
+
+def append_interest_rate(part: dict):
+    interest_rate = get_interest_rate()
+    if interest_rate is not None:
+        part['mail'].append("Interest rate: {:>+20.2f}%".format(interest_rate))
+        part['csv'].append("Used margin:; {:+2f}%".format(interest_rate))
+    else:
+        part['mail'].append("Interest rate: {:>20}".format('n/a'))
+        part['csv'].append("Used margin:; {:}".format('n/a'))
 
 
 def append_balances(part: dict, margin_balancel: dict, poi: dict, wallet_balance: float, all_sold_balance: float):

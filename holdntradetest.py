@@ -477,6 +477,20 @@ class HoldntradeTest(unittest.TestCase):
         mock_fetch_balance.assert_called()
 
     @patch('holdntrade.logging')
+    @patch('ccxt.bitmex')
+    def test_get_interest_rate(self, mock_bitmex, mock_logging):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.log = mock_logging
+        holdntrade.exchange = mock_bitmex
+        mock_bitmex.public_get_funding.return_value = [{'fundingRate': 0.0001}]
+        rate = holdntrade.get_interest_rate()
+
+        today = datetime.date.today().isoformat()
+
+        mock_bitmex.public_get_funding.assert_called_with({'symbol': holdntrade.conf.symbol, 'startTime': today, 'count': 1})
+        self.assertEqual(0.01, rate)
+
+    @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'fetch_order_status')
     def test_sell_executed_still_open(self, mock_fetch_order_status, mock_logging):
         holdntrade.conf = self.create_default_conf()
