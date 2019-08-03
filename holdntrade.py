@@ -35,6 +35,7 @@ email_sent = 0
 started = datetime.datetime.utcnow().replace(microsecond=0)
 stats = None
 hibernate = False
+initial_leverage_set = False
 no_recall = ['nsufficient', 'too low', 'not_enough_free_balance', 'margin_below']
 
 # ------------------------------------------------------------------------------
@@ -52,7 +53,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.11"
+            self.bot_version = "1.13.12"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -185,7 +186,7 @@ def function_logger(console_level: int, log_filename: str, file_level: int = Non
     return logger
 
 
-def buy_executed(price: float, amount: int):
+def buy_executed(price: float, buy_amount: int):
     """
     Check if the most recent buy order has been executed.
     input: current price and amount to trade (Current Balance / quota)
@@ -197,6 +198,7 @@ def buy_executed(price: float, amount: int):
     global curr_buy_order_size
     global buy_orders
     global hibernate
+    global initial_leverage_set
 
     if curr_buy_order is None:
         status = 'closed'
@@ -214,14 +216,15 @@ def buy_executed(price: float, amount: int):
             buy_orders.remove(curr_buy_order)
         # default case: use amount of last (previous) buy order for next sell order
         # else last buy was compensation order: use same amount for next sell order as the buy order to be created next
-        last_buy_size = curr_buy_order_size if curr_buy_order is not None else amount
+        last_buy_amount = curr_buy_order_size if curr_buy_order is not None else buy_amount
+        if not initial_leverage_set:
+            initial_leverage_set = set_initial_leverage()
         mm = fetch_mayer()
         hibernate = shall_hibernate(mm)
         if not hibernate:
             adjust_leverage(mm)
-
-            if create_buy_order(price, amount):
-                create_sell_order(last_buy_size)
+            if create_buy_order(price, buy_amount):
+                create_sell_order(last_buy_amount)
             else:
                 log.warning('Resetting')
                 init_orders(True, False)
@@ -229,7 +232,7 @@ def buy_executed(price: float, amount: int):
         log.warning('You should not be here, order state: %s', status)
 
 
-def sell_executed(price: float, amount: int):
+def sell_executed(price: float, sell_amount: int):
     """
     Check if any of the open sell orders has been executed.
     input: current price and amount to trade (Current Balance / quota)
@@ -256,7 +259,7 @@ def sell_executed(price: float, amount: int):
                 if not sell_orders:
                     create_divided_sell_order()
                 cancel_current_buy_order()
-                if not create_buy_order(price, amount):
+                if not create_buy_order(price, sell_amount):
                     log.warning('Resetting')
                     init_orders(True, False)
         else:
@@ -405,11 +408,11 @@ def cancel_order(order: Order):
         return cancel_order(order)
 
 
-def create_buy_order(price: float, amount: int):
+def create_buy_order(price: float, buy_amount: int):
     """
     Creates a buy order and sets the values as global ones. Used by other functions.
     :param price current price of crypto
-    :param amount the order volume
+    :param buy_amount the order volume
     output: calculate the price to get long (price + change) and to get short (price - change).
     In addition set the current orderID and current order size as global values.
     If the amount is below the order limit or there is not enough margin and there are open sell orders, the function
@@ -424,18 +427,18 @@ def create_buy_order(price: float, amount: int):
 
     buy_price = round(price * (1 - conf.change))
     sell_price = round(price * (1 + conf.change))
-    curr_buy_order_size = amount
+    curr_buy_order_size = buy_amount
     curr_price = get_current_price()
 
     try:
-        if not is_order_below_limit(amount, buy_price):
+        if not is_order_below_limit(buy_amount, buy_price):
             if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
-                new_order = exchange.create_limit_buy_order(conf.pair, amount, buy_price)
+                new_order = exchange.create_limit_buy_order(conf.pair, buy_amount, buy_price)
             elif conf.exchange == 'kraken':
-                new_order = exchange.create_limit_buy_order(conf.pair, to_crypto_amount(amount, curr_price), buy_price,
+                new_order = exchange.create_limit_buy_order(conf.pair, to_crypto_amount(buy_amount, curr_price), buy_price,
                                                             {'leverage': conf.leverage_default, 'oflags': 'fcib'})
             elif conf.exchange == 'liquid':
-                new_order = exchange.create_limit_buy_order(conf.pair, to_crypto_amount(amount, curr_price), buy_price,
+                new_order = exchange.create_limit_buy_order(conf.pair, to_crypto_amount(buy_amount, curr_price), buy_price,
                                                             {'leverage_level': conf.leverage_default,
                                                              'funding_currency': conf.base})
             order = Order(new_order)
@@ -447,7 +450,7 @@ def create_buy_order(price: float, amount: int):
             log.info('Could not create buy order, waiting for a sell order to be realised')
             return delay_buy_order(curr_price, price)
 
-        log.warning('Could not create buy order over %d and there are no open sell orders, reset required', amount)
+        log.warning('Could not create buy order over %d and there are no open sell orders, reset required', buy_amount)
         return False
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
@@ -455,14 +458,14 @@ def create_buy_order(price: float, amount: int):
             if sell_orders:
                 log.info(
                     'Could not create buy order over %s, insufficient margin, waiting for a sell order to be realised',
-                    str(amount))
+                    str(buy_amount))
                 return delay_buy_order(curr_price, price)
 
-            log.warning('Could not create buy order over %d, insufficient margin', amount)
+            log.warning('Could not create buy order over %d, insufficient margin', buy_amount)
             return False
         log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return create_buy_order(update_price(curr_price, price), amount)
+        return create_buy_order(update_price(curr_price, price), buy_amount)
 
 
 def delay_buy_order(crypto_price: float, price: float):
@@ -496,18 +499,18 @@ def create_market_sell_order(amount_crypto: float):
     global sell_orders
 
     cur_price = get_current_price()
-    amount = round(amount_crypto * cur_price)
+    amount_fiat = round(amount_crypto * cur_price)
     buy_price = round(cur_price * (1 - conf.change))
     sell_price = round(cur_price * (1 + conf.change))
 
     try:
         if not is_crypto_amount_below_limit(amount_crypto):
             if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
-                new_order = exchange.create_market_sell_order(conf.pair, amount)
+                new_order = exchange.create_market_sell_order(conf.pair, amount_fiat)
             elif conf.exchange == 'kraken':
                 new_order = exchange.create_market_sell_order(conf.pair, amount_crypto, {'leverage': conf.leverage_default})
             elif conf.exchange == 'liquid':
-                new_order = exchange.create_market_sell_order(conf.pair, amount,
+                new_order = exchange.create_market_sell_order(conf.pair, amount_fiat,
                                                               {'leverage_level': conf.leverage_default})
             order = Order(new_order)
             log.info('Created market %s', str(order))
@@ -515,7 +518,7 @@ def create_market_sell_order(amount_crypto: float):
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if any(e in str(error.args) for e in no_recall):
-            log.error('Insufficient balance/funds - not selling %d', amount)
+            log.error('Insufficient balance/funds - not selling %d', amount_fiat)
             return
         log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
@@ -532,14 +535,14 @@ def create_market_buy_order(amount_crypto: float):
     global curr_buy_order
 
     cur_price = get_current_price()
-    amount = round(amount_crypto * cur_price)
+    amount_fiat = round(amount_crypto * cur_price)
     buy_price = round(cur_price * (1 - conf.change))
     sell_price = round(cur_price * (1 + conf.change))
 
     try:
-        if not is_order_below_limit(amount, cur_price):
+        if not is_order_below_limit(amount_fiat, cur_price):
             if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
-                new_order = exchange.create_market_buy_order(conf.pair, amount)
+                new_order = exchange.create_market_buy_order(conf.pair, amount_fiat)
             elif conf.exchange == 'kraken':
                 new_order = exchange.create_market_buy_order(conf.pair, amount_crypto,
                                                              {'leverage': conf.leverage_default, 'oflags': 'fcib'})
@@ -768,7 +771,7 @@ def compensate():
     return
 
 
-def spread(market_price: float):
+def spread(price: float):
     """
     Checks if the difference between the highest buy order price and the market price is bigger than spread_factor times
     change and the difference of the lowest sell order to the market price is bigger spread_factor times change
@@ -777,15 +780,15 @@ def spread(market_price: float):
     """
     if buy_orders and sell_orders:
         highest_buy_order = sorted(buy_orders, key=lambda order: order.price, reverse=True)[0]
-        if highest_buy_order.price < market_price * (1 - conf.change * conf.spread_factor):
+        if highest_buy_order.price < price * (1 - conf.change * conf.spread_factor):
             lowest_sell_order = sorted(sell_orders, key=lambda order: order.price)[0]
-            if lowest_sell_order.price > market_price * (1 + conf.change * conf.spread_factor):
+            if lowest_sell_order.price > price * (1 + conf.change * conf.spread_factor):
                 log.info("Orders above spread tolerance min sell: %f max buy: %f current rate: %f",
-                         lowest_sell_order.price, highest_buy_order.price, market_price)
+                         lowest_sell_order.price, highest_buy_order.price, price)
                 log.info("Canceling highest %s", str(highest_buy_order))
                 cancel_order(highest_buy_order)
                 buy_orders.remove(highest_buy_order)
-                if create_buy_order(market_price, highest_buy_order.amount):
+                if create_buy_order(price, highest_buy_order.amount):
                     create_sell_order()
 
 
@@ -868,7 +871,7 @@ def init_orders(force_close: bool, auto_conf: bool):
     output True if loaded and False if compensate margin is necessary
     :param force_close: close all orders/positions (reset)
     :param auto_conf: load all orders and keep position
-    :return:
+    :return: False if compensate is required, True if not
     """
     global sell_price
     global sell_orders
@@ -1133,19 +1136,19 @@ def sleep_for(greater: int, less: int):
     time.sleep(seconds)
 
 
-def is_order_below_limit(amount: int, price: float):
-    return is_crypto_amount_below_limit(abs(amount / price))
+def is_order_below_limit(order_amount: int, price: float):
+    return is_crypto_amount_below_limit(abs(order_amount / price))
 
 
-def is_crypto_amount_below_limit(amount_crypto: float):
-    if abs(amount_crypto) < conf.order_crypto_min:
-        log.info('Per order volume below limit: %f', abs(amount_crypto))
+def is_crypto_amount_below_limit(crypto_amount: float):
+    if abs(crypto_amount) < conf.order_crypto_min:
+        log.info('Per order volume below limit: %f', abs(crypto_amount))
         return True
     return False
 
 
-def to_crypto_amount(amount: int, price: float):
-    return round(amount / price, 8)
+def to_crypto_amount(fiat_amount: int, price: float):
+    return round(fiat_amount / price, 8)
 
 
 def write_control_file(filename: str):
@@ -1541,6 +1544,17 @@ def boost_leverage():
         if leverage <= conf.leverage_escape:
             log.info('Boosting leverage to {:.1f} (max: {:.1f})'.format(leverage, conf.leverage_escape))
             set_leverage(leverage)
+
+
+def set_initial_leverage():
+    """
+    Sets the leverage to the default level if the effective leverage is below the configured lowest level.
+    Allows initialisation of cross positions
+    """
+    leverage = get_relevant_leverage()
+    if leverage < conf.leverage_low:
+        set_leverage(conf.leverage_default)
+    return True
 
 
 def adjust_leverage(mayer: dict):

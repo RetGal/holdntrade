@@ -491,6 +491,35 @@ class HoldntradeTest(unittest.TestCase):
         self.assertEqual(-0.01, rate)
 
     @patch('holdntrade.logging')
+    @patch('holdntrade.get_relevant_leverage')
+    @patch('ccxt.bitmex')
+    def test_set_initial_leverage_required(self, mock_bitmex, mock_get_relevant_leverage, mock_logging):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.conf.leverage_low = 0.8
+        holdntrade.log = mock_logging
+        holdntrade.exchange = mock_bitmex
+        mock_get_relevant_leverage.return_value = 0
+
+        holdntrade.set_initial_leverage()
+        self.assertTrue(holdntrade.initial_leverage_set)
+        mock_bitmex.private_post_position_leverage.assert_called_with({'symbol': holdntrade.conf.symbol,
+                                                                       'leverage': holdntrade.conf.leverage_default})
+
+    @patch('holdntrade.logging')
+    @patch('holdntrade.get_relevant_leverage')
+    @patch('ccxt.bitmex')
+    def test_set_initial_leverage_not_required(self, mock_bitmex, mock_get_relevant_leverage, mock_logging):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.conf.leverage_low = 0.8
+        holdntrade.log = mock_logging
+        holdntrade.exchange = mock_bitmex
+        mock_get_relevant_leverage.return_value = 0.8
+
+        holdntrade.set_initial_leverage()
+        self.assertTrue(holdntrade.initial_leverage_set)
+        mock_bitmex.private_post_position_leverage.assert_not_called
+
+    @patch('holdntrade.logging')
     @mock.patch.object(holdntrade, 'get_relevant_leverage')
     @mock.patch.object(holdntrade, 'set_leverage')
     def test_boost_leverage_too_high(self, mock_set_leverage, mock_get_relevant_leverage, mock_logging):
@@ -597,12 +626,13 @@ class HoldntradeTest(unittest.TestCase):
         mock_logging.info.assert_called()
 
     @patch('holdntrade.logging')
+    @patch('holdntrade.set_initial_leverage')
     @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
     @mock.patch.object(ccxt.bitmex, 'fetch_balance')
     @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
     def test_buy_executed_first_run(self, mock_create_limit_sell_order, mock_create_limit_buy_order, mock_fetch_balance,
-                                    mock_fetch_ticker, mock_logging):
+                                    mock_fetch_ticker, mock_set_initial_leverage, mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.base = 'BTC'
         holdntrade.log = mock_logging
@@ -616,21 +646,26 @@ class HoldntradeTest(unittest.TestCase):
 
         holdntrade.buy_executed(price, 200)
 
+        mock_set_initial_leverage.assert_called()
+        self.assertTrue(holdntrade.initial_leverage_set)
         mock_create_limit_sell_order.assert_called_with(holdntrade.conf.pair, 200, sell_price)
         mock_create_limit_buy_order.assert_called_with(holdntrade.conf.pair, 200, buy_price)
 
     @patch('holdntrade.logging')
+    @patch('holdntrade.set_initial_leverage')
     @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
     @mock.patch.object(ccxt.bitmex, 'fetch_balance')
     @mock.patch.object(ccxt.bitmex, 'fetch_order_status')
     @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
     def test_buy_executed_regular(self, mock_create_limit_sell_order, mock_create_limit_buy_order,
-                                  mock_fetch_order_status, mock_fetch_balance, mock_fetch_ticker, mock_logging):
+                                  mock_fetch_order_status, mock_fetch_balance, mock_fetch_ticker,
+                                  mock_set_initial_leverage, mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.base = 'BTC'
         holdntrade.log = mock_logging
         holdntrade.exchange = holdntrade.connect_to_exchange(holdntrade.conf)
+        holdntrade.initial_leverage_set = True
         holdntrade.curr_buy_order = holdntrade.Order({'side': 'buy', 'id': '1B', 'price': 15000, 'amount': 222,
                                                       'datetime': datetime.datetime.today().isoformat()})
         holdntrade.buy_orders.append(holdntrade.curr_buy_order)
@@ -648,6 +683,7 @@ class HoldntradeTest(unittest.TestCase):
 
         mock_logging.debug.assert_called()
         mock_logging.warning.assert_not_called()
+        mock_set_initial_leverage.assert_not_called()
         mock_create_limit_sell_order.assert_called_with(holdntrade.conf.pair, 222, sell_price)
         mock_create_limit_buy_order.assert_called_with(holdntrade.conf.pair, 100, buy_price)
 
