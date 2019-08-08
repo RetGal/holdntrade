@@ -45,7 +45,7 @@ class ExchangeConfig:
     """
     Holds the configuration read from separate .txt file.
     """
-    def __init__(self, filename: str):
+    def __init__(self):
 
         config = configparser.RawConfigParser()
         config.read(filename + ".txt")
@@ -53,7 +53,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.12"
+            self.bot_version = "1.13.13"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -892,6 +892,14 @@ def init_orders(force_close: bool, auto_conf: bool):
         # Handle open orders
         oos = get_open_orders()
 
+        # deactivate bot instance
+        if oos is None:
+            os.remove(filename + '.pid')
+            text = "Deactivated {}".format(conf.bot_instance)
+            log.error(text)
+            send_mail(text, text)
+            exit(1)
+
         log.info("Used margin: {:>17.2f}%".format(calculate_used_margin_percentage()))
         print_position_info(oos)
 
@@ -1038,7 +1046,7 @@ def get_open_position(symbol: str):
         return get_open_position(symbol)
 
 
-def get_open_orders():
+def get_open_orders(tries: int = 0):
     """
     Gets all open orders
     :return: OpenOrdersSummary
@@ -1049,7 +1057,9 @@ def get_open_orders():
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return get_open_orders()
+        if tries < 20000:
+            return get_open_orders(tries+1)
+        return None
 
 
 def get_unrealised_pnl(symbol: str):
@@ -1151,7 +1161,7 @@ def to_crypto_amount(fiat_amount: int, price: float):
     return round(fiat_amount / price, 8)
 
 
-def write_control_file(filename: str):
+def write_control_file():
     with open(filename + '.pid', 'w') as f:
         f.write(str(os.getpid()) + ' ' + filename)
 
@@ -1294,14 +1304,14 @@ def append_interest_rate(part: dict):
         part['csv'].append("Used margin:; {:}".format('n/a'))
 
 
-def append_balances(part: dict, margin_balancel: dict, poi: dict, wallet_balance: float, all_sold_balance: float):
+def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance: float, all_sold_balance: float):
     """
     Appends liquidation price, wallet balance, margin balance (including stats), used margin and leverage information
     """
     part['mail'].append("Wallet balance " + conf.base + ": {:>18.4f}".format(wallet_balance))
     part['csv'].append("Wallet balance " + conf.base + ":; {:.4f}".format(wallet_balance))
     price = get_current_price()
-    today = calculate_daily_statistics(margin_balancel['total'], price)
+    today = calculate_daily_statistics(margin_balance['total'], price)
     append_margin_change(part, today, conf.base)
     if all_sold_balance is not None:
         part['mail'].append("All sold balance " + conf.base + ": {:>16.4f}".format(all_sold_balance))
@@ -1316,7 +1326,7 @@ def append_balances(part: dict, margin_balancel: dict, poi: dict, wallet_balance
     else:
         part['mail'].append("Liquidation price: {:>16}".format('n/a'))
         part['csv'].append("Liquidation price:; {}".format('n/a'))
-    used_margin = calculate_used_margin_percentage(margin_balancel)
+    used_margin = calculate_used_margin_percentage(margin_balance)
     part['mail'].append("Used margin: {:>22.2f}%".format(used_margin))
     part['csv'].append("Used margin:; {:.2f}%".format(used_margin))
     if conf.exchange == 'kraken':
@@ -1407,19 +1417,19 @@ def calculate_all_sold_balance(poi: dict, sell_orders: [Order], wallet_balance: 
 def write_csv(csv: str, filename_csv: str):
     if not is_already_written(filename_csv):
         write_mode = 'a' if int(datetime.date.today().strftime("%j")) != 1 else 'w'
-        with open(filename_csv, write_mode) as f:
-            f.write(csv)
+        with open(filename_csv, write_mode) as file:
+            file.write(csv)
 
 
 def is_already_written(filename_csv: str):
     if os.path.isfile(filename_csv):
-        with open(filename_csv, 'r') as f:
-            last_line = list(f)[-1]
+        with open(filename_csv, 'r') as file:
+            last_line = list(file)[-1]
             return str(datetime.date.today().isoformat()) in last_line
     return False
 
 
-def send_mail(subject: str, text: str, filename: str = None):
+def send_mail(subject: str, text: str, attachment: str = None):
     recipients = ", ".join(conf.recipient_addresses)
     msg = MIMEMultipart()
     msg['Subject'] = subject
@@ -1432,12 +1442,12 @@ def send_mail(subject: str, text: str, filename: str = None):
     readable_part.attach(MIMEText(html, 'html', 'utf-8'))
     msg.attach(readable_part)
 
-    if filename and os.path.isfile(filename):
+    if attachment and os.path.isfile(attachment):
         part = MIMEBase('application', 'octet-stream')
-        with open(filename, "rb") as f:
-            part.set_payload(f.read())
+        with open(attachment, "rb") as file:
+            part.set_payload(file.read())
         encoders.encode_base64(part)
-        part.add_header('Content-Disposition', "attachment; filename={}".format(filename))
+        part.add_header('Content-Disposition', "attachment; filename={}".format(attachment))
         msg.attach(part)
 
     server = smtplib.SMTP(conf.mail_server, 587)
@@ -1618,14 +1628,14 @@ if __name__ == '__main__':
     log_filename = 'log' + os.path.sep + filename
 
     if not email_only:
-        write_control_file(filename)
+        write_control_file()
 
     if not os.path.exists('log'):
         os.makedirs('log')
 
     log = function_logger(logging.DEBUG, log_filename, logging.INFO)
     log.info('-------------------------------')
-    conf = ExchangeConfig(filename)
+    conf = ExchangeConfig()
     log.info('Holdntrade version: %s', conf.bot_version)
     exchange = connect_to_exchange(conf)
     stats = load_statistics()
