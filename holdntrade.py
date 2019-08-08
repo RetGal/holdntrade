@@ -1298,10 +1298,10 @@ def append_interest_rate(part: dict):
     interest_rate = get_interest_rate()
     if interest_rate is not None:
         part['mail'].append("Interest rate: {:>+20.2f}%".format(interest_rate))
-        part['csv'].append("Used margin:; {:+2f}%".format(interest_rate))
+        part['csv'].append("Interest rate:; {:+2f}%".format(interest_rate))
     else:
         part['mail'].append("Interest rate: {:>20}".format('n/a'))
-        part['csv'].append("Used margin:; {:}".format('n/a'))
+        part['csv'].append("Interest rate:; {:}".format('n/a'))
 
 
 def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance: float, all_sold_balance: float):
