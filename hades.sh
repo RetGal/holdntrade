@@ -11,7 +11,7 @@ do
     echo $param is dead
     tmux has-session -t $param 2>/dev/null
     if [ $? -eq 1 ]; then
-      tmux new -t $param
+      tmux new -d -s $param
     fi
     tmux send-keys -t "$param" C-z "$holdntradeDir/holdntrade.py $param -ac" C-m
   else
