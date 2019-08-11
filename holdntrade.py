@@ -1472,19 +1472,20 @@ def calculate_daily_statistics(m_bal: float, price: float):
     if stats is None:
         stats = Stats(int(datetime.date.today().strftime("%Y%j")), today)
         persist_statistics()
-    else:
-        stats.add_day(int(datetime.date.today().strftime("%Y%j")), today)
-        persist_statistics()
-        before_24h = stats.get_day(int(datetime.date.today().strftime("%Y%j"))-1)
-        if before_24h is not None:
-            today['mBalChan24'] = round((today['mBal']/before_24h['mBal']-1) * 100, 2)
-            if 'price' in before_24h:
-                today['priceChan24'] = round((today['price']/before_24h['price']-1) * 100, 2)
-            before_48h = stats.get_day(int(datetime.date.today().strftime("%Y%j"))-2)
-            if before_48h is not None:
-                today['mBalChan48'] = round((today['mBal']/before_48h['mBal']-1) * 100, 2)
-                if 'price' in before_48h:
-                    today['priceChan48'] = round((today['price']/before_48h['price']-1) * 100, 2)
+        return today
+
+    stats.add_day(int(datetime.date.today().strftime("%Y%j")), today)
+    persist_statistics()
+    before_24h = stats.get_day(int(datetime.date.today().strftime("%Y%j"))-1)
+    if before_24h is not None:
+        today['mBalChan24'] = round((today['mBal']/before_24h['mBal']-1) * 100, 2)
+        if 'price' in before_24h:
+            today['priceChan24'] = round((today['price']/before_24h['price']-1) * 100, 2)
+        before_48h = stats.get_day(int(datetime.date.today().strftime("%Y%j"))-2)
+        if before_48h is not None:
+            today['mBalChan48'] = round((today['mBal']/before_48h['mBal']-1) * 100, 2)
+            if 'price' in before_48h:
+                today['priceChan48'] = round((today['price']/before_48h['price']-1) * 100, 2)
     return today
 
 

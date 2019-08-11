@@ -282,7 +282,6 @@ class HoldntradeTest(unittest.TestCase):
 
         today = holdntrade.calculate_daily_statistics(100, 8000.0)
 
-        self.assertTrue(today['day'] == int(datetime.date.today().strftime("%Y%j")))
         self.assertTrue(today['mBal'] == 100)
         self.assertTrue(today['price'] == 8000.0)
 
@@ -294,7 +293,6 @@ class HoldntradeTest(unittest.TestCase):
 
         today = holdntrade.calculate_daily_statistics(100.2, 8800.0)
 
-        self.assertEqual(int(datetime.date.today().strftime("%Y%j")), today['day'])
         self.assertEqual(100.2, today['mBal'])
         self.assertEqual(8800.0, today['price'])
         self.assertEqual(100.0, today['mBalChan24'])
@@ -309,7 +307,6 @@ class HoldntradeTest(unittest.TestCase):
 
         today = holdntrade.calculate_daily_statistics(100.2, 7600.0)
 
-        self.assertEqual(int(datetime.date.today().strftime("%Y%j")), today['day'])
         self.assertEqual(100.2, today['mBal'])
         self.assertEqual(7600.0, today['price'])
         self.assertEqual(-33.33, today['mBalChan24'])
