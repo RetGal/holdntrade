@@ -1276,8 +1276,8 @@ def create_report_part_performance():
     wallet_balance = get_wallet_balance()
     sleep_for(0, 1)
     oos = get_open_orders()
-    all_sold_balance = calculate_all_sold_balance(poi, oos.sell_orders, wallet_balance, margin_balance['total'], net_deposits)
-    append_balances(part, margin_balance, poi, wallet_balance, all_sold_balance)
+    # all_sold_balance = calculate_all_sold_balance(poi, oos.sell_orders, wallet_balance, margin_balance['total'], net_deposits)
+    append_balances(part, margin_balance, poi, wallet_balance, None)
     append_orders(part, oos)
     append_interest_rate(part)
     return part
