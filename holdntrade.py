@@ -53,7 +53,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.13"
+            self.bot_version = "1.13.14"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1055,6 +1055,9 @@ def get_open_orders(tries: int = 0):
         return OpenOrdersSummary(exchange.fetch_open_orders(conf.pair, since=None, limit=None, params={}))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        if "key is disabled" in str(error.args):
+            log.warning('Key is disabled')
+            return None
         log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         if tries < 20000:
