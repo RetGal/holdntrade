@@ -53,7 +53,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.14"
+            self.bot_version = "1.13.15"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -594,7 +594,8 @@ def get_relevant_leverage():
         return margin_leverage
     if margin_leverage is None:
         return position_leverage
-    return position_leverage if position_leverage > margin_leverage else margin_leverage
+    # a position leverage of 100 means cross (bitmex)
+    return position_leverage if 100 > position_leverage > margin_leverage else margin_leverage
 
 
 def get_wallet_balance():
