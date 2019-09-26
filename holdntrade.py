@@ -53,7 +53,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.15"
+            self.bot_version = "1.13.16"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1113,10 +1113,9 @@ def print_position_info(oos: OpenOrdersSummary):
         log.info("No open orders")
 
 
-def connect_to_exchange(conf: ExchangeConfig):
+def connect_to_exchange():
     """
     Connects to the exchange.
-    :param conf: ExchangeConfig
     :return: exchange
     """
     exchanges = {'binance': ccxt.binance,
@@ -1367,14 +1366,11 @@ def append_performance(part: dict, margin_balance: float, net_deposits: float):
             part['mail'].append(
                 "Overall performance in " + conf.base + ": {:>+10.4f} ({:+.2f}%)".format(absolute_performance,
                                                                                          relative_performance))
-            part['csv'].append(
-                "Overall performance in " + conf.base + ":; {:.4f} ({:.2f}%)".format(absolute_performance,
-                                                                                     relative_performance))
+            part['csv'].append("Overall performance in " + conf.base + ":; {:.4f}".format(absolute_performance))
         else:
             part['mail'].append(
                 "Overall performance in " + conf.base + ": {:>+10.4f} (% n/a)".format(absolute_performance))
-            part['csv'].append(
-                "Overall performance in " + conf.base + ":; {:.4f} (% n/a)".format(absolute_performance))
+            part['csv'].append("Overall performance in " + conf.base + ":; {:.4f}".format(absolute_performance))
 
 
 def append_margin_change(part: dict, today: dict, currency: str):
@@ -1390,7 +1386,8 @@ def append_margin_change(part: dict, today: dict, currency: str):
             m_bal += ", {:+.2f}%".format(today['mBalChan48'])
         m_bal += ")*"
     part['mail'].append(m_bal)
-    part['csv'].append(m_bal.replace('*', '').replace('  ', '').replace(':', ':;'))
+    formatter = .4 if currency == conf.base else .2
+    part['csv'].append("Margin balance " + currency + ":; {:{}f}".format(today['mBal'], formatter))
 
 
 def append_price_change(part: dict, today: dict, price: float):
@@ -1405,7 +1402,7 @@ def append_price_change(part: dict, today: dict, price: float):
             rate += ", {:+.2f}%".format(today['priceChan48'])
         rate += ")*"
     part['mail'].append(rate)
-    part['csv'].append(rate.replace('*', '').replace('  ', '').replace(':', ':;'))
+    part['csv'].append(conf.base + " price " + conf.quote + ":; {:.1f}".format(price))
 
 
 def calculate_all_sold_balance(poi: dict, sell_orders: [Order], wallet_balance: float, margin_balance: float,
@@ -1642,7 +1639,7 @@ if __name__ == '__main__':
     log.info('-------------------------------')
     conf = ExchangeConfig()
     log.info('Holdntrade version: %s', conf.bot_version)
-    exchange = connect_to_exchange(conf)
+    exchange = connect_to_exchange()
     stats = load_statistics()
 
     if email_only:

@@ -20,7 +20,7 @@ class HoldntradeTest(unittest.TestCase):
         conf.api_secret = 'secret'
         conf.test = True
 
-        exchange = holdntrade.connect_to_exchange(conf)
+        exchange = holdntrade.connect_to_exchange()
 
         self.assertEqual(conf.exchange, exchange.id)
         self.assertEqual(conf.api_key, exchange.apiKey)
@@ -36,7 +36,7 @@ class HoldntradeTest(unittest.TestCase):
         conf.api_secret = 'secret'
         conf.test = False
 
-        exchange = holdntrade.connect_to_exchange(conf)
+        exchange = holdntrade.connect_to_exchange()
 
         self.assertEqual(conf.exchange, exchange.id)
         self.assertEqual(conf.api_key, exchange.apiKey)
@@ -51,7 +51,7 @@ class HoldntradeTest(unittest.TestCase):
         conf.api_secret = 'secret'
         conf.test = False
 
-        exchange = holdntrade.connect_to_exchange(conf)
+        exchange = holdntrade.connect_to_exchange()
 
         self.assertEqual(conf.exchange, exchange.id)
         self.assertEqual(conf.api_key, exchange.apiKey)
@@ -67,7 +67,7 @@ class HoldntradeTest(unittest.TestCase):
         conf.test = True
 
         with self.assertRaises(SystemExit) as context:
-            holdntrade.connect_to_exchange(conf)
+            holdntrade.connect_to_exchange()
 
         self.assertTrue('Test not supported' in str(context.exception))
 
@@ -81,7 +81,7 @@ class HoldntradeTest(unittest.TestCase):
         conf.test = False
 
         with self.assertRaises(Exception) as context:
-            holdntrade.connect_to_exchange(conf)
+            holdntrade.connect_to_exchange()
 
         self.assertTrue('unknown' in str(context.exception))
 
@@ -129,7 +129,7 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.base = 'BTC'
         holdntrade.log = mock_logging
-        holdntrade.exchange = holdntrade.connect_to_exchange(holdntrade.conf)
+        holdntrade.exchange = holdntrade.connect_to_exchange()
         mock_fetch_balance.return_value = {'BTC': {'used': None, 'free': None, 'total': 100}}
 
         balance = holdntrade.get_balance()
@@ -325,7 +325,7 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.base = 'BTC'
         holdntrade.log = mock_logging
-        holdntrade.exchange = holdntrade.connect_to_exchange(holdntrade.conf)
+        holdntrade.exchange = holdntrade.connect_to_exchange()
 
         mock_fetch_balance.return_value = {holdntrade.conf.base: {'free': 20, 'total': 100}}
 
@@ -338,7 +338,7 @@ class HoldntradeTest(unittest.TestCase):
     def test_calculate_all_sold_balance(self, mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.log = mock_logging
-        holdntrade.exchange = holdntrade.connect_to_exchange(holdntrade.conf)
+        holdntrade.exchange = holdntrade.connect_to_exchange()
         poi = {'homeNotional': 0.464}
         orders = [holdntrade.Order({'side': 'sell', 'id': '1', 'price': 40000, 'amount': 4444, 'datetime': datetime.datetime.today().isoformat()})]
         wallet_balance = 0.1995
@@ -445,7 +445,7 @@ class HoldntradeTest(unittest.TestCase):
     def test_cancel_orders(self, mock_fetch_order_status, mock_cancel_order, mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.log = mock_logging
-        holdntrade.exchange = holdntrade.connect_to_exchange(holdntrade.conf)
+        holdntrade.exchange = holdntrade.connect_to_exchange()
 
         orders = [holdntrade.Order({'side': 'sell', 'id': '1s', 'price': 10000, 'amount': 10,
                                     'datetime': datetime.datetime.today().isoformat()}),
@@ -466,7 +466,7 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.base = 'BTC'
         holdntrade.log = mock_logging
-        holdntrade.exchange = holdntrade.connect_to_exchange(holdntrade.conf)
+        holdntrade.exchange = holdntrade.connect_to_exchange()
 
         mock_fetch_balance.return_value = {holdntrade.conf.base: {'free': 100, 'total': 150}}
         holdntrade.get_margin_balance()
@@ -545,7 +545,7 @@ class HoldntradeTest(unittest.TestCase):
     def test_sell_executed_still_open(self, mock_fetch_order_status, mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.log = mock_logging
-        holdntrade.exchange = holdntrade.connect_to_exchange(holdntrade.conf)
+        holdntrade.exchange = holdntrade.connect_to_exchange()
         holdntrade.sell_orders = [holdntrade.Order({'side': 'sell', 'id': '1s', 'price': 10000, 'amount': 10,
                                                     'datetime': datetime.datetime.today().isoformat()}),
                                   holdntrade.Order({'side': 'sell', 'id': '2s', 'price': 15000, 'amount': 10,
@@ -559,15 +559,16 @@ class HoldntradeTest(unittest.TestCase):
         mock_logging.debug.assert_called_with('Sell still open')
 
     @patch('holdntrade.logging')
+    @patch('holdntrade.sleep_for', return_value=None)
     @mock.patch.object(ccxt.bitmex, 'fetch_balance')
     @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
     @mock.patch.object(ccxt.bitmex, 'fetch_order_status')
     @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
     def test_sell_executed(self, mock_create_limit_buy_order, mock_fetch_order_status, mock_fetch_ticker,
-                           mock_fetch_balance, mock_logging):
+                           mock_fetch_balance, mock_sleep_for, mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.log = mock_logging
-        holdntrade.exchange = holdntrade.connect_to_exchange(holdntrade.conf)
+        holdntrade.exchange = holdntrade.connect_to_exchange()
         holdntrade.sell_orders = [holdntrade.Order({'side': 'sell', 'id': '1s', 'price': 10000, 'amount': 10,
                                                     'datetime': datetime.datetime.today().isoformat()}),
                                   holdntrade.Order({'side': 'sell', 'id': '2s', 'price': 15000, 'amount': 10,
@@ -593,7 +594,7 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.base = 'BTC'
         holdntrade.log = mock_logging
-        holdntrade.exchange = holdntrade.connect_to_exchange(holdntrade.conf)
+        holdntrade.exchange = holdntrade.connect_to_exchange()
         market_price = 9000
         mock_fetch_ticker.return_value = {'bid': market_price}
 
@@ -611,7 +612,7 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.base = 'BTC'
         holdntrade.log = mock_logging
-        holdntrade.exchange = holdntrade.connect_to_exchange(holdntrade.conf)
+        holdntrade.exchange = holdntrade.connect_to_exchange()
         market_price = 9000
         mock_fetch_ticker.return_value = {'bid': market_price}
         mock_fetch_balance.return_value = {'BTC': {'used': 300, 'free': 300, 'total': 600}}
@@ -624,16 +625,17 @@ class HoldntradeTest(unittest.TestCase):
 
     @patch('holdntrade.logging')
     @patch('holdntrade.set_initial_leverage')
+    @patch('holdntrade.sleep_for', return_value=None)
     @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
     @mock.patch.object(ccxt.bitmex, 'fetch_balance')
     @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
     def test_buy_executed_first_run(self, mock_create_limit_sell_order, mock_create_limit_buy_order, mock_fetch_balance,
-                                    mock_fetch_ticker, mock_set_initial_leverage, mock_logging):
+                                    mock_fetch_ticker, mock_sleep_for, mock_set_initial_leverage, mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.base = 'BTC'
         holdntrade.log = mock_logging
-        holdntrade.exchange = holdntrade.connect_to_exchange(holdntrade.conf)
+        holdntrade.exchange = holdntrade.connect_to_exchange()
         market_price = 9000
         mock_fetch_ticker.return_value = {'bid': market_price}
         mock_fetch_balance.return_value = {'BTC': {'used': 300, 'free': 300, 'total': 600}}
@@ -650,6 +652,7 @@ class HoldntradeTest(unittest.TestCase):
 
     @patch('holdntrade.logging')
     @patch('holdntrade.set_initial_leverage')
+    @patch('holdntrade.sleep_for', return_value=None)
     @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
     @mock.patch.object(ccxt.bitmex, 'fetch_balance')
     @mock.patch.object(ccxt.bitmex, 'fetch_order_status')
@@ -657,11 +660,11 @@ class HoldntradeTest(unittest.TestCase):
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
     def test_buy_executed_regular(self, mock_create_limit_sell_order, mock_create_limit_buy_order,
                                   mock_fetch_order_status, mock_fetch_balance, mock_fetch_ticker,
-                                  mock_set_initial_leverage, mock_logging):
+                                  mock_sleep_for, mock_set_initial_leverage, mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.base = 'BTC'
         holdntrade.log = mock_logging
-        holdntrade.exchange = holdntrade.connect_to_exchange(holdntrade.conf)
+        holdntrade.exchange = holdntrade.connect_to_exchange()
         holdntrade.initial_leverage_set = True
         holdntrade.curr_buy_order = holdntrade.Order({'side': 'buy', 'id': '1B', 'price': 15000, 'amount': 222,
                                                       'datetime': datetime.datetime.today().isoformat()})
@@ -679,7 +682,6 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.buy_executed(price, 100)
 
         mock_logging.debug.assert_called()
-        mock_logging.warning.assert_not_called()
         mock_set_initial_leverage.assert_not_called()
         mock_create_limit_sell_order.assert_called_with(holdntrade.conf.pair, 222, sell_price)
         mock_create_limit_buy_order.assert_called_with(holdntrade.conf.pair, 100, buy_price)
@@ -691,7 +693,7 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.base = 'BTC'
         holdntrade.log = mock_logging
-        holdntrade.exchange = holdntrade.connect_to_exchange(holdntrade.conf)
+        holdntrade.exchange = holdntrade.connect_to_exchange()
         mock_get_used_balance.return_value = 10000
         holdntrade.sell_price = 11110
         order = {'side': 'sell', 'id': '1s', 'price': holdntrade.sell_price,
@@ -740,7 +742,7 @@ class HoldntradeTest(unittest.TestCase):
         mock_fetch_balance.return_value = {'BTC': {'used': 300, 'free': 200, 'total': 500}}
         buy_price = round(market_price * (1 - holdntrade.conf.change))
         sell_price = round(market_price * (1 + holdntrade.conf.change))
-        holdntrade.exchange = holdntrade.connect_to_exchange(holdntrade.conf)
+        holdntrade.exchange = holdntrade.connect_to_exchange()
 
         holdntrade.spread(market_price)
 
