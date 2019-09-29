@@ -53,7 +53,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.16"
+            self.bot_version = "1.13.17"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -966,7 +966,9 @@ def load_existing_orders(oos: OpenOrdersSummary):
         create_sell_order()
     # All buy orders executed
     elif not oos.buy_orders:
-        create_buy_order(get_current_price(), round(get_balance()['free'] / conf.quota * get_current_price()))
+        free = get_balance()['free']
+        if free > 0:
+            create_buy_order(get_current_price(), round(free / conf.quota * get_current_price()))
     del oos
     log.info('Initialization complete (using existing orders)')
     # No "compensate" necessary
@@ -1564,7 +1566,7 @@ def set_initial_leverage():
     Allows initialisation of cross positions
     """
     leverage = get_relevant_leverage()
-    if leverage < conf.leverage_low:
+    if leverage is not None and leverage < conf.leverage_low:
         set_leverage(conf.leverage_default)
     return True
 
@@ -1592,6 +1594,11 @@ def get_leverage():
     try:
         if conf.exchange == 'bitmex':
             return float(exchange.private_get_position({'symbol': conf.symbol})[0]['leverage'])
+        if conf.exchange == 'liquid':
+            response = exchange.private_get_trading_accounts()
+            for pos in response:
+                if pos['currency_pair_code'] == conf.symbol:
+                    return pos['leverage_level']
         log.error("get_leverage() not yet implemented for %s", conf.exchange)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
@@ -1602,7 +1609,8 @@ def get_leverage():
 
 def set_leverage(new_leverage: float):
     try:
-        exchange.private_post_position_leverage({'symbol': conf.symbol, 'leverage': new_leverage})
+        if conf.exchange != 'liquid':
+            exchange.private_post_position_leverage({'symbol': conf.symbol, 'leverage': new_leverage})
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if any(e in str(error.args) for e in no_recall):
