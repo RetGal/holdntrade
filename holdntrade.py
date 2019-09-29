@@ -53,7 +53,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.17"
+            self.bot_version = "1.13.18"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -481,12 +481,23 @@ def delay_buy_order(crypto_price: float, price: float):
     if is_order_below_limit(new_amount, update_price(crypto_price, price)):
         if conf.auto_leverage and conf.auto_leverage_escape:
             boost_leverage()
-            new_amount = round(get_balance()['free'] / conf.quota * get_current_price())  # recalculate order size
         elif conf.auto_leverage:
             mm = fetch_mayer()
             adjust_leverage(mm)
-            new_amount = round(get_balance()['free'] / conf.quota * get_current_price())  # recalculate order size
-    return create_buy_order(update_price(crypto_price, price), new_amount)
+    return create_buy_order(update_price(crypto_price, price), calculate_buy_order_amount())
+
+
+def calculate_buy_order_amount(crypto_price=None):
+    """
+    Calculates the buy order amount.
+    :param crypto_price: (optional)
+    :return: amount to be bought in fiat
+    """
+    available = get_balance()['free']
+    if available < 0:
+        return 0
+    crypto_price = get_current_price() if crypto_price is None else crypto_price
+    return round(available / conf.quota * crypto_price)
 
 
 def create_market_sell_order(amount_crypto: float):
@@ -966,9 +977,8 @@ def load_existing_orders(oos: OpenOrdersSummary):
         create_sell_order()
     # All buy orders executed
     elif not oos.buy_orders:
-        free = get_balance()['free']
-        if free > 0:
-            create_buy_order(get_current_price(), round(free / conf.quota * get_current_price()))
+        crypto_price = get_current_price()
+        create_buy_order(crypto_price, calculate_buy_order_amount(crypto_price))
     del oos
     log.info('Initialization complete (using existing orders)')
     # No "compensate" necessary
@@ -1659,7 +1669,7 @@ if __name__ == '__main__':
     while True:
         if not hibernate:
             market_price = get_current_price()
-            amount = round(get_balance()['free'] / conf.quota * market_price)
+            amount = calculate_buy_order_amount(market_price)
 
             if loop:
                 daily_report()
