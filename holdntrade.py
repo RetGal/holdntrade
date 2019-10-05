@@ -53,7 +53,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.18"
+            self.bot_version = "1.13.19"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1190,8 +1190,8 @@ def daily_report(immediately: bool = False):
 
     if conf.send_emails:
         now = datetime.datetime.utcnow()
-        if (immediately and datetime.datetime(2012, 1, 17, 12, 20).time() < now.time()) \
-                or datetime.datetime(2012, 1, 17, 12, 20).time() > now.time() \
+        if (immediately and datetime.datetime(2012, 1, 17, 12, 30).time() < now.time()) \
+                or datetime.datetime(2012, 1, 17, 12, 30).time() > now.time() \
                 > datetime.datetime(2012, 1, 17, 12, 10).time() and email_sent != now.day:
             subject = "Daily report for {}".format(conf.bot_instance)
             content = create_mail_content()
@@ -1685,6 +1685,7 @@ if __name__ == '__main__':
                 compensate()
                 loop = True
         else:
+            daily_report()
             log.info('Going to hibernate')
             sleep_for(600, 900)
             hibernate = shall_hibernate()
