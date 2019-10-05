@@ -525,16 +525,16 @@ class HoldntradeTest(unittest.TestCase):
 
     @patch('holdntrade.logging')
     @patch('holdntrade.set_leverage')
-    @patch('holdntrade.get_relevant_leverage')
+    @patch('holdntrade.get_margin_leverage')
     @patch('holdntrade.get_target_leverage')
-    def test_adjust_leverage_from_too_low(self, mock_get_target_leverage, mock_get_relevant_leverage, mock_set_leverage,
+    def test_adjust_leverage_from_too_low(self, mock_get_target_leverage, mock_get_margin_leverage, mock_set_leverage,
                                           mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.auto_leverage = True
         holdntrade.log = mock_logging
         mock_get_target_leverage.return_value = holdntrade.conf.leverage_high
         leverages = [1.2]
-        mock_get_relevant_leverage.side_effect = leverages
+        mock_get_margin_leverage.side_effect = leverages
 
         holdntrade.adjust_leverage({'current': holdntrade.conf.mm_ceil})
 
@@ -542,16 +542,16 @@ class HoldntradeTest(unittest.TestCase):
 
     @patch('holdntrade.logging')
     @patch('holdntrade.set_leverage')
-    @patch('holdntrade.get_relevant_leverage')
+    @patch('holdntrade.get_margin_leverage')
     @patch('holdntrade.get_target_leverage')
-    def test_adjust_leverage_from_far_too_high(self, mock_get_target_leverage, mock_get_relevant_leverage,
+    def test_adjust_leverage_from_far_too_high(self, mock_get_target_leverage, mock_get_margin_leverage,
                                                mock_set_leverage, mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.auto_leverage = True
         holdntrade.log = mock_logging
         mock_get_target_leverage.return_value = holdntrade.conf.leverage_low
         leverages = [4, 3.7, 3.5]
-        mock_get_relevant_leverage.side_effect = leverages
+        mock_get_margin_leverage.side_effect = leverages
 
         holdntrade.adjust_leverage({'current': holdntrade.conf.mm_floor})
 
@@ -559,16 +559,16 @@ class HoldntradeTest(unittest.TestCase):
 
     @patch('holdntrade.logging')
     @patch('holdntrade.set_leverage')
-    @patch('holdntrade.get_relevant_leverage')
+    @patch('holdntrade.get_margin_leverage')
     @patch('holdntrade.get_target_leverage')
-    def test_adjust_leverage_from_slightly_too_high(self, mock_get_target_leverage, mock_get_relevant_leverage,
+    def test_adjust_leverage_from_slightly_too_high(self, mock_get_target_leverage, mock_get_margin_leverage,
                                                     mock_set_leverage, mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.auto_leverage = True
         holdntrade.log = mock_logging
         mock_get_target_leverage.return_value = holdntrade.conf.leverage_high
         leverages = [2.6]
-        mock_get_relevant_leverage.side_effect = leverages
+        mock_get_margin_leverage.side_effect = leverages
 
         holdntrade.adjust_leverage({'current': holdntrade.conf.mm_floor})
 
@@ -604,24 +604,24 @@ class HoldntradeTest(unittest.TestCase):
         mock_bitmex.private_post_position_leverage.assert_not_called
 
     @patch('holdntrade.logging')
-    @mock.patch.object(holdntrade, 'get_relevant_leverage')
+    @mock.patch.object(holdntrade, 'get_margin_leverage')
     @mock.patch.object(holdntrade, 'set_leverage')
-    def test_boost_leverage_too_high(self, mock_set_leverage, mock_get_relevant_leverage, mock_logging):
+    def test_boost_leverage_too_high(self, mock_set_leverage, mock_get_margin_leverage, mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.log = mock_logging
-        mock_get_relevant_leverage.return_value = 3.08
+        mock_get_margin_leverage.return_value = 3.08
 
         holdntrade.boost_leverage()
 
         mock_set_leverage.assert_not_called()
 
     @patch('holdntrade.logging')
-    @mock.patch.object(holdntrade, 'get_relevant_leverage')
+    @mock.patch.object(holdntrade, 'get_margin_leverage')
     @mock.patch.object(holdntrade, 'set_leverage')
-    def test_boost_leverage(self, mock_set_leverage, mock_get_relevant_leverage, mock_logging):
+    def test_boost_leverage(self, mock_set_leverage, mock_get_margin_leverage, mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.log = mock_logging
-        mock_get_relevant_leverage.return_value = 2.88
+        mock_get_margin_leverage.return_value = 2.88
 
         holdntrade.boost_leverage()
 

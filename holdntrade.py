@@ -53,7 +53,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.20"
+            self.bot_version = "1.13.21"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1564,7 +1564,7 @@ def boost_leverage():
         if conf.exchange != 'bitmex':
             log.error("boost_leverage() not yet implemented for %s", conf.exchange)
             return
-        leverage = get_relevant_leverage()+0.1
+        leverage = get_margin_leverage()+0.1
         if leverage <= conf.leverage_escape:
             log.info('Boosting leverage to {:.1f} (max: {:.1f})'.format(leverage, conf.leverage_escape))
             set_leverage(leverage)
@@ -1586,15 +1586,15 @@ def adjust_leverage(mayer: dict):
         if conf.exchange != 'bitmex':
             log.error("Adjust_leverage() not yet implemented for %s", conf.exchange)
             return
-        leverage = get_relevant_leverage()
+        leverage = get_margin_leverage()
         target_leverage = get_target_leverage(mayer)
         if leverage < target_leverage:
             set_leverage(leverage+0.1)
         elif leverage > target_leverage:
             if leverage - target_leverage >= 0.3 and set_leverage(leverage-0.3):
-                leverage = get_relevant_leverage()
+                leverage = get_margin_leverage()
             if leverage - target_leverage >= 0.2 and set_leverage(leverage-0.2):
-                leverage = get_relevant_leverage()
+                leverage = get_margin_leverage()
             if leverage - target_leverage >= 0.1:
                 set_leverage(leverage-0.1)
 
