@@ -349,14 +349,25 @@ class HoldntradeTest(unittest.TestCase):
 
         self.assertAlmostEqual(0.47, all_sold_balance, 2)
 
-    def test_shall_hibernate(self):
+    def test_shall_hibernate_by_mm(self):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.mm_stop_buy = 2.3
         mayer = {'current': 2.4}
 
         self.assertTrue(holdntrade.shall_hibernate(mayer))
 
-    def test_shall_not_hibernate(self):
+    @patch('holdntrade.get_relevant_leverage', return_value=1.1)
+    @patch('holdntrade.get_target_leverage', return_value=1)
+    def test_shall_not_hibernate_by_leverage(self, mock_get_target_leverage, mock_get_relevant_leverage):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.conf.mm_stop_buy = 2.3
+        mayer = {'current': 1.4}
+
+        self.assertTrue(holdntrade.shall_hibernate(mayer))
+
+    @patch('holdntrade.get_relevant_leverage', return_value=1)
+    @patch('holdntrade.get_target_leverage', return_value=1)
+    def test_shall_not_hibernate(self, mock_get_target_leverage, mock_get_relevant_leverage):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.mm_stop_buy = 2.3
         mayer = {'current': 1.8}
@@ -484,8 +495,84 @@ class HoldntradeTest(unittest.TestCase):
 
         today = datetime.date.today().isoformat()
 
-        mock_bitmex.public_get_funding.assert_called_with({'symbol': holdntrade.conf.symbol, 'startTime': today, 'count': 1})
+        mock_bitmex.public_get_funding.assert_called_with({'symbol': holdntrade.conf.symbol, 'startTime': today,
+                                                           'count': 1})
         self.assertEqual(-0.01, rate)
+
+    @patch('holdntrade.logging')
+    def test_get_target_leverage_for_mm_ceil(self, mock_logging):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.log = mock_logging
+
+        target_leverage = holdntrade.get_target_leverage({'current': holdntrade.conf.mm_ceil + 0.1})
+        self.assertEqual(holdntrade.conf.leverage_low, target_leverage)
+
+    @patch('holdntrade.logging')
+    def test_get_target_leverage_for_mm_floor(self, mock_logging):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.log = mock_logging
+
+        target_leverage = holdntrade.get_target_leverage({'current': holdntrade.conf.mm_floor - 0.1})
+        self.assertEqual(holdntrade.conf.leverage_high, target_leverage)
+
+    @patch('holdntrade.logging')
+    def test_get_target_leverage_default(self, mock_logging):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.log = mock_logging
+
+        target_leverage = holdntrade.get_target_leverage({'current': holdntrade.conf.mm_floor + 0.1})
+        self.assertEqual(holdntrade.conf.leverage_default, target_leverage)
+
+    @patch('holdntrade.logging')
+    @patch('holdntrade.set_leverage')
+    @patch('holdntrade.get_relevant_leverage')
+    @patch('holdntrade.get_target_leverage')
+    def test_adjust_leverage_from_too_low(self, mock_get_target_leverage, mock_get_relevant_leverage, mock_set_leverage,
+                                          mock_logging):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.conf.auto_leverage = True
+        holdntrade.log = mock_logging
+        mock_get_target_leverage.return_value = holdntrade.conf.leverage_high
+        leverages = [1.2]
+        mock_get_relevant_leverage.side_effect = leverages
+
+        holdntrade.adjust_leverage({'current': holdntrade.conf.mm_ceil})
+
+        mock_set_leverage.assert_called_with(1.3)
+
+    @patch('holdntrade.logging')
+    @patch('holdntrade.set_leverage')
+    @patch('holdntrade.get_relevant_leverage')
+    @patch('holdntrade.get_target_leverage')
+    def test_adjust_leverage_from_far_too_high(self, mock_get_target_leverage, mock_get_relevant_leverage,
+                                               mock_set_leverage, mock_logging):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.conf.auto_leverage = True
+        holdntrade.log = mock_logging
+        mock_get_target_leverage.return_value = holdntrade.conf.leverage_low
+        leverages = [4, 3.7, 3.5]
+        mock_get_relevant_leverage.side_effect = leverages
+
+        holdntrade.adjust_leverage({'current': holdntrade.conf.mm_floor})
+
+        mock_set_leverage.assert_called_with(3.4)
+
+    @patch('holdntrade.logging')
+    @patch('holdntrade.set_leverage')
+    @patch('holdntrade.get_relevant_leverage')
+    @patch('holdntrade.get_target_leverage')
+    def test_adjust_leverage_from_slightly_too_high(self, mock_get_target_leverage, mock_get_relevant_leverage,
+                                                    mock_set_leverage, mock_logging):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.conf.auto_leverage = True
+        holdntrade.log = mock_logging
+        mock_get_target_leverage.return_value = holdntrade.conf.leverage_high
+        leverages = [2.6]
+        mock_get_relevant_leverage.side_effect = leverages
+
+        holdntrade.adjust_leverage({'current': holdntrade.conf.mm_floor})
+
+        mock_set_leverage.assert_called_with(2.5)
 
     @patch('holdntrade.logging')
     @patch('holdntrade.get_relevant_leverage')
@@ -522,7 +609,7 @@ class HoldntradeTest(unittest.TestCase):
     def test_boost_leverage_too_high(self, mock_set_leverage, mock_get_relevant_leverage, mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.log = mock_logging
-        mock_get_relevant_leverage.return_value = 2.18
+        mock_get_relevant_leverage.return_value = 3.08
 
         holdntrade.boost_leverage()
 
@@ -534,11 +621,11 @@ class HoldntradeTest(unittest.TestCase):
     def test_boost_leverage(self, mock_set_leverage, mock_get_relevant_leverage, mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.log = mock_logging
-        mock_get_relevant_leverage.return_value = 2.08
+        mock_get_relevant_leverage.return_value = 2.88
 
         holdntrade.boost_leverage()
 
-        mock_set_leverage.assert_called_with(2.18)
+        mock_set_leverage.assert_called_with(2.98)
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'fetch_order_status')
@@ -554,19 +641,23 @@ class HoldntradeTest(unittest.TestCase):
         return_values = {'1s': 'open', '2s': 'open'}
         mock_fetch_order_status.side_effect = return_values.get
 
-        holdntrade.sell_executed(8888, 99)
+        holdntrade.sell_executed()
 
         mock_logging.debug.assert_called_with('Sell still open')
 
     @patch('holdntrade.logging')
     @patch('holdntrade.sleep_for', return_value=None)
+    @patch('holdntrade.get_current_price', return_value=9000)
+    @patch('holdntrade.calculate_buy_order_amount', return_value=99)
+    @patch('holdntrade.shall_hibernate', return_value=False)
     @mock.patch.object(ccxt.bitmex, 'fetch_balance')
-    @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
     @mock.patch.object(ccxt.bitmex, 'fetch_order_status')
     @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
-    def test_sell_executed(self, mock_create_limit_buy_order, mock_fetch_order_status, mock_fetch_ticker,
-                           mock_fetch_balance, mock_sleep_for, mock_logging):
+    def test_sell_executed(self, mock_create_limit_buy_order, mock_fetch_order_status, mock_fetch_balance,
+                           mock_shall_hibernate, mock_calculate_buy_order_amount, mock_get_current_price,
+                           mock_sleep_for, mock_logging):
         holdntrade.conf = self.create_default_conf()
+        holdntrade.conf.base = 'BTC'
         holdntrade.log = mock_logging
         holdntrade.exchange = holdntrade.connect_to_exchange()
         holdntrade.sell_orders = [holdntrade.Order({'side': 'sell', 'id': '1s', 'price': 10000, 'amount': 10,
@@ -577,12 +668,10 @@ class HoldntradeTest(unittest.TestCase):
         mock_fetch_balance.return_value = {'BTC': {'used': 300, 'free': 300, 'total': 600}}
         return_values = {'1s': 'closed', '2s': 'open'}
         mock_fetch_order_status.side_effect = return_values.get
-        market_price = 9000
-        mock_fetch_ticker.return_value = {'bid': market_price}
-        price = 8888
+        price = 9000
         buy_price = round(price * (1 - holdntrade.conf.change))
 
-        holdntrade.sell_executed(price, 99)
+        holdntrade.sell_executed()
 
         mock_logging.info.assert_called()
         mock_create_limit_buy_order.assert_called_with(holdntrade.conf.pair, 99, buy_price)
@@ -626,24 +715,25 @@ class HoldntradeTest(unittest.TestCase):
     @patch('holdntrade.logging')
     @patch('holdntrade.set_initial_leverage')
     @patch('holdntrade.sleep_for', return_value=None)
-    @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
+    @patch('holdntrade.get_current_price', return_value=9000)
+    @patch('holdntrade.calculate_buy_order_amount', return_value=200)
+    @patch('holdntrade.shall_hibernate', return_value=False)
     @mock.patch.object(ccxt.bitmex, 'fetch_balance')
     @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
     def test_buy_executed_first_run(self, mock_create_limit_sell_order, mock_create_limit_buy_order, mock_fetch_balance,
-                                    mock_fetch_ticker, mock_sleep_for, mock_set_initial_leverage, mock_logging):
+                                    mock_shall_hibernate, mock_calculate_buy_order_amount, mock_get_current_price,
+                                    mock_sleep_for, mock_set_initial_leverage, mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.base = 'BTC'
         holdntrade.log = mock_logging
         holdntrade.exchange = holdntrade.connect_to_exchange()
-        market_price = 9000
-        mock_fetch_ticker.return_value = {'bid': market_price}
         mock_fetch_balance.return_value = {'BTC': {'used': 300, 'free': 300, 'total': 600}}
-        price = 9999
+        price = 9000
         buy_price = round(price * (1 - holdntrade.conf.change))
         sell_price = round(price * (1 + holdntrade.conf.change))
 
-        holdntrade.buy_executed(price, 200)
+        holdntrade.buy_executed()
 
         mock_set_initial_leverage.assert_called()
         self.assertTrue(holdntrade.initial_leverage_set)
@@ -653,14 +743,17 @@ class HoldntradeTest(unittest.TestCase):
     @patch('holdntrade.logging')
     @patch('holdntrade.set_initial_leverage')
     @patch('holdntrade.sleep_for', return_value=None)
-    @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
+    @patch('holdntrade.get_current_price', return_value=9000)
+    @patch('holdntrade.calculate_buy_order_amount', return_value=100)
+    @patch('holdntrade.shall_hibernate', return_value=False)
     @mock.patch.object(ccxt.bitmex, 'fetch_balance')
     @mock.patch.object(ccxt.bitmex, 'fetch_order_status')
     @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
     def test_buy_executed_regular(self, mock_create_limit_sell_order, mock_create_limit_buy_order,
-                                  mock_fetch_order_status, mock_fetch_balance, mock_fetch_ticker,
-                                  mock_sleep_for, mock_set_initial_leverage, mock_logging):
+                                  mock_fetch_order_status, mock_fetch_balance, mock_shall_hibernate,
+                                  mock_calculate_buy_order_amount, mock_get_current_price, mock_sleep_for,
+                                  mock_set_initial_leverage, mock_logging):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.base = 'BTC'
         holdntrade.log = mock_logging
@@ -671,15 +764,13 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.buy_orders.append(holdntrade.curr_buy_order)
 
         holdntrade.curr_buy_order_size = 222
-        market_price = 9000
-        mock_fetch_ticker.return_value = {'bid': market_price}
         mock_fetch_balance.return_value = {'BTC': {'used': 300, 'free': 400, 'total': 700}}
         mock_fetch_order_status.return_value = 'closed'
-        price = 9999
+        price = 9000
         buy_price = round(price * (1 - holdntrade.conf.change))
         sell_price = round(price * (1 + holdntrade.conf.change))
 
-        holdntrade.buy_executed(price, 100)
+        holdntrade.buy_executed()
 
         mock_logging.debug.assert_called()
         mock_set_initial_leverage.assert_not_called()
@@ -768,10 +859,14 @@ class HoldntradeTest(unittest.TestCase):
         conf.api_key = '1234'
         conf.api_secret = 'secret'
         conf.test = True
+        conf.mm_ceil = 1.8
+        conf.mm_floor = 0.9
         conf.mm_stop_buy = 2.3
         conf.auto_leverage = False
         conf.leverage_default = 2
-        conf.leverage_escape = 2.2
+        conf.leverage_high = 2.5
+        conf.leverage_low = 1.5
+        conf.leverage_escape = 3
         conf.auto_leverage_escape = True
         return conf
 
