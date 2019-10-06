@@ -53,7 +53,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.22"
+            self.bot_version = "1.13.23"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -277,6 +277,8 @@ def shall_hibernate(mayer: dict = None):
     if mayer is not None and mayer['current']:
         if mayer['current'] > conf.mm_stop_buy:
             return True
+        if conf.auto_leverage_escape:
+            return get_relevant_leverage() > conf.leverage_escape
         return get_relevant_leverage() > get_target_leverage(mayer)
     return hibernate
 

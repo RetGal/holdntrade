@@ -358,18 +358,38 @@ class HoldntradeTest(unittest.TestCase):
 
     @patch('holdntrade.get_relevant_leverage', return_value=1.1)
     @patch('holdntrade.get_target_leverage', return_value=1)
-    def test_shall_not_hibernate_by_leverage(self, mock_get_target_leverage, mock_get_relevant_leverage):
+    def test_shall_hibernate_by_leverage(self, mock_get_target_leverage, mock_get_relevant_leverage):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.conf.mm_stop_buy = 2.3
+        holdntrade.conf.auto_leverage_escape = False
+        mayer = {'current': 1.4}
+
+        self.assertTrue(holdntrade.shall_hibernate(mayer))
+
+    @patch('holdntrade.get_relevant_leverage', return_value=3.1)
+    @patch('holdntrade.get_target_leverage', return_value=1)
+    def test_shall_hibernate_by_leverage_with_auto_escape(self, mock_get_target_leverage, mock_get_relevant_leverage):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.mm_stop_buy = 2.3
         mayer = {'current': 1.4}
 
         self.assertTrue(holdntrade.shall_hibernate(mayer))
 
+    @patch('holdntrade.get_relevant_leverage', return_value=1.1)
+    @patch('holdntrade.get_target_leverage', return_value=1)
+    def test_shall_not_hibernate_by_leverage_with_auto_escape(self, mock_get_target_leverage, mock_get_relevant_leverage):
+        holdntrade.conf = self.create_default_conf()
+        holdntrade.conf.mm_stop_buy = 2.3
+        mayer = {'current': 1.4}
+
+        self.assertFalse(holdntrade.shall_hibernate(mayer))
+
     @patch('holdntrade.get_relevant_leverage', return_value=1)
     @patch('holdntrade.get_target_leverage', return_value=1)
     def test_shall_not_hibernate(self, mock_get_target_leverage, mock_get_relevant_leverage):
         holdntrade.conf = self.create_default_conf()
         holdntrade.conf.mm_stop_buy = 2.3
+        holdntrade.conf.auto_leverage_escape = False
         mayer = {'current': 1.8}
 
         self.assertFalse(holdntrade.shall_hibernate(mayer))
