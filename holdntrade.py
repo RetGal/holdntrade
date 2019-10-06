@@ -1640,7 +1640,7 @@ def set_leverage(new_leverage: float):
     try:
         if conf.exchange != 'liquid':
             exchange.private_post_position_leverage({'symbol': conf.symbol, 'leverage': new_leverage})
-            log.info('Lowered leverage to {:.1f}'.format(new_leverage))
+            log.info('New leverage is {:.1f}'.format(new_leverage))
         return True
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
