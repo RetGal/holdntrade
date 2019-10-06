@@ -53,7 +53,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.23"
+            self.bot_version = "1.13.24"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1599,8 +1599,10 @@ def adjust_leverage(mayer: dict = None):
         leverage = get_margin_leverage()
         target_leverage = get_target_leverage(mayer)
         if leverage < target_leverage:
+            log.debug('Leverage is lower than target leverage {:.1f} < {:.1f}'.format(leverage, target_leverage))
             set_leverage(leverage+0.1)
         elif leverage > target_leverage:
+            log.debug('Leverage is higher than target leverage {:.1f} > {:.1f}'.format(leverage, target_leverage))
             if leverage - target_leverage >= 0.3 and set_leverage(leverage-0.3):
                 leverage = get_margin_leverage()
             if leverage - target_leverage >= 0.2 and set_leverage(leverage-0.2):
@@ -1638,6 +1640,7 @@ def set_leverage(new_leverage: float):
     try:
         if conf.exchange != 'liquid':
             exchange.private_post_position_leverage({'symbol': conf.symbol, 'leverage': new_leverage})
+            log.info('Lowered leverage to {:.1f}'.format(new_leverage))
         return True
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
