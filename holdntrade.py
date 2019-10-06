@@ -53,7 +53,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = filename
-            self.bot_version = "1.13.21"
+            self.bot_version = "1.13.22"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -199,10 +199,12 @@ def buy_executed():
     global hibernate
     global initial_leverage_set
 
+    # pretend inexisting compensation order has been filled
     if curr_buy_order is None:
         status = 'closed'
-        log.info('Closed inexisting compensation order')
+        fake_closed = True
     else:
+        fake_closed = False
         status = fetch_order_status(curr_buy_order.id)
     log.debug('-------------------------------')
     log.debug(time.ctime())
@@ -211,7 +213,8 @@ def buy_executed():
         log.debug('Open Buy Order! Amount: %d @ %.1f', int(curr_buy_order_size), float(buy_price))
         log.debug('Current Price: %.1f', price)
     elif status in ['closed', 'canceled']:
-        log.info('Buy executed, starting follow up')
+        if not fake_closed:
+            log.info('Buy executed, starting follow up')
         if curr_buy_order in buy_orders:
             buy_orders.remove(curr_buy_order)
         # default case: use amount of last (previous) buy order for next sell order
@@ -220,9 +223,9 @@ def buy_executed():
         if not initial_leverage_set:
             initial_leverage_set = set_initial_leverage()
         mm = fetch_mayer()
+        adjust_leverage(mm)
         hibernate = shall_hibernate(mm)
         if not hibernate:
-            adjust_leverage(mm)
             if create_buy_order(price, calculate_buy_order_amount(price)):
                 create_sell_order(last_buy_amount)
             else:
@@ -252,9 +255,9 @@ def sell_executed():
                 sell_orders.remove(order)
             log.info('Sell executed')
             mm = fetch_mayer()
+            adjust_leverage(mm)
             hibernate = shall_hibernate(mm)
             if not hibernate:
-                adjust_leverage(mm)
                 if not sell_orders:
                     create_divided_sell_order()
                 cancel_current_buy_order()
@@ -977,8 +980,11 @@ def load_existing_orders(oos: OpenOrdersSummary):
         create_sell_order()
     # All buy orders executed
     elif not oos.buy_orders:
-        crypto_price = get_current_price()
-        create_buy_order(crypto_price, calculate_buy_order_amount(crypto_price))
+        mm = fetch_mayer()
+        adjust_leverage(mm)
+        if not shall_hibernate(mm):
+            crypto_price = get_current_price()
+            create_buy_order(crypto_price, calculate_buy_order_amount(crypto_price))
     del oos
     log.info('Initialization complete (using existing orders)')
     # No "compensate" necessary
@@ -1581,11 +1587,13 @@ def set_initial_leverage():
     return True
 
 
-def adjust_leverage(mayer: dict):
+def adjust_leverage(mayer: dict = None):
     if conf.auto_leverage:
         if conf.exchange != 'bitmex':
             log.error("Adjust_leverage() not yet implemented for %s", conf.exchange)
             return
+        if mayer is None:
+            mayer = fetch_mayer()
         leverage = get_margin_leverage()
         target_leverage = get_target_leverage(mayer)
         if leverage < target_leverage:
