@@ -21,22 +21,22 @@ import requests
 
 # ------------------------------------------------------------------------------
 
-sell_price = 0
-sell_orders = []
-buy_price = 0
-buy_orders = []
-curr_buy_order = None
-curr_buy_order_size = 0
-reset_counter = 0
-loop = False
-auto_conf = False
-email_only = False
-email_sent = 0
-started = datetime.datetime.utcnow().replace(microsecond=0)
-stats = None
-hibernate = False
-initial_leverage_set = False
-no_recall = ['nsufficient', 'too low', 'not_enough_free_balance', 'margin_below']
+SELL_PRICE = 0
+SELL_ORDERS = []
+BUY_PRICE = 0
+BUY_ORDERS = []
+CURR_BUY_ORDER = None
+CURR_BUY_ORDER_SIZE = 0
+RESET_COUNTER = 0
+LOOP = False
+AUTO_CONF = False
+EMAIL_ONLY = False
+EMAIL_SENT = 0
+STARTED = datetime.datetime.utcnow().replace(microsecond=0)
+STATS = None
+HIBERNATE = False
+INITIAL_LEVERAGE_SET = False
+STOP_ERRORS = ['nsufficient', 'too low', 'not_enough_free_balance', 'margin_below']
 
 # ------------------------------------------------------------------------------
 
@@ -48,12 +48,12 @@ class ExchangeConfig:
     def __init__(self):
 
         config = configparser.RawConfigParser()
-        config.read(filename + ".txt")
+        config.read(INSTANCE + ".txt")
 
         try:
             props = dict(config.items('config'))
-            self.bot_instance = filename
-            self.bot_version = "1.13.26"
+            self.bot_instance = INSTANCE
+            self.bot_version = "1.13.27"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -85,7 +85,7 @@ class ExchangeConfig:
             self.sender_password = props['sender_password'].strip('"')
             self.mail_server = props['mail_server'].strip('"')
         except (configparser.NoSectionError, KeyError):
-            raise SystemExit('invalid configuration for ' + filename)
+            raise SystemExit('invalid configuration for ' + INSTANCE)
 
 
 class OpenOrdersSummary:
@@ -103,19 +103,19 @@ class OpenOrdersSummary:
             o = Order(oo)
             self.orders.append(o)
             if o.side == 'sell':
-                if conf.exchange == 'kraken':
+                if CONF.exchange == 'kraken':
                     self.total_sell_order_value += o.amount * o.price
                 else:
                     self.total_sell_order_value += o.amount
                 self.sell_orders.append(o)
             elif o.side == 'buy':
-                if conf.exchange == 'kraken':
+                if CONF.exchange == 'kraken':
                     self.total_buy_order_value += o.amount * o.price
                 else:
                     self.total_buy_order_value += o.amount
                 self.buy_orders.append(o)
             else:
-                log.error(inspect.stack()[1][3], ' ?!?')
+                LOG.error(inspect.stack()[1][3], ' ?!?')
 
         self.sell_orders = sorted(self.sell_orders, key=lambda order: order.price, reverse=True)  # desc
         self.buy_orders = sorted(self.buy_orders, key=lambda order: order.price, reverse=True)  # desc
@@ -194,45 +194,45 @@ def buy_executed():
     Else if the order is closed, we follow with the followup function and createbuyorder and
     pass on the variables we got from input.
     """
-    global curr_buy_order_size
-    global buy_orders
-    global hibernate
-    global initial_leverage_set
+    global CURR_BUY_ORDER_SIZE
+    global BUY_ORDERS
+    global HIBERNATE
+    global INITIAL_LEVERAGE_SET
 
     # pretend inexisting compensation order has been filled
-    if curr_buy_order is None:
+    if CURR_BUY_ORDER is None:
         status = 'closed'
         fake_closed = True
     else:
         fake_closed = False
-        status = fetch_order_status(curr_buy_order.id)
-    log.debug('-------------------------------')
-    log.debug(time.ctime())
+        status = fetch_order_status(CURR_BUY_ORDER.id)
+    LOG.debug('-------------------------------')
+    LOG.debug(time.ctime())
     price = get_current_price()
     if status == 'open':
-        log.debug('Open Buy Order! Amount: %d @ %.1f', int(curr_buy_order_size), float(buy_price))
-        log.debug('Current Price: %.1f', price)
+        LOG.debug('Open Buy Order! Amount: %d @ %.1f', int(CURR_BUY_ORDER_SIZE), float(BUY_PRICE))
+        LOG.debug('Current Price: %.1f', price)
     elif status in ['closed', 'canceled']:
         if not fake_closed:
-            log.info('Buy executed, starting follow up')
-        if curr_buy_order in buy_orders:
-            buy_orders.remove(curr_buy_order)
+            LOG.info('Buy executed, starting follow up')
+        if CURR_BUY_ORDER in BUY_ORDERS:
+            BUY_ORDERS.remove(CURR_BUY_ORDER)
         # default case: use amount of last (previous) buy order for next sell order
         # else last buy was compensation order: use same amount for next sell order as the buy order to be created next
-        last_buy_amount = curr_buy_order_size if curr_buy_order is not None else calculate_buy_order_amount(price)
-        if not initial_leverage_set:
-            initial_leverage_set = set_initial_leverage()
+        last_buy_amount = CURR_BUY_ORDER_SIZE if CURR_BUY_ORDER is not None else calculate_buy_order_amount(price)
+        if not INITIAL_LEVERAGE_SET:
+            INITIAL_LEVERAGE_SET = set_initial_leverage()
         mm = fetch_mayer()
         adjust_leverage(mm)
-        hibernate = shall_hibernate(mm)
-        if not hibernate:
+        HIBERNATE = shall_hibernate(mm)
+        if not HIBERNATE:
             if create_buy_order(price, calculate_buy_order_amount(price)):
                 create_sell_order(last_buy_amount)
             else:
-                log.warning('Resetting')
+                LOG.warning('Resetting')
                 init_orders(True, False)
     else:
-        log.warning('You should not be here, order state: %s', status)
+        LOG.warning('You should not be here, order state: %s', status)
 
 
 def sell_executed():
@@ -242,59 +242,59 @@ def sell_executed():
     Else if it has been executed, remove the order from the list of open orders,
     cancel it on Bitmex and create a new buy order.
     """
-    global sell_orders
-    global hibernate
+    global SELL_ORDERS
+    global HIBERNATE
 
-    for order in sell_orders:
+    for order in SELL_ORDERS:
         time.sleep(0.5)
         status = fetch_order_status(order.id)
         if status == 'open':
-            log.debug('Sell still open')
+            LOG.debug('Sell still open')
         elif status in ['closed', 'canceled']:
-            if order in sell_orders:
-                sell_orders.remove(order)
-            log.info('Sell executed')
+            if order in SELL_ORDERS:
+                SELL_ORDERS.remove(order)
+            LOG.info('Sell executed')
             mm = fetch_mayer()
             adjust_leverage(mm)
-            hibernate = shall_hibernate(mm)
-            if not hibernate:
-                if not sell_orders:
+            HIBERNATE = shall_hibernate(mm)
+            if not HIBERNATE:
+                if not SELL_ORDERS:
                     create_divided_sell_order()
                 cancel_current_buy_order()
                 price = get_current_price()
                 if not create_buy_order(price, calculate_buy_order_amount(price)):
-                    log.warning('Resetting')
+                    LOG.warning('Resetting')
                     init_orders(True, False)
         else:
-            log.warning('You should not be here, order state: %s', status)
+            LOG.warning('You should not be here, order state: %s', status)
 
 
 def shall_hibernate(mayer: dict = None):
-    global hibernate
+    global HIBERNATE
 
     if mayer is None:
         mayer = fetch_mayer()
     if mayer is not None and mayer['current']:
-        if mayer['current'] > conf.mm_stop_buy:
+        if mayer['current'] > CONF.mm_stop_buy:
             return True
-        if conf.auto_leverage_escape:
-            return get_relevant_leverage() > conf.leverage_escape
-        return get_relevant_leverage() > get_target_leverage(mayer)
-    return hibernate
+        if CONF.auto_leverage_escape:
+            return get_leverage() > CONF.leverage_escape
+        return get_leverage() > get_target_leverage(mayer)
+    return HIBERNATE
 
 
 def cancel_current_buy_order():
     """
     Cancels the current buy order
     """
-    global curr_buy_order
+    global CURR_BUY_ORDER
 
-    if curr_buy_order is not None:
-        cancel_order(curr_buy_order)
-        if curr_buy_order in buy_orders:
-            buy_orders.remove(curr_buy_order)
-        log.info('Canceled current %s', str(curr_buy_order))
-        curr_buy_order = None if not buy_orders else buy_orders[0]
+    if CURR_BUY_ORDER is not None:
+        cancel_order(CURR_BUY_ORDER)
+        if CURR_BUY_ORDER in BUY_ORDERS:
+            BUY_ORDERS.remove(CURR_BUY_ORDER)
+        LOG.info('Canceled current %s', str(CURR_BUY_ORDER))
+        CURR_BUY_ORDER = None if not BUY_ORDERS else BUY_ORDERS[0]
 
 
 def create_sell_order(fixed_order_size: int = None):
@@ -302,41 +302,41 @@ def create_sell_order(fixed_order_size: int = None):
     Loop that starts after buy order is executed and sends sell order to exchange
     as well as appends the orderID to the sell_orders list.
     """
-    global sell_price
-    global curr_buy_order_size
-    global sell_orders
+    global SELL_PRICE
+    global CURR_BUY_ORDER_SIZE
+    global SELL_ORDERS
 
-    order_size = curr_buy_order_size if fixed_order_size is None else fixed_order_size
+    order_size = CURR_BUY_ORDER_SIZE if fixed_order_size is None else fixed_order_size
 
-    available = get_balance()['free'] * sell_price
+    available = get_balance()['free'] * SELL_PRICE
     if available < order_size:
         # sold out - the main loop will re-init if there are no other sell orders open
-        log.warning('Not executing sell order over %d (only %d left)', order_size, available)
+        LOG.warning('Not executing sell order over %d (only %d left)', order_size, available)
         return
 
     try:
-        if not is_order_below_limit(order_size, sell_price):
-            if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
-                new_order = exchange.create_limit_sell_order(conf.pair, order_size, sell_price)
-            elif conf.exchange == 'kraken':
+        if not is_order_below_limit(order_size, SELL_PRICE):
+            if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
+                new_order = EXCHANGE.create_limit_sell_order(CONF.pair, order_size, SELL_PRICE)
+            elif CONF.exchange == 'kraken':
                 rate = get_current_price()
-                new_order = exchange.create_limit_sell_order(conf.pair, to_crypto_amount(order_size, rate), sell_price,
-                                                             {'leverage': conf.leverage_default})
-            elif conf.exchange == 'liquid':
+                new_order = EXCHANGE.create_limit_sell_order(CONF.pair, to_crypto_amount(order_size, rate), SELL_PRICE,
+                                                             {'leverage': CONF.leverage_default})
+            elif CONF.exchange == 'liquid':
                 rate = get_current_price()
-                new_order = exchange.create_limit_sell_order(conf.pair, to_crypto_amount(order_size, rate), sell_price,
-                                                             {'leverage_level': conf.leverage_default,
-                                                              'funding_currency': conf.base})
+                new_order = EXCHANGE.create_limit_sell_order(CONF.pair, to_crypto_amount(order_size, rate), SELL_PRICE,
+                                                             {'leverage_level': CONF.leverage_default,
+                                                              'funding_currency': CONF.base})
             order = Order(new_order)
-            sell_orders.append(order)
-            log.info('Created %s', str(order))
+            SELL_ORDERS.append(order)
+            LOG.info('Created %s', str(order))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        if any(e in str(error.args) for e in no_recall):
-            log.error('Insufficient funds - not selling %d', order_size)
+        if any(e in str(error.args) for e in STOP_ERRORS):
+            LOG.error('Insufficient funds - not selling %d', order_size)
             return
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
-        sell_price = round(get_current_price() * (1 + conf.change))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        SELL_PRICE = round(get_current_price() * (1 + CONF.change))
         return create_sell_order(fixed_order_size)
 
 
@@ -345,35 +345,35 @@ def create_divided_sell_order():
     Loop that starts after buy order is executed and sends sell order to exchange
     as well as appends the orderID to the sell_orders list.
     """
-    global sell_orders
-    global sell_price
+    global SELL_ORDERS
+    global SELL_PRICE
 
     try:
         used_bal = get_used_balance()
-        amount = round(used_bal / conf.quota)
+        amount = round(used_bal / CONF.quota)
 
-        if not is_order_below_limit(amount, sell_price):
-            if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
-                new_order = exchange.create_limit_sell_order(conf.pair, amount, sell_price)
-            elif conf.exchange == 'kraken':
+        if not is_order_below_limit(amount, SELL_PRICE):
+            if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+                new_order = EXCHANGE.create_limit_sell_order(CONF.pair, amount, SELL_PRICE)
+            elif CONF.exchange == 'kraken':
                 rate = get_current_price()
-                new_order = exchange.create_limit_sell_order(conf.pair, to_crypto_amount(amount, rate), sell_price,
-                                                             {'leverage': conf.leverage_default})
-            elif conf.exchange == 'liquid':
+                new_order = EXCHANGE.create_limit_sell_order(CONF.pair, to_crypto_amount(amount, rate), SELL_PRICE,
+                                                             {'leverage': CONF.leverage_default})
+            elif CONF.exchange == 'liquid':
                 rate = get_current_price()
-                new_order = exchange.create_limit_sell_order(conf.pair, to_crypto_amount(amount, rate), sell_price,
-                                                             {'leverage_level': conf.leverage_default,
-                                                              'funding_currency': conf.base})
+                new_order = EXCHANGE.create_limit_sell_order(CONF.pair, to_crypto_amount(amount, rate), SELL_PRICE,
+                                                             {'leverage_level': CONF.leverage_default,
+                                                              'funding_currency': CONF.base})
             order = Order(new_order)
-            sell_orders.append(order)
-            log.info('Created %s', str(order))
+            SELL_ORDERS.append(order)
+            LOG.info('Created %s', str(order))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        if any(e in str(error.args) for e in no_recall):
-            log.error('Insufficient funds - not selling %d', amount)
+        if any(e in str(error.args) for e in STOP_ERRORS):
+            LOG.error('Insufficient funds - not selling %d', amount)
             return
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
-        sell_price = round(get_current_price() * (1 + conf.change))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        SELL_PRICE = round(get_current_price() * (1 + CONF.change))
         return create_divided_sell_order()
 
 
@@ -384,10 +384,10 @@ def fetch_order_status(order_id: str):
     output: status of the order (open, closed)
     """
     try:
-        return exchange.fetch_order_status(order_id)
+        return EXCHANGE.fetch_order_status(order_id)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return fetch_order_status(order_id)
 
@@ -398,17 +398,17 @@ def cancel_order(order: Order):
     """
     try:
         if order is not None:
-            status = exchange.fetch_order_status(order.id)
+            status = EXCHANGE.fetch_order_status(order.id)
             if status == 'open':
-                exchange.cancel_order(order.id)
+                EXCHANGE.cancel_order(order.id)
             else:
-                log.warning('Order to be canceled %s was in state %s', order.id, status)
+                LOG.warning('Order to be canceled %s was in state %s', order.id, status)
 
     except ccxt.OrderNotFound as error:
-        log.error('Order to be canceled not found %s %s', order.id, str(error.args))
+        LOG.error('Order to be canceled not found %s %s', order.id, str(error.args))
         return
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return cancel_order(order)
 
@@ -424,51 +424,51 @@ def create_buy_order(price: float, buy_amount: int):
     is going to sleep, allowing sell orders to be filled - afterwards the amount is recalculated and the function calls
     itself with the new amount
     """
-    global sell_price
-    global buy_price
-    global curr_buy_order_size
-    global curr_buy_order
-    global buy_orders
+    global SELL_PRICE
+    global BUY_PRICE
+    global CURR_BUY_ORDER_SIZE
+    global CURR_BUY_ORDER
+    global BUY_ORDERS
 
-    buy_price = round(price * (1 - conf.change))
-    sell_price = round(price * (1 + conf.change))
-    curr_buy_order_size = buy_amount
+    BUY_PRICE = round(price * (1 - CONF.change))
+    SELL_PRICE = round(price * (1 + CONF.change))
+    CURR_BUY_ORDER_SIZE = buy_amount
     curr_price = get_current_price()
 
     try:
-        if not is_order_below_limit(buy_amount, buy_price):
-            if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
-                new_order = exchange.create_limit_buy_order(conf.pair, buy_amount, buy_price)
-            elif conf.exchange == 'kraken':
-                new_order = exchange.create_limit_buy_order(conf.pair, to_crypto_amount(buy_amount, curr_price), buy_price,
-                                                            {'leverage': conf.leverage_default, 'oflags': 'fcib'})
-            elif conf.exchange == 'liquid':
-                new_order = exchange.create_limit_buy_order(conf.pair, to_crypto_amount(buy_amount, curr_price), buy_price,
-                                                            {'leverage_level': conf.leverage_default,
-                                                             'funding_currency': conf.base})
+        if not is_order_below_limit(buy_amount, BUY_PRICE):
+            if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
+                new_order = EXCHANGE.create_limit_buy_order(CONF.pair, buy_amount, BUY_PRICE)
+            elif CONF.exchange == 'kraken':
+                new_order = EXCHANGE.create_limit_buy_order(CONF.pair, to_crypto_amount(buy_amount, curr_price), BUY_PRICE,
+                                                            {'leverage': CONF.leverage_default, 'oflags': 'fcib'})
+            elif CONF.exchange == 'liquid':
+                new_order = EXCHANGE.create_limit_buy_order(CONF.pair, to_crypto_amount(buy_amount, curr_price), BUY_PRICE,
+                                                            {'leverage_level': CONF.leverage_default,
+                                                             'funding_currency': CONF.base})
             order = Order(new_order)
-            log.info('Created %s', str(order))
-            curr_buy_order = order
-            buy_orders.append(order)
+            LOG.info('Created %s', str(order))
+            CURR_BUY_ORDER = order
+            BUY_ORDERS.append(order)
             return True
-        if sell_orders:
-            log.info('Could not create buy order, waiting for a sell order to be realised')
+        if SELL_ORDERS:
+            LOG.info('Could not create buy order, waiting for a sell order to be realised')
             return delay_buy_order(curr_price, price)
 
-        log.warning('Could not create buy order over %d and there are no open sell orders, reset required', buy_amount)
+        LOG.warning('Could not create buy order over %d and there are no open sell orders, reset required', buy_amount)
         return False
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        if any(e in str(error.args) for e in no_recall):
-            if sell_orders:
-                log.info(
+        if any(e in str(error.args) for e in STOP_ERRORS):
+            if SELL_ORDERS:
+                LOG.info(
                     'Could not create buy order over %s, insufficient margin, waiting for a sell order to be realised',
                     str(buy_amount))
                 return delay_buy_order(curr_price, price)
 
-            log.warning('Could not create buy order over %d, insufficient margin', buy_amount)
+            LOG.warning('Could not create buy order over %d, insufficient margin', buy_amount)
             return False
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return create_buy_order(update_price(curr_price, price), buy_amount)
 
@@ -482,11 +482,11 @@ def delay_buy_order(crypto_price: float, price: float):
     """
     sleep_for(90, 180)
     daily_report()
-    new_amount = round(get_balance()['free'] / conf.quota * get_current_price())  # recalculate order size
+    new_amount = round(get_balance()['free'] / CONF.quota * get_current_price())  # recalculate order size
     if is_order_below_limit(new_amount, update_price(crypto_price, price)):
-        if conf.auto_leverage and conf.auto_leverage_escape:
+        if CONF.auto_leverage and CONF.auto_leverage_escape:
             boost_leverage()
-        elif conf.auto_leverage:
+        elif CONF.auto_leverage:
             mm = fetch_mayer()
             adjust_leverage(mm)
     return create_buy_order(update_price(crypto_price, price), calculate_buy_order_amount())
@@ -502,7 +502,7 @@ def calculate_buy_order_amount(crypto_price=None):
     if available < 0:
         return 0
     crypto_price = get_current_price() if crypto_price is None else crypto_price
-    return round(available / conf.quota * crypto_price)
+    return round(available / CONF.quota * crypto_price)
 
 
 def create_market_sell_order(amount_crypto: float):
@@ -510,33 +510,33 @@ def create_market_sell_order(amount_crypto: float):
     Creates a market sell order and sets the values as global ones. Used to compensate margins above 50%.
     input: amount_crypto to be sold to reach 50% margin
     """
-    global buy_price
-    global sell_price
-    global sell_orders
+    global BUY_PRICE
+    global SELL_PRICE
+    global SELL_ORDERS
 
     cur_price = get_current_price()
     amount_fiat = round(amount_crypto * cur_price)
-    buy_price = round(cur_price * (1 - conf.change))
-    sell_price = round(cur_price * (1 + conf.change))
+    BUY_PRICE = round(cur_price * (1 - CONF.change))
+    SELL_PRICE = round(cur_price * (1 + CONF.change))
 
     try:
         if not is_crypto_amount_below_limit(amount_crypto):
-            if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
-                new_order = exchange.create_market_sell_order(conf.pair, amount_fiat)
-            elif conf.exchange == 'kraken':
-                new_order = exchange.create_market_sell_order(conf.pair, amount_crypto, {'leverage': conf.leverage_default})
-            elif conf.exchange == 'liquid':
-                new_order = exchange.create_market_sell_order(conf.pair, amount_fiat,
-                                                              {'leverage_level': conf.leverage_default})
+            if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
+                new_order = EXCHANGE.create_market_sell_order(CONF.pair, amount_fiat)
+            elif CONF.exchange == 'kraken':
+                new_order = EXCHANGE.create_market_sell_order(CONF.pair, amount_crypto, {'leverage': CONF.leverage_default})
+            elif CONF.exchange == 'liquid':
+                new_order = EXCHANGE.create_market_sell_order(CONF.pair, amount_fiat,
+                                                              {'leverage_level': CONF.leverage_default})
             order = Order(new_order)
-            log.info('Created market %s', str(order))
-            sell_orders.append(order)
+            LOG.info('Created market %s', str(order))
+            SELL_ORDERS.append(order)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        if any(e in str(error.args) for e in no_recall):
-            log.error('Insufficient balance/funds - not selling %d', amount_fiat)
+        if any(e in str(error.args) for e in STOP_ERRORS):
+            LOG.error('Insufficient balance/funds - not selling %d', amount_fiat)
             return
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return create_market_sell_order(amount_crypto)
 
@@ -546,36 +546,36 @@ def create_market_buy_order(amount_crypto: float):
     Creates a market buy order and sets the values as global ones. Used to compensate margins below 50%.
     input: amount_crypto to be bought to reach 50% margin
     """
-    global buy_price
-    global sell_price
-    global curr_buy_order
+    global BUY_PRICE
+    global SELL_PRICE
+    global CURR_BUY_ORDER
 
     cur_price = get_current_price()
     amount_fiat = round(amount_crypto * cur_price)
-    buy_price = round(cur_price * (1 - conf.change))
-    sell_price = round(cur_price * (1 + conf.change))
+    BUY_PRICE = round(cur_price * (1 - CONF.change))
+    SELL_PRICE = round(cur_price * (1 + CONF.change))
 
     try:
         if not is_order_below_limit(amount_fiat, cur_price):
-            if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
-                new_order = exchange.create_market_buy_order(conf.pair, amount_fiat)
-            elif conf.exchange == 'kraken':
-                new_order = exchange.create_market_buy_order(conf.pair, amount_crypto,
-                                                             {'leverage': conf.leverage_default, 'oflags': 'fcib'})
-            elif conf.exchange == 'liquid':
-                new_order = exchange.create_market_buy_order(conf.pair, amount_crypto,
-                                                             {'leverage_level': conf.leverage_default,
-                                                              'funding_currency': conf.base})
+            if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
+                new_order = EXCHANGE.create_market_buy_order(CONF.pair, amount_fiat)
+            elif CONF.exchange == 'kraken':
+                new_order = EXCHANGE.create_market_buy_order(CONF.pair, amount_crypto,
+                                                             {'leverage': CONF.leverage_default, 'oflags': 'fcib'})
+            elif CONF.exchange == 'liquid':
+                new_order = EXCHANGE.create_market_buy_order(CONF.pair, amount_crypto,
+                                                             {'leverage_level': CONF.leverage_default,
+                                                              'funding_currency': CONF.base})
             order = Order(new_order)
-            log.info('Created market %s', str(order))
-            curr_buy_order = None
+            LOG.info('Created market %s', str(order))
+            CURR_BUY_ORDER = None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if "not_enough_free" or "free_margin_below" in str(error.args):
-            log.error('Not enough free margin/balance %s %s', type(error).__name__, str(error.args))
+            LOG.error('Not enough free margin/balance %s %s', type(error).__name__, str(error.args))
             return
 
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return create_market_buy_order(amount_crypto)
 
@@ -585,24 +585,24 @@ def get_margin_leverage():
     Fetch the leverage
     """
     try:
-        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
-            return exchange.fetch_balance()['info'][0]['marginLeverage']
-        if conf.exchange == 'kraken':
-            return float(exchange.private_post_tradebalance()['result']['ml'])
-        if conf.exchange == 'liquid':
+        if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
+            return EXCHANGE.fetch_balance()['info'][0]['marginLeverage']
+        if CONF.exchange == 'kraken':
+            return float(EXCHANGE.private_post_tradebalance()['result']['ml'])
+        if CONF.exchange == 'liquid':
             # TODO poi = get_position_info()
-            log.error("get_margin_leverage() not yet implemented for %s", conf.exchange)
+            LOG.error("get_margin_leverage() not yet implemented for %s", CONF.exchange)
             return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_margin_leverage()
 
 
 def get_relevant_leverage():
     """
-    Returns the higher of the two leverages - used to adjust the leverage
+    Returns the higher of the two leverages - used to set the initial leverage
     """
     position_leverage = get_leverage()
     margin_leverage = get_margin_leverage()
@@ -619,20 +619,20 @@ def get_wallet_balance():
     Fetch the wallet balance in crypto
     """
     try:
-        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
-            return exchange.fetch_balance()['info'][0]['walletBalance'] * conf.satoshi_factor
-        if conf.exchange == 'kraken':
-            asset = conf.base if conf.base != 'BTC' else 'XBt'
-            return float(exchange.private_post_tradebalance({'asset': asset})['result']['tb'])
-        if conf.exchange == 'liquid':
-            result = exchange.private_get_accounts_balance()
+        if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
+            return EXCHANGE.fetch_balance()['info'][0]['walletBalance'] * CONF.satoshi_factor
+        if CONF.exchange == 'kraken':
+            asset = CONF.base if CONF.base != 'BTC' else 'XBt'
+            return float(EXCHANGE.private_post_tradebalance({'asset': asset})['result']['tb'])
+        if CONF.exchange == 'liquid':
+            result = EXCHANGE.private_get_accounts_balance()
             if result is not None:
                 for b in result:
-                    if b['currency'] == conf.base:
+                    if b['currency'] == CONF.base:
                         return float(b['balance'])
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_wallet_balance()
 
@@ -643,8 +643,8 @@ def get_balance():
     output: balance (used,free,total)
     """
     try:
-        if conf.exchange != 'liquid':
-            bal = exchange.fetch_balance()[conf.base]
+        if CONF.exchange != 'liquid':
+            bal = EXCHANGE.fetch_balance()[CONF.base]
             if bal['used'] is None:
                 bal['used'] = 0
             if bal['free'] is None:
@@ -652,23 +652,23 @@ def get_balance():
             return bal
 
         bal = None
-        result = exchange.private_get_trading_accounts()
+        result = EXCHANGE.private_get_trading_accounts()
         if result is not None:
             for acc in result:
-                if acc['currency_pair_code'] == conf.symbol and float(acc['margin']) > 0:
+                if acc['currency_pair_code'] == CONF.symbol and float(acc['margin']) > 0:
                     bal = {'used': float(acc['margin']), 'free': float(acc['free_margin']),
                            'total': float(acc['equity'])}
         if bal is None:
             # no position => return wallet balance
-            result = exchange.private_get_accounts_balance()
+            result = EXCHANGE.private_get_accounts_balance()
             if result is not None:
                 for b in result:
-                    if b['currency'] == conf.base:
+                    if b['currency'] == CONF.base:
                         bal = {'used': 0, 'free': float(b['balance']), 'total': float(b['balance'])}
         return bal
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_balance()
 
@@ -679,16 +679,16 @@ def get_used_balance():
     output: balance
     """
     try:
-        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
-            return exchange.private_get_position()[0]['currentQty']
-        if conf.exchange == 'kraken':
-            result = exchange.private_post_tradebalance()['result']
+        if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
+            return EXCHANGE.private_get_position()[0]['currentQty']
+        if CONF.exchange == 'kraken':
+            result = EXCHANGE.private_post_tradebalance()['result']
             return round(float(result['e']) - float(result['mf']))
-        if conf.exchange == 'liquid':
+        if CONF.exchange == 'liquid':
             return round(get_balance()['used'] * get_current_price())
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_used_balance()
 
@@ -699,24 +699,24 @@ def get_net_deposits():
     return: net deposits
     """
     try:
-        currency = conf.base if conf.base != 'BTC' else 'XBt'
-        if conf.exchange == 'bitmex':
-            result = exchange.private_get_user_wallet({'currency': currency})
-            return (result['deposited'] - result['withdrawn']) * conf.satoshi_factor
-        if conf.exchange == 'kraken':
+        currency = CONF.base if CONF.base != 'BTC' else 'XBt'
+        if CONF.exchange == 'bitmex':
+            result = EXCHANGE.private_get_user_wallet({'currency': currency})
+            return (result['deposited'] - result['withdrawn']) * CONF.satoshi_factor
+        if CONF.exchange == 'kraken':
             net_deposits = 0
-            deposits = exchange.fetch_deposits(conf.base)
+            deposits = EXCHANGE.fetch_deposits(CONF.base)
             for deposit in deposits:
                 net_deposits += deposit['amount']
-            ledgers = exchange.private_post_ledgers({'asset': currency, 'type': 'withdrawal'})['result']['ledger']
+            ledgers = EXCHANGE.private_post_ledgers({'asset': currency, 'type': 'withdrawal'})['result']['ledger']
             for withdrawal_id in ledgers:
                 net_deposits += float(ledgers[withdrawal_id]['amount'])
             return net_deposits
-        log.error("get_net_deposit() not yet implemented for %s", conf.exchange)
+        LOG.error("get_net_deposit() not yet implemented for %s", CONF.exchange)
         return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_net_deposits()
 
@@ -726,24 +726,24 @@ def get_position_info():
     Fetch position information
     """
     try:
-        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
-            response = exchange.private_get_position()
+        if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
+            response = EXCHANGE.private_get_position()
             if response and response[0] and response[0]['avgEntryPrice']:
                 return response[0]
             return None
-        if conf.exchange == 'kraken':
-            log.error("get_position_info() not yet implemented for kraken")
+        if CONF.exchange == 'kraken':
+            LOG.error("get_position_info() not yet implemented for kraken")
             return None
-        if conf.exchange == 'liquid':
-            response = exchange.private_get_trading_accounts()
+        if CONF.exchange == 'liquid':
+            response = EXCHANGE.private_get_trading_accounts()
             for pos in response:
-                if pos['currency_pair_code'] == conf.symbol and pos['funding_currency'] == conf.base and \
+                if pos['currency_pair_code'] == CONF.symbol and pos['funding_currency'] == CONF.base and \
                         float(pos['margin']) > 0:
                     return pos
             return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_position_info()
 
@@ -753,16 +753,16 @@ def get_interest_rate():
     Fetches and converts the interest rate
     """
     try:
-        if conf.exchange == 'bitmex':
+        if CONF.exchange == 'bitmex':
             today = datetime.date.today().isoformat()
-            result = exchange.public_get_funding({'symbol': conf.symbol, 'startTime': today, 'count': 1})
+            result = EXCHANGE.public_get_funding({'symbol': CONF.symbol, 'startTime': today, 'count': 1})
             if result is not None:
                 return result[0]['fundingRateDaily'] * -100
             return None
-        log.error("get_interest_rate() not yet implemented for %s", conf.exchange)
+        LOG.error("get_interest_rate() not yet implemented for %s", CONF.exchange)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_interest_rate()
 
@@ -771,21 +771,20 @@ def compensate():
     """
     Approaches the margin used towards 50% by selling or buying the difference to market price
     """
-    if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
+    if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
         bal = get_balance()
-    elif conf.exchange == 'kraken':
+    elif CONF.exchange == 'kraken':
         bal = get_margin_balance()
 
     used = float(100 - (bal['free'] / bal['total']) * 100)
     if used < 40 or used > 60:
         amount_crypto = float(bal['total'] / 2 - bal['used'])
         if amount_crypto > 0:
-            log.info("Need to buy {} {} in order to reach 50% margin".format(amount_crypto, conf.base))
+            LOG.info("Need to buy {} {} in order to reach 50% margin".format(amount_crypto, CONF.base))
             create_market_buy_order(amount_crypto)
         else:
-            log.info("Need to sell {} {} in order to reach 50% margin".format(abs(amount_crypto), conf.base))
+            LOG.info("Need to sell {} {} in order to reach 50% margin".format(abs(amount_crypto), CONF.base))
             create_market_sell_order(abs(amount_crypto))
-    return
 
 
 def spread(price: float):
@@ -795,16 +794,16 @@ def spread(price: float):
     If so, then the highest buy order is canceled and a new buy and sell order are created with the configured offset
     to the market price
     """
-    if buy_orders and sell_orders:
-        highest_buy_order = sorted(buy_orders, key=lambda order: order.price, reverse=True)[0]
-        if highest_buy_order.price < price * (1 - conf.change * conf.spread_factor):
-            lowest_sell_order = sorted(sell_orders, key=lambda order: order.price)[0]
-            if lowest_sell_order.price > price * (1 + conf.change * conf.spread_factor):
-                log.info("Orders above spread tolerance min sell: %f max buy: %f current rate: %f",
+    if BUY_ORDERS and SELL_ORDERS:
+        highest_buy_order = sorted(BUY_ORDERS, key=lambda order: order.price, reverse=True)[0]
+        if highest_buy_order.price < price * (1 - CONF.change * CONF.spread_factor):
+            lowest_sell_order = sorted(SELL_ORDERS, key=lambda order: order.price)[0]
+            if lowest_sell_order.price > price * (1 + CONF.change * CONF.spread_factor):
+                LOG.info("Orders above spread tolerance min sell: %f max buy: %f current rate: %f",
                          lowest_sell_order.price, highest_buy_order.price, price)
-                log.info("Canceling highest %s", str(highest_buy_order))
+                LOG.info("Canceling highest %s", str(highest_buy_order))
                 cancel_order(highest_buy_order)
-                buy_orders.remove(highest_buy_order)
+                BUY_ORDERS.remove(highest_buy_order)
                 if create_buy_order(price, highest_buy_order.amount):
                     create_sell_order()
 
@@ -815,19 +814,19 @@ def get_margin_balance():
     return: balance in fiat
     """
     try:
-        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
-            bal = exchange.fetch_balance()[conf.base]
-        elif conf.exchange == 'kraken':
-            bal = exchange.private_post_tradebalance({'asset': conf.base})['result']
+        if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
+            bal = EXCHANGE.fetch_balance()[CONF.base]
+        elif CONF.exchange == 'kraken':
+            bal = EXCHANGE.private_post_tradebalance({'asset': CONF.base})['result']
             bal['free'] = float(bal['mf'])
             bal['total'] = float(bal['e'])
             bal['used'] = float(bal['m'])
-        elif conf.exchange == 'liquid':
+        elif CONF.exchange == 'liquid':
             bal = get_balance()
         return bal
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_margin_balance()
 
@@ -864,10 +863,10 @@ def get_current_price():
     output: last bid price
     """
     try:
-        return exchange.fetch_ticker(conf.pair)['bid']
+        return EXCHANGE.fetch_ticker(CONF.pair)['bid']
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_current_price()
 
@@ -890,56 +889,56 @@ def init_orders(force_close: bool, auto_conf: bool):
     :param auto_conf: load all orders and keep position
     :return: False if compensate is required, True if not
     """
-    global sell_price
-    global sell_orders
-    global curr_buy_order_size
-    global curr_buy_order
-    global buy_orders
-    global buy_price
-    global reset_counter
+    global SELL_PRICE
+    global SELL_ORDERS
+    global CURR_BUY_ORDER_SIZE
+    global CURR_BUY_ORDER
+    global BUY_ORDERS
+    global BUY_PRICE
+    global RESET_COUNTER
 
     if force_close:
-        reset_counter += 1
+        RESET_COUNTER += 1
 
     try:
         init = ''
         if auto_conf:
-            log.warning("Bot was resurrected by hades")
+            LOG.warning("Bot was resurrected by hades")
 
         # Handle open orders
         oos = get_open_orders()
 
         # deactivate bot instance
         if oos is None:
-            os.remove(filename + '.pid')
-            text = "Deactivated {}".format(conf.bot_instance)
-            log.error(text)
+            os.remove(INSTANCE + '.pid')
+            text = "Deactivated {}".format(CONF.bot_instance)
+            LOG.error(text)
             send_mail(text, text)
             exit(1)
 
-        log.info("Used margin: {:>17.2f}%".format(calculate_used_margin_percentage()))
+        LOG.info("Used margin: {:>17.2f}%".format(calculate_used_margin_percentage()))
         print_position_info(oos)
 
         if oos.orders:
-            log.info("Value of buy orders {}: {:>2}".format(conf.quote, int(oos.total_buy_order_value)))
-            log.info("Value of sell orders {}: {:>1}".format(conf.quote, int(oos.total_sell_order_value)))
-            log.info("No. of buy orders: {:>8}".format(len(oos.buy_orders)))
-            log.info("No. of sell orders: {:>7}".format(len(oos.sell_orders)))
-            log.info('-------------------------------')
+            LOG.info("Value of buy orders {}: {:>2}".format(CONF.quote, int(oos.total_buy_order_value)))
+            LOG.info("Value of sell orders {}: {:>1}".format(CONF.quote, int(oos.total_sell_order_value)))
+            LOG.info("No. of buy orders: {:>8}".format(len(oos.buy_orders)))
+            LOG.info("No. of sell orders: {:>7}".format(len(oos.sell_orders)))
+            LOG.info('-------------------------------')
 
             if not force_close and not auto_conf:
                 init = input('There are open orders! Would you like to load them? (y/n) ')
             if not force_close and (auto_conf or init.lower() in ['y', 'yes']):
                 return load_existing_orders(oos)
 
-            log.info('Unrealised PNL: %s %s', str(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor), conf.base)
+            LOG.info('Unrealised PNL: %s %s', str(get_unrealised_pnl(CONF.symbol) * CONF.satoshi_factor), CONF.base)
             if force_close:
                 cancel_orders(oos.orders)
             else:
-                clear_position = input('There is an open ' + conf.base + ' position! Would you like to close it? (y/n) ')
+                clear_position = input('There is an open ' + CONF.base + ' position! Would you like to close it? (y/n) ')
                 if clear_position.lower() in ['y', 'yes']:
                     cancel_orders(oos.orders)
-                    close_position(conf.symbol)
+                    close_position(CONF.symbol)
                 else:
                     compensate_position = input('Would you like to compensate to 50%? (y/n) ')
                     if compensate_position.lower() in ['n', 'no']:
@@ -947,38 +946,38 @@ def init_orders(force_close: bool, auto_conf: bool):
                         return True
 
         # Handle open positions if no orders are open
-        elif not force_close and not auto_conf and get_open_position(conf.symbol) is not None:
-            msg = 'There is an open ' + conf.base + ' position!\nUnrealised PNL: {:.8f} ' + conf.base + \
+        elif not force_close and not auto_conf and get_open_position(CONF.symbol) is not None:
+            msg = 'There is an open ' + CONF.base + ' position!\nUnrealised PNL: {:.8f} ' + CONF.base + \
                   '\nWould you like to close it? (y/n) '
-            init = input(msg.format(get_unrealised_pnl(conf.symbol) * conf.satoshi_factor))
+            init = input(msg.format(get_unrealised_pnl(CONF.symbol) * CONF.satoshi_factor))
             if init.lower() in ['y', 'yes']:
-                close_position(conf.symbol)
+                close_position(CONF.symbol)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return init_orders(force_close, auto_conf)
 
     else:
         del oos
-        log.info('Initialization complete')
+        LOG.info('Initialization complete')
         # compensate
         return False
 
 
 def load_existing_orders(oos: OpenOrdersSummary):
-    global sell_orders, sell_price, buy_orders, curr_buy_order, buy_price, curr_buy_order_size
+    global SELL_ORDERS, SELL_PRICE, BUY_ORDERS, CURR_BUY_ORDER, BUY_PRICE, CURR_BUY_ORDER_SIZE
     if oos.sell_orders:
-        sell_orders = oos.sell_orders
-        sell_price = sell_orders[-1].price  # lowest if several
+        SELL_ORDERS = oos.sell_orders
+        SELL_PRICE = SELL_ORDERS[-1].price  # lowest if several
     if oos.buy_orders:
-        buy_orders = oos.buy_orders
-        curr_buy_order = buy_orders[0]  # highest if several
-        buy_price = curr_buy_order.price
-        curr_buy_order_size = curr_buy_order.amount
+        BUY_ORDERS = oos.buy_orders
+        CURR_BUY_ORDER = BUY_ORDERS[0]  # highest if several
+        BUY_PRICE = CURR_BUY_ORDER.price
+        CURR_BUY_ORDER_SIZE = CURR_BUY_ORDER.amount
     # All sell orders executed
     if not oos.sell_orders:
-        sell_price = round(get_current_price() * (1 + conf.change))
+        SELL_PRICE = round(get_current_price() * (1 + CONF.change))
         create_sell_order()
     # All buy orders executed
     elif not oos.buy_orders:
@@ -988,7 +987,7 @@ def load_existing_orders(oos: OpenOrdersSummary):
             crypto_price = get_current_price()
             create_buy_order(crypto_price, calculate_buy_order_amount(crypto_price))
     del oos
-    log.info('Initialization complete (using existing orders)')
+    LOG.info('Initialization complete (using existing orders)')
     # No "compensate" necessary
     return True
 
@@ -1000,18 +999,18 @@ def cancel_orders(orders: [Order]):
     """
     try:
         for o in orders:
-            log.debug('Cancel %s', str(o))
-            status = exchange.fetch_order_status(o.id)
+            LOG.debug('Cancel %s', str(o))
+            status = EXCHANGE.fetch_order_status(o.id)
             if status == 'open':
-                exchange.cancel_order(o.id)
+                EXCHANGE.cancel_order(o.id)
             else:
-                log.warning('Cancel %s was in state %s', str(o), status)
+                LOG.warning('Cancel %s was in state %s', str(o), status)
 
     except ccxt.OrderNotFound as error:
-        log.error('Cancel %s not found : %s', str(o), str(error.args))
+        LOG.error('Cancel %s not found : %s', str(o), str(error.args))
         return
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return cancel_orders(orders)
 
@@ -1021,19 +1020,19 @@ def close_position(symbol: str):
     Close any open position
     """
     try:
-        log.info('close position %s', symbol)
-        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
-            exchange.private_post_order_closeposition({'symbol': symbol})
-        elif conf.exchange == 'kraken':
-            exchange.create_market_sell_order(conf.pair, 0.0, {'leverage': conf.leverage_default})
-        elif conf.exchange == 'liquid':
-            exchange.private_put_trades_close_all()
+        LOG.info('close position %s', symbol)
+        if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
+            EXCHANGE.private_post_order_closeposition({'symbol': symbol})
+        elif CONF.exchange == 'kraken':
+            EXCHANGE.create_market_sell_order(CONF.pair, 0.0, {'leverage': CONF.leverage_default})
+        elif CONF.exchange == 'liquid':
+            EXCHANGE.private_put_trades_close_all()
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         # no retry in case of "no volume to close position" (kraken specific error)
         if "volume to close position" in str(error.args):
             return
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return close_position(symbol)
 
@@ -1044,25 +1043,25 @@ def get_open_position(symbol: str):
     :return: positions
     """
     try:
-        if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
-            for p in exchange.private_get_position():
+        if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
+            for p in EXCHANGE.private_get_position():
                 if p['isOpen'] and p['symbol'] == symbol:
                     return p
-        elif conf.exchange == 'kraken':
-            a = exchange.private_post_openpositions()
+        elif CONF.exchange == 'kraken':
+            a = EXCHANGE.private_post_openpositions()
             if a['result'] == 'success':
                 for p in a['openPositions']:
                     if p['symbol'] == symbol:
                         return p
-        elif conf.exchange == 'liquid':
-            trades = exchange.private_get_trades({'status': 'open'})
+        elif CONF.exchange == 'liquid':
+            trades = EXCHANGE.private_get_trades({'status': 'open'})
             for model in trades['models']:
-                if model['currency_pair_code'] == conf.pair:
+                if model['currency_pair_code'] == CONF.pair:
                     return model
         return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_open_position(symbol)
 
@@ -1073,13 +1072,13 @@ def get_open_orders(tries: int = 0):
     :return: OpenOrdersSummary
     """
     try:
-        return OpenOrdersSummary(exchange.fetch_open_orders(conf.pair, since=None, limit=None, params={}))
+        return OpenOrdersSummary(EXCHANGE.fetch_open_orders(CONF.pair, since=None, limit=None, params={}))
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if "key is disabled" in str(error.args):
-            log.warning('Key is disabled')
+            LOG.warning('Key is disabled')
             return None
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         if tries < 20000:
             return get_open_orders(tries+1)
@@ -1098,39 +1097,39 @@ def get_unrealised_pnl(symbol: str):
         return 0.0
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_unrealised_pnl(symbol)
 
 
 def print_position_info(oos: OpenOrdersSummary):
-    if conf.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
+    if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
         sleep_for(1, 2)
         poi = get_position_info()
         if poi:
-            log.info("Position {}: {:>13}".format(conf.quote, poi['currentQty']))
-            log.info("Entry price: {:>16.1f}".format(poi['avgEntryPrice']))
-            log.info("Market price: {:>15.1f}".format(poi['markPrice']))
-            log.info("Liquidation price: {:>10.1f}".format(poi['liquidationPrice']))
+            LOG.info("Position {}: {:>13}".format(CONF.quote, poi['currentQty']))
+            LOG.info("Entry price: {:>16.1f}".format(poi['avgEntryPrice']))
+            LOG.info("Market price: {:>15.1f}".format(poi['markPrice']))
+            LOG.info("Liquidation price: {:>10.1f}".format(poi['liquidationPrice']))
             del poi
         else:
-            log.info("Available balance is {}: {:>3} ".format(conf.base, get_balance()['free']))
-            log.info("No position found, I will create one for you")
+            LOG.info("Available balance is {}: {:>3} ".format(CONF.base, get_balance()['free']))
+            LOG.info("No position found, I will create one for you")
             return False
-    elif conf.exchange == 'kraken':
-        log.info("Position {}: {:>13}".format(conf.quote, get_used_balance()))
-        log.info("Entry price: {:>16.1f}".format(calculate_avg_entry_price_and_total_quantity(oos.orders)['avg']))
-        log.info("Market price: {:>15.1f}".format(get_current_price()))
-    elif conf.exchange == 'liquid':
+    elif CONF.exchange == 'kraken':
+        LOG.info("Position {}: {:>13}".format(CONF.quote, get_used_balance()))
+        LOG.info("Entry price: {:>16.1f}".format(calculate_avg_entry_price_and_total_quantity(oos.orders)['avg']))
+        LOG.info("Market price: {:>15.1f}".format(get_current_price()))
+    elif CONF.exchange == 'liquid':
         poi = get_position_info()
         if float(poi['position']) > 0:
-            log.info("Position {}: {:>13.2f}".format(conf.base, float(poi['position'])))
+            LOG.info("Position {}: {:>13.2f}".format(CONF.base, float(poi['position'])))
         else:
-            log.info("Available balance is {}: {:>3} ".format(conf.base, get_balance()['free']))
-            log.info("No position found, I will create one for you")
+            LOG.info("Available balance is {}: {:>3} ".format(CONF.base, get_balance()['free']))
+            LOG.info("No position found, I will create one for you")
             return False
     if not oos.orders:
-        log.info("No open orders")
+        LOG.info("No open orders")
 
 
 def connect_to_exchange():
@@ -1145,22 +1144,22 @@ def connect_to_exchange():
                  'kraken': ccxt.kraken,
                  'liquid': ccxt.liquid}
 
-    exchange = exchanges[conf.exchange]({
+    exchange = exchanges[CONF.exchange]({
         'enableRateLimit': True,
-        'apiKey': conf.api_key,
-        'secret': conf.api_secret,
+        'apiKey': CONF.api_key,
+        'secret': CONF.api_secret,
         # 'verbose': True,
     })
 
     #pprint(dir(exchange))
 
-    if hasattr(conf, 'test') & conf.test:
+    if hasattr(CONF, 'test') & CONF.test:
         if 'test' in exchange.urls:
             exchange.urls['api'] = exchange.urls['test']
         else:
-            raise SystemExit('Test not supported by %s', conf.exchange)
+            raise SystemExit('Test not supported by %s', CONF.exchange)
 
-    log.info('Connecting to %s', conf.exchange)
+    LOG.info('Connecting to %s', CONF.exchange)
     return exchange
 
 
@@ -1174,8 +1173,8 @@ def is_order_below_limit(order_amount: int, price: float):
 
 
 def is_crypto_amount_below_limit(crypto_amount: float):
-    if abs(crypto_amount) < conf.order_crypto_min:
-        log.info('Per order volume below limit: %f', abs(crypto_amount))
+    if abs(crypto_amount) < CONF.order_crypto_min:
+        LOG.info('Per order volume below limit: %f', abs(crypto_amount))
         return True
     return False
 
@@ -1185,8 +1184,8 @@ def to_crypto_amount(fiat_amount: int, price: float):
 
 
 def write_control_file():
-    with open(filename + '.pid', 'w') as f:
-        f.write(str(os.getpid()) + ' ' + filename)
+    with open(INSTANCE + '.pid', 'w') as f:
+        f.write(str(os.getpid()) + ' ' + INSTANCE)
 
 
 def daily_report(immediately: bool = False):
@@ -1194,19 +1193,19 @@ def daily_report(immediately: bool = False):
     Creates a daily report email around 12:10 UTC or immediately if told to do so
     It also triggers the creation of the daily stats, which will be persisted
     """
-    global email_sent
+    global EMAIL_SENT
 
-    if conf.send_emails:
+    if CONF.send_emails:
         now = datetime.datetime.utcnow()
         if (immediately and datetime.datetime(2012, 1, 17, 12, 30).time() < now.time()) \
                 or datetime.datetime(2012, 1, 17, 12, 30).time() > now.time() \
-                > datetime.datetime(2012, 1, 17, 12, 10).time() and email_sent != now.day:
-            subject = "Daily report for {}".format(conf.bot_instance)
+                > datetime.datetime(2012, 1, 17, 12, 10).time() and EMAIL_SENT != now.day:
+            subject = "Daily report for {}".format(CONF.bot_instance)
             content = create_mail_content()
-            filename_csv = conf.bot_instance + '.csv'
+            filename_csv = CONF.bot_instance + '.csv'
             write_csv(content['csv'], filename_csv)
             send_mail(subject, content['text'], filename_csv)
-            email_sent = now.day
+            EMAIL_SENT = now.day
 
 
 def create_mail_content():
@@ -1228,48 +1227,48 @@ def create_mail_content():
     explanation = 'Erläuterungen zu diesem Rapport: https://bitcoin-schweiz.ch/wp-content/uploads/2019/07/Tagesrapport.pdf'
     text = '\n'.join(performance) + '\n'.join(advice) + '\n'.join(settings) + '\n'.join(general) + bcs_url + '\n\n' + explanation + '\n'
 
-    csv = conf.bot_instance + ';' + str(datetime.datetime.utcnow().replace(microsecond=0)) + ' UTC;' + (';'.join(performance_part['csv']) + ';' + ';'.join(
+    csv = CONF.bot_instance + ';' + str(datetime.datetime.utcnow().replace(microsecond=0)) + ' UTC;' + (';'.join(performance_part['csv']) + ';' + ';'.join(
         advice_part['csv']) + ';' + ';'.join(settings_part['csv']) + '\n')
 
     return {'text': text, 'csv': csv}
 
 
 def create_report_part_settings():
-    return {'mail': ["Rate change: {:>22.1f}%".format(conf.change * 100),
-                     "Quota: {:>28}".format('1/' + str(conf.quota)),
-                     "Spread factor: {:>20}".format(str(conf.spread_factor)),
-                     "Leverage default: {:>17}x".format(str(conf.leverage_default)),
-                     "Auto leverage: {:>20}".format(str('Y' if conf.auto_leverage is True else 'N')),
-                     "Auto leverage escape: {:>13}".format(str('Y' if conf.auto_leverage_escape is True else 'N')),
-                     "Leverage low: {:>21}x".format(str(conf.leverage_low)),
-                     "Leverage high: {:>20}x".format(str(conf.leverage_high)),
-                     "Leverage escape: {:>18}x".format(str(conf.leverage_high)),
-                     "Mayer multiple floor: {:>13}".format(str(conf.mm_floor)),
-                     "Mayer multiple ceil: {:>14}".format(str(conf.mm_ceil)),
-                     "Mayer multiple stop buy: {:>10}".format(str(conf.mm_stop_buy))],
-            'csv': ["Rate change:; {:.1f}%".format(float(conf.change * 100)),
-                    "Quota:; {:.3f}".format(1 / conf.quota),
-                    "Spread factor:; {}".format(str(conf.spread_factor)),
-                    "Leverage default:; {}".format(str(conf.leverage_default)),
-                    "Auto leverage:; {}".format(str('Y' if conf.auto_leverage is True else 'N')),
-                    "Auto leverage escape: {}".format(str('Y' if conf.auto_leverage_escape is True else 'N')),
-                    "Leverage low:; {}".format(str(conf.leverage_low)),
-                    "Leverage high:; {}".format(str(conf.leverage_high)),
-                    "Leverage escape:; {}".format(str(conf.leverage_escape)),
-                    "Mayer multiple floor:; {}".format(str(conf.mm_floor)),
-                    "Mayer multiple ceil:; {}".format(str(conf.mm_ceil)),
-                    "Mayer multiple stop buy:; {}".format(str(conf.mm_stop_buy))]}
+    return {'mail': ["Rate change: {:>22.1f}%".format(CONF.change * 100),
+                     "Quota: {:>28}".format('1/' + str(CONF.quota)),
+                     "Spread factor: {:>20}".format(str(CONF.spread_factor)),
+                     "Leverage default: {:>17}x".format(str(CONF.leverage_default)),
+                     "Auto leverage: {:>20}".format(str('Y' if CONF.auto_leverage is True else 'N')),
+                     "Auto leverage escape: {:>13}".format(str('Y' if CONF.auto_leverage_escape is True else 'N')),
+                     "Leverage low: {:>21}x".format(str(CONF.leverage_low)),
+                     "Leverage high: {:>20}x".format(str(CONF.leverage_high)),
+                     "Leverage escape: {:>18}x".format(str(CONF.leverage_high)),
+                     "Mayer multiple floor: {:>13}".format(str(CONF.mm_floor)),
+                     "Mayer multiple ceil: {:>14}".format(str(CONF.mm_ceil)),
+                     "Mayer multiple stop buy: {:>10}".format(str(CONF.mm_stop_buy))],
+            'csv': ["Rate change:; {:.1f}%".format(float(CONF.change * 100)),
+                    "Quota:; {:.3f}".format(1 / CONF.quota),
+                    "Spread factor:; {}".format(str(CONF.spread_factor)),
+                    "Leverage default:; {}".format(str(CONF.leverage_default)),
+                    "Auto leverage:; {}".format(str('Y' if CONF.auto_leverage is True else 'N')),
+                    "Auto leverage escape: {}".format(str('Y' if CONF.auto_leverage_escape is True else 'N')),
+                    "Leverage low:; {}".format(str(CONF.leverage_low)),
+                    "Leverage high:; {}".format(str(CONF.leverage_high)),
+                    "Leverage escape:; {}".format(str(CONF.leverage_escape)),
+                    "Mayer multiple floor:; {}".format(str(CONF.mm_floor)),
+                    "Mayer multiple ceil:; {}".format(str(CONF.mm_ceil)),
+                    "Mayer multiple stop buy:; {}".format(str(CONF.mm_stop_buy))]}
 
 
 def create_mail_part_general():
     general = ["Generated: {:>28}".format(str(datetime.datetime.utcnow().replace(microsecond=0)) + " UTC")]
-    if auto_conf:
-        general.append("Resurrected at: {:>18} UTC".format(str(started)))
+    if AUTO_CONF:
+        general.append("Resurrected at: {:>18} UTC".format(str(STARTED)))
     else:
-        general.append("Running since: {:>20} UTC".format(str(started)))
-    general.append("No. of resets: {:>20}".format(reset_counter))
-    general.append("Bot: {:>30}".format(conf.bot_instance + '@' + socket.gethostname()))
-    general.append("Version: {:>26}".format(conf.bot_version))
+        general.append("Running since: {:>20} UTC".format(str(STARTED)))
+    general.append("No. of resets: {:>20}".format(RESET_COUNTER))
+    general.append("Bot: {:>30}".format(CONF.bot_instance + '@' + socket.gethostname()))
+    general.append("Version: {:>26}".format(CONF.bot_version))
     return general
 
 
@@ -1307,12 +1306,12 @@ def append_orders(part: dict, oos: OpenOrdersSummary):
     """
     Appends order statistics
     """
-    part['mail'].append("Value of buy orders " + conf.quote + ": {:>10}".format(int(oos.total_buy_order_value)))
-    part['mail'].append("Value of sell orders " + conf.quote + ": {:>9}".format(int(oos.total_sell_order_value)))
+    part['mail'].append("Value of buy orders " + CONF.quote + ": {:>10}".format(int(oos.total_buy_order_value)))
+    part['mail'].append("Value of sell orders " + CONF.quote + ": {:>9}".format(int(oos.total_sell_order_value)))
     part['mail'].append("No. of buy orders: {:>16}".format(len(oos.buy_orders)))
     part['mail'].append("No. of sell orders: {:>15}".format(len(oos.sell_orders)))
-    part['csv'].append("Value of buy orders " + conf.quote + ":; {}".format(int(oos.total_buy_order_value)))
-    part['csv'].append("Value of sell orders " + conf.quote + ":; {}".format(int(oos.total_sell_order_value)))
+    part['csv'].append("Value of buy orders " + CONF.quote + ":; {}".format(int(oos.total_buy_order_value)))
+    part['csv'].append("Value of sell orders " + CONF.quote + ":; {}".format(int(oos.total_sell_order_value)))
     part['csv'].append("No. of buy orders:; {}".format(len(oos.buy_orders)))
     part['csv'].append("No. of sell orders:; {}".format(len(oos.sell_orders)))
 
@@ -1331,14 +1330,14 @@ def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance:
     """
     Appends liquidation price, wallet balance, margin balance (including stats), used margin and leverage information
     """
-    part['mail'].append("Wallet balance " + conf.base + ": {:>18.4f}".format(wallet_balance))
-    part['csv'].append("Wallet balance " + conf.base + ":; {:.4f}".format(wallet_balance))
+    part['mail'].append("Wallet balance " + CONF.base + ": {:>18.4f}".format(wallet_balance))
+    part['csv'].append("Wallet balance " + CONF.base + ":; {:.4f}".format(wallet_balance))
     price = get_current_price()
     today = calculate_daily_statistics(margin_balance['total'], price)
-    append_margin_change(part, today, conf.base)
+    append_margin_change(part, today, CONF.base)
     if all_sold_balance is not None:
-        part['mail'].append("All sold balance " + conf.base + ": {:>16.4f}".format(all_sold_balance))
-        part['csv'].append("All sold balance " + conf.base + ":; {:.4f}".format(all_sold_balance))
+        part['mail'].append("All sold balance " + CONF.base + ": {:>16.4f}".format(all_sold_balance))
+        part['csv'].append("All sold balance " + CONF.base + ":; {:.4f}".format(all_sold_balance))
     else:
         part['mail'].append("All sold balance: {:>17}".format('n/a'))
         part['csv'].append("All sold balance:; {}".format('n/a'))
@@ -1352,11 +1351,11 @@ def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance:
     used_margin = calculate_used_margin_percentage(margin_balance)
     part['mail'].append("Used margin: {:>22.2f}%".format(used_margin))
     part['csv'].append("Used margin:; {:.2f}%".format(used_margin))
-    if conf.exchange == 'kraken':
+    if CONF.exchange == 'kraken':
         actual_leverage = get_margin_leverage()
         part['mail'].append("Actual leverage: {:>18.2f}%".format(actual_leverage))
         part['csv'].append("Actual leverage:; {:.2f}%".format(actual_leverage))
-    elif conf.exchange == 'liquid':
+    elif CONF.exchange == 'liquid':
         part['mail'].append("Actual leverage: {:>18}".format('n/a'))
         part['csv'].append("Actual leverage:; {}".format('n/a'))
     else:
@@ -1364,8 +1363,8 @@ def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance:
         part['mail'].append("Actual leverage: {:>18.2f}x".format(actual_leverage))
         part['csv'].append("Actual leverage:; {:.2f}".format(actual_leverage))
     used_balance = get_used_balance()
-    part['mail'].append("Position " + conf.quote + ": {:>21}".format(used_balance))
-    part['csv'].append("Position " + conf.quote + ":; {}".format(used_balance))
+    part['mail'].append("Position " + CONF.quote + ": {:>21}".format(used_balance))
+    part['csv'].append("Position " + CONF.quote + ":; {}".format(used_balance))
 
 
 def append_performance(part: dict, margin_balance: float, net_deposits: float):
@@ -1373,40 +1372,40 @@ def append_performance(part: dict, margin_balance: float, net_deposits: float):
     Calculates and appends the absolute and relative overall performance
     """
     if net_deposits is None:
-        part['mail'].append("Net deposits " + conf.base + ": {:>17}".format('n/a'))
-        part['mail'].append("Overall performance in " + conf.base + ": {:>7}".format('n/a'))
-        part['csv'].append("Net deposits " + conf.base + ":; {}".format('n/a'))
-        part['csv'].append("Overall performance in " + conf.base + ":; {}".format('n/a'))
+        part['mail'].append("Net deposits " + CONF.base + ": {:>17}".format('n/a'))
+        part['mail'].append("Overall performance in " + CONF.base + ": {:>7}".format('n/a'))
+        part['csv'].append("Net deposits " + CONF.base + ":; {}".format('n/a'))
+        part['csv'].append("Overall performance in " + CONF.base + ":; {}".format('n/a'))
     else:
-        part['mail'].append("Net deposits " + conf.base + ": {:>20.4f}".format(net_deposits))
-        part['csv'].append("Net deposits " + conf.base + ":; {:.4f}".format(net_deposits))
+        part['mail'].append("Net deposits " + CONF.base + ": {:>20.4f}".format(net_deposits))
+        part['csv'].append("Net deposits " + CONF.base + ":; {:.4f}".format(net_deposits))
         absolute_performance = margin_balance - net_deposits
         if net_deposits > 0:
             relative_performance = round(100 / (net_deposits / absolute_performance), 2)
             part['mail'].append(
-                "Overall performance in " + conf.base + ": {:>+10.4f} ({:+.2f}%)".format(absolute_performance,
+                "Overall performance in " + CONF.base + ": {:>+10.4f} ({:+.2f}%)".format(absolute_performance,
                                                                                          relative_performance))
-            part['csv'].append("Overall performance in " + conf.base + ":; {:.4f}".format(absolute_performance))
+            part['csv'].append("Overall performance in " + CONF.base + ":; {:.4f}".format(absolute_performance))
         else:
             part['mail'].append(
-                "Overall performance in " + conf.base + ": {:>+10.4f} (% n/a)".format(absolute_performance))
-            part['csv'].append("Overall performance in " + conf.base + ":; {:.4f}".format(absolute_performance))
+                "Overall performance in " + CONF.base + ": {:>+10.4f} (% n/a)".format(absolute_performance))
+            part['csv'].append("Overall performance in " + CONF.base + ":; {:.4f}".format(absolute_performance))
 
 
 def append_margin_change(part: dict, today: dict, currency: str):
     """
     Appends margin changes
     """
-    formatter = 18.4 if currency == conf.base else 16.2
+    formatter = 18.4 if currency == CONF.base else 16.2
     m_bal = "Margin balance " + currency + ": {:>{}f}".format(today['mBal'], formatter)
     if 'mBalChan24' in today:
-        m_bal += " (" if currency == conf.base else "   ("
+        m_bal += " (" if currency == CONF.base else "   ("
         m_bal += "{:+.2f}%".format(today['mBalChan24'])
         if 'mBalChan48' in today:
             m_bal += ", {:+.2f}%".format(today['mBalChan48'])
         m_bal += ")*"
     part['mail'].append(m_bal)
-    formatter = .4 if currency == conf.base else .2
+    formatter = .4 if currency == CONF.base else .2
     part['csv'].append("Margin balance " + currency + ":; {:{}f}".format(today['mBal'], formatter))
 
 
@@ -1414,7 +1413,7 @@ def append_price_change(part: dict, today: dict, price: float):
     """
     Appends price changes
     """
-    rate = conf.base + " price " + conf.quote + ": {:>20.1f}".format(price)
+    rate = CONF.base + " price " + CONF.quote + ": {:>20.1f}".format(price)
     if 'priceChan24' in today:
         rate += "    ("
         rate += "{:+.2f}%".format(today['priceChan24'])
@@ -1422,12 +1421,12 @@ def append_price_change(part: dict, today: dict, price: float):
             rate += ", {:+.2f}%".format(today['priceChan48'])
         rate += ")*"
     part['mail'].append(rate)
-    part['csv'].append(conf.base + " price " + conf.quote + ":; {:.1f}".format(price))
+    part['csv'].append(CONF.base + " price " + CONF.quote + ":; {:.1f}".format(price))
 
 
 def calculate_all_sold_balance(poi: dict, sell_orders: [Order], wallet_balance: float, margin_balance: float,
                                net_deposits: float):
-    if conf.exchange == 'bitmex':
+    if CONF.exchange == 'bitmex':
         sells = calculate_avg_entry_price_and_total_quantity(sell_orders)
         avg_sell_price = float(sells['avg'])
         tot_sell_quantity = float(sells['qty'])
@@ -1451,10 +1450,10 @@ def is_already_written(filename_csv: str):
 
 
 def send_mail(subject: str, text: str, attachment: str = None):
-    recipients = ", ".join(conf.recipient_addresses)
+    recipients = ", ".join(CONF.recipient_addresses)
     msg = MIMEMultipart()
     msg['Subject'] = subject
-    msg['From'] = conf.sender_address
+    msg['From'] = CONF.sender_address
     msg['To'] = recipients
 
     readable_part = MIMEMultipart('alternative')
@@ -1471,13 +1470,13 @@ def send_mail(subject: str, text: str, attachment: str = None):
         part.add_header('Content-Disposition', "attachment; filename={}".format(attachment))
         msg.attach(part)
 
-    server = smtplib.SMTP(conf.mail_server, 587)
+    server = smtplib.SMTP(CONF.mail_server, 587)
     server.starttls()
     server.set_debuglevel(0)
-    server.login(conf.sender_address, conf.sender_password)
+    server.login(CONF.sender_address, CONF.sender_password)
     server.send_message(msg)
     server.quit()
-    log.info("Sent email to %s", recipients)
+    LOG.info("Sent email to %s", recipients)
 
 
 def calculate_daily_statistics(m_bal: float, price: float):
@@ -1487,22 +1486,22 @@ def calculate_daily_statistics(m_bal: float, price: float):
     :param price: the current rate
     :return: todays statistics including price and margin balance changes compared with 24 and 48 hours ago
     """
-    global stats
+    global STATS
 
     today = {'mBal': m_bal, 'price': price}
-    if stats is None:
-        stats = Stats(int(datetime.date.today().strftime("%Y%j")), today)
+    if STATS is None:
+        STATS = Stats(int(datetime.date.today().strftime("%Y%j")), today)
         persist_statistics()
         return today
 
-    stats.add_day(int(datetime.date.today().strftime("%Y%j")), today)
+    STATS.add_day(int(datetime.date.today().strftime("%Y%j")), today)
     persist_statistics()
-    before_24h = stats.get_day(int(datetime.date.today().strftime("%Y%j"))-1)
+    before_24h = STATS.get_day(int(datetime.date.today().strftime("%Y%j")) - 1)
     if before_24h is not None:
         today['mBalChan24'] = round((today['mBal']/before_24h['mBal']-1) * 100, 2)
         if 'price' in before_24h:
             today['priceChan24'] = round((today['price']/before_24h['price']-1) * 100, 2)
-        before_48h = stats.get_day(int(datetime.date.today().strftime("%Y%j"))-2)
+        before_48h = STATS.get_day(int(datetime.date.today().strftime("%Y%j")) - 2)
         if before_48h is not None:
             today['mBalChan48'] = round((today['mBal']/before_48h['mBal']-1) * 100, 2)
             if 'price' in before_48h:
@@ -1512,7 +1511,7 @@ def calculate_daily_statistics(m_bal: float, price: float):
 
 def load_statistics():
     content = None
-    stats_file = conf.bot_instance + '.pkl'
+    stats_file = CONF.bot_instance + '.pkl'
     if os.path.isfile(stats_file):
         with open(stats_file, "rb") as f:
             content = pickle.load(f)
@@ -1520,9 +1519,9 @@ def load_statistics():
 
 
 def persist_statistics():
-    stats_file = conf.bot_instance + '.pkl'
+    stats_file = CONF.bot_instance + '.pkl'
     with open(stats_file, "wb") as f:
-        pickle.dump(stats, f)
+        pickle.dump(STATS, f)
 
 
 def read_moving_average():
@@ -1541,11 +1540,11 @@ def fetch_mayer(tries: int = 0):
         return {'current': float(mayer['current_mayer_multiple']), 'average': float(mayer['average_mayer_multiple'])}
 
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, requests.exceptions.ReadTimeout) as error:
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         if tries < 4:
             return fetch_mayer(tries+1)
-        log.warning('Failed to fetch Mayer multiple, giving up after 4 attempts')
+        LOG.warning('Failed to fetch Mayer multiple, giving up after 4 attempts')
         return None
 
 
@@ -1568,13 +1567,13 @@ def append_mayer(part: dict):
 
 
 def boost_leverage():
-    if conf.auto_leverage_escape:
-        if conf.exchange != 'bitmex':
-            log.error("boost_leverage() not yet implemented for %s", conf.exchange)
+    if CONF.auto_leverage_escape:
+        if CONF.exchange != 'bitmex':
+            LOG.error("boost_leverage() not yet implemented for %s", CONF.exchange)
             return
         leverage = get_leverage()+0.1
-        if leverage <= conf.leverage_escape:
-            log.info('Boosting leverage to {:.1f} (max: {:.1f})'.format(leverage, conf.leverage_escape))
+        if leverage <= CONF.leverage_escape:
+            LOG.info('Boosting leverage to {:.1f} (max: {:.1f})'.format(leverage, CONF.leverage_escape))
             set_leverage(leverage)
 
 
@@ -1584,25 +1583,25 @@ def set_initial_leverage():
     Allows initialisation of cross positions
     """
     leverage = get_relevant_leverage()
-    if leverage is not None and leverage < conf.leverage_low:
-        set_leverage(conf.leverage_default)
+    if leverage is not None and leverage < CONF.leverage_low:
+        set_leverage(CONF.leverage_default)
     return True
 
 
 def adjust_leverage(mayer: dict = None):
-    if conf.auto_leverage:
-        if conf.exchange != 'bitmex':
-            log.error("Adjust_leverage() not yet implemented for %s", conf.exchange)
+    if CONF.auto_leverage:
+        if CONF.exchange != 'bitmex':
+            LOG.error("Adjust_leverage() not yet implemented for %s", CONF.exchange)
             return
         if mayer is None:
             mayer = fetch_mayer()
         leverage = get_leverage()
         target_leverage = get_target_leverage(mayer)
         if leverage < target_leverage:
-            log.debug('Leverage is lower than target leverage {:.1f} < {:.1f}'.format(leverage, target_leverage))
+            LOG.debug('Leverage is lower than target leverage {:.1f} < {:.1f}'.format(leverage, target_leverage))
             set_leverage(leverage+0.1)
         elif leverage > target_leverage:
-            log.debug('Leverage is higher than target leverage {:.1f} > {:.1f}'.format(leverage, target_leverage))
+            LOG.debug('Leverage is higher than target leverage {:.1f} > {:.1f}'.format(leverage, target_leverage))
             if leverage - target_leverage >= 0.3 and set_leverage(leverage-0.3):
                 leverage = get_leverage()
             if leverage - target_leverage >= 0.2 and set_leverage(leverage-0.2):
@@ -1612,42 +1611,42 @@ def adjust_leverage(mayer: dict = None):
 
 
 def get_target_leverage(mayer: dict):
-    if mayer is not None and mayer['current'] > conf.mm_ceil:
-        return conf.leverage_low
-    if mayer is not None and mayer['current'] < conf.mm_floor:
-        return conf.leverage_high
-    return conf.leverage_default
+    if mayer is not None and mayer['current'] > CONF.mm_ceil:
+        return CONF.leverage_low
+    if mayer is not None and mayer['current'] < CONF.mm_floor:
+        return CONF.leverage_high
+    return CONF.leverage_default
 
 
 def get_leverage():
     try:
-        if conf.exchange == 'bitmex':
-            return float(exchange.private_get_position({'symbol': conf.symbol})[0]['leverage'])
-        if conf.exchange == 'liquid':
-            response = exchange.private_get_trading_accounts()
+        if CONF.exchange == 'bitmex':
+            return float(EXCHANGE.private_get_position({'symbol': CONF.symbol})[0]['leverage'])
+        if CONF.exchange == 'liquid':
+            response = EXCHANGE.private_get_trading_accounts()
             for pos in response:
-                if pos['currency_pair_code'] == conf.symbol:
+                if pos['currency_pair_code'] == CONF.symbol:
                     return pos['leverage_level']
-        log.error("get_leverage() not yet implemented for %s", conf.exchange)
+        LOG.error("get_leverage() not yet implemented for %s", CONF.exchange)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return get_leverage()
 
 
 def set_leverage(new_leverage: float):
     try:
-        if conf.exchange != 'liquid':
-            exchange.private_post_position_leverage({'symbol': conf.symbol, 'leverage': new_leverage})
-            log.info('New leverage is {:.1f}'.format(new_leverage))
+        if CONF.exchange != 'liquid':
+            EXCHANGE.private_post_position_leverage({'symbol': CONF.symbol, 'leverage': new_leverage})
+            LOG.info('New leverage is {:.1f}'.format(new_leverage))
         return True
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        if any(e in str(error.args) for e in no_recall):
-            log.warning('Insufficient available balance - not lowering leverage to {:.1f}'.format(new_leverage))
+        if any(e in str(error.args) for e in STOP_ERRORS):
+            LOG.warning('Insufficient available balance - not lowering leverage to {:.1f}'.format(new_leverage))
             return False
-        log.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return set_leverage(new_leverage)
 
@@ -1658,51 +1657,51 @@ if __name__ == '__main__':
     print('ccxt version:', ccxt.__version__)
 
     if len(sys.argv) > 1:
-        filename = os.path.basename(sys.argv[1])
+        INSTANCE = os.path.basename(sys.argv[1])
         if len(sys.argv) > 2:
             if sys.argv[2] == '-ac':
-                auto_conf = True
+                AUTO_CONF = True
             elif sys.argv[2] == '-eo':
-                email_only = True
+                EMAIL_ONLY = True
     else:
-        filename = os.path.basename(input('Filename with API Keys (config): ') or 'config')
-    log_filename = 'log' + os.path.sep + filename
+        INSTANCE = os.path.basename(input('Filename with API Keys (config): ') or 'config')
+    LOG_FILENAME = 'log' + os.path.sep + INSTANCE
 
-    if not email_only:
+    if not EMAIL_ONLY:
         write_control_file()
 
     if not os.path.exists('log'):
         os.makedirs('log')
 
-    log = function_logger(logging.DEBUG, log_filename, logging.INFO)
-    log.info('-------------------------------')
-    conf = ExchangeConfig()
-    log.info('Holdntrade version: %s', conf.bot_version)
-    exchange = connect_to_exchange()
-    stats = load_statistics()
+    LOG = function_logger(logging.DEBUG, LOG_FILENAME, logging.INFO)
+    LOG.info('-------------------------------')
+    CONF = ExchangeConfig()
+    LOG.info('Holdntrade version: %s', CONF.bot_version)
+    EXCHANGE = connect_to_exchange()
+    STATS = load_statistics()
 
-    if email_only:
+    if EMAIL_ONLY:
         daily_report(True)
         exit(0)
 
-    loop = init_orders(False, auto_conf)
+    LOOP = init_orders(False, AUTO_CONF)
 
     while True:
-        if not hibernate:
-            if loop:
+        if not HIBERNATE:
+            if LOOP:
                 daily_report()
                 buy_executed()
                 sell_executed()
-                if not sell_orders:
-                    log.info('No sell orders, resetting all orders')
-                    loop = init_orders(True, False)
+                if not SELL_ORDERS:
+                    LOG.info('No sell orders, resetting all orders')
+                    LOOP = init_orders(True, False)
                 else:
                     spread(get_current_price())
-            if not loop:
+            if not LOOP:
                 compensate()
-                loop = True
+                LOOP = True
         else:
             daily_report()
-            log.info('Going to hibernate')
+            LOG.info('Going to hibernate')
             sleep_for(600, 900)
-            hibernate = shall_hibernate()
+            HIBERNATE = shall_hibernate()
