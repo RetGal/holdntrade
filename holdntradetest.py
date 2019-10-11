@@ -753,34 +753,6 @@ class HoldntradeTest(unittest.TestCase):
     @patch('holdntrade.set_initial_leverage')
     @patch('holdntrade.sleep_for', return_value=None)
     @patch('holdntrade.get_current_price', return_value=9000)
-    @patch('holdntrade.calculate_buy_order_amount', return_value=200)
-    @patch('holdntrade.shall_hibernate', return_value=False)
-    @mock.patch.object(ccxt.bitmex, 'fetch_balance')
-    @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
-    @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
-    def test_buy_executed_first_run(self, mock_create_limit_sell_order, mock_create_limit_buy_order, mock_fetch_balance,
-                                    mock_shall_hibernate, mock_calculate_buy_order_amount, mock_get_current_price,
-                                    mock_sleep_for, mock_set_initial_leverage, mock_logging):
-        holdntrade.CONF = self.create_default_conf()
-        holdntrade.CONF.base = 'BTC'
-        holdntrade.LOG = mock_logging
-        holdntrade.EXCHANGE = holdntrade.connect_to_exchange()
-        mock_fetch_balance.return_value = {'BTC': {'used': 300, 'free': 300, 'total': 600}}
-        price = 9000
-        buy_price = round(price * (1 - holdntrade.CONF.change))
-        sell_price = round(price * (1 + holdntrade.CONF.change))
-
-        holdntrade.buy_executed()
-
-        mock_set_initial_leverage.assert_called()
-        self.assertTrue(holdntrade.INITIAL_LEVERAGE_SET)
-        mock_create_limit_sell_order.assert_called_with(holdntrade.CONF.pair, 200, sell_price)
-        mock_create_limit_buy_order.assert_called_with(holdntrade.CONF.pair, 200, buy_price)
-
-    @patch('holdntrade.logging')
-    @patch('holdntrade.set_initial_leverage')
-    @patch('holdntrade.sleep_for', return_value=None)
-    @patch('holdntrade.get_current_price', return_value=9000)
     @patch('holdntrade.calculate_buy_order_amount', return_value=100)
     @patch('holdntrade.shall_hibernate', return_value=False)
     @mock.patch.object(ccxt.bitmex, 'fetch_balance')

@@ -54,7 +54,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.13.28"
+            self.bot_version = "1.13.29"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -200,13 +200,7 @@ def buy_executed():
     global HIBERNATE
     global INITIAL_LEVERAGE_SET
 
-    # pretend inexisting compensation order has been filled
-    if CURR_BUY_ORDER is None:
-        status = 'closed'
-        fake_closed = True
-    else:
-        fake_closed = False
-        status = fetch_order_status(CURR_BUY_ORDER.id)
+    status = fetch_order_status(CURR_BUY_ORDER.id) if CURR_BUY_ORDER is not None else 'suspect'
     LOG.debug('-------------------------------')
     LOG.debug(time.ctime())
     price = get_current_price()
@@ -214,13 +208,11 @@ def buy_executed():
         LOG.debug('Open Buy Order! Amount: %d @ %.1f', int(CURR_BUY_ORDER_SIZE), float(BUY_PRICE))
         LOG.debug('Current Price: %.1f', price)
     elif status in ['closed', 'canceled']:
-        if not fake_closed:
-            LOG.info('Buy executed, starting follow up')
+        LOG.info('Buy executed, starting follow up')
+        # use amount of last (previous) buy order for next sell order
+        last_buy_amount = CURR_BUY_ORDER_SIZE
         if CURR_BUY_ORDER in BUY_ORDERS:
             BUY_ORDERS.remove(CURR_BUY_ORDER)
-        # default case: use amount of last (previous) buy order for next sell order
-        # else last buy was compensation order: use same amount for next sell order as the buy order to be created next
-        last_buy_amount = CURR_BUY_ORDER_SIZE if CURR_BUY_ORDER is not None else calculate_buy_order_amount()
         if not INITIAL_LEVERAGE_SET:
             INITIAL_LEVERAGE_SET = set_initial_leverage()
         mm = fetch_mayer()
@@ -233,7 +225,7 @@ def buy_executed():
                 LOG.warning('Resetting')
                 init_orders(True, False)
     else:
-        LOG.warning('You should not be here, order state: %s', status)
+        LOG.warning('You should not be here, order state is %s', status)
 
 
 def sell_executed():
@@ -296,6 +288,26 @@ def cancel_current_buy_order():
             BUY_ORDERS.remove(CURR_BUY_ORDER)
         LOG.info('Canceled current %s', str(CURR_BUY_ORDER))
         CURR_BUY_ORDER = None if not BUY_ORDERS else BUY_ORDERS[0]
+
+
+def create_first_sell_order():
+    global SELL_PRICE
+
+    SELL_PRICE = round(get_current_price() * (1 + CONF.change))
+    available = get_position_balance()
+    LOG.info("Creating first sell order")
+    create_sell_order(round(available / CONF.quota))
+
+
+def create_first_buy_order():
+    global HIBERNATE
+
+    mm = fetch_mayer()
+    adjust_leverage(mm)
+    HIBERNATE = shall_hibernate(mm)
+    if not HIBERNATE:
+        LOG.info("Creating first buy order")
+        create_buy_order(get_current_price(), calculate_buy_order_amount())
 
 
 def create_sell_order(fixed_order_size: int = None):
@@ -959,7 +971,6 @@ def init_orders(force_close: bool, auto_conf: bool):
 
     else:
         del oos
-        LOG.info('Initialization complete')
         # compensate
         return False
 
@@ -976,16 +987,10 @@ def load_existing_orders(oos: OpenOrdersSummary):
         CURR_BUY_ORDER_SIZE = CURR_BUY_ORDER.amount
     # All sell orders executed
     if not oos.sell_orders:
-        SELL_PRICE = round(get_current_price() * (1 + CONF.change))
-        available = get_position_balance()
-        create_sell_order(round(available / CONF.quota))
+        create_first_sell_order()
     # All buy orders executed
     elif not oos.buy_orders:
-        mm = fetch_mayer()
-        adjust_leverage(mm)
-        if not shall_hibernate(mm):
-            crypto_price = get_current_price()
-            create_buy_order(crypto_price, calculate_buy_order_amount())
+        create_first_buy_order()
     del oos
     LOG.info('Initialization complete (using existing orders)')
     # No "compensate" necessary
@@ -1701,6 +1706,12 @@ if __name__ == '__main__':
                     spread(get_current_price())
             if not LOOP:
                 compensate()
+                if not BUY_ORDERS and not SELL_ORDERS:
+                    if not INITIAL_LEVERAGE_SET:
+                        INITIAL_LEVERAGE_SET = set_initial_leverage()
+                    create_first_sell_order()
+                    create_first_buy_order()
+                LOG.info('Initialization complete')
                 LOOP = True
         else:
             daily_report()
