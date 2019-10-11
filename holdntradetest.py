@@ -570,12 +570,29 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.CONF.auto_leverage = True
         holdntrade.LOG = mock_logging
         mock_get_target_leverage.return_value = holdntrade.CONF.leverage_low
-        leverages = [4, 3.7, 3.5]
+        leverages = [10, 2, 1.7, 1.5]
         mock_get_leverage.side_effect = leverages
 
         holdntrade.adjust_leverage({'current': holdntrade.CONF.mm_floor})
 
-        mock_set_leverage.assert_called_with(3.4)
+        mock_set_leverage.assert_called_with(1.5)
+
+    @patch('holdntrade.logging')
+    @patch('holdntrade.set_leverage')
+    @patch('holdntrade.get_leverage')
+    @patch('holdntrade.get_target_leverage')
+    def test_adjust_leverage_from_too_high(self, mock_get_target_leverage, mock_get_leverage,
+                                           mock_set_leverage, mock_logging):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.CONF.auto_leverage = True
+        holdntrade.LOG = mock_logging
+        mock_get_target_leverage.return_value = holdntrade.CONF.leverage_low
+        leverages = [2, 1.7, 1.5]
+        mock_get_leverage.side_effect = leverages
+
+        holdntrade.adjust_leverage({'current': holdntrade.CONF.mm_floor})
+
+        mock_set_leverage.assert_called_with(1.5)
 
     @patch('holdntrade.logging')
     @patch('holdntrade.set_leverage')
@@ -798,14 +815,14 @@ class HoldntradeTest(unittest.TestCase):
         mock_create_limit_buy_order.assert_called_with(holdntrade.CONF.pair, 100, buy_price)
 
     @patch('holdntrade.logging')
-    @patch('holdntrade.get_used_balance')
+    @patch('holdntrade.get_position_balance')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
-    def test_create_divided_sell_order(self, mock_create_limit_sell_order, mock_get_used_balance, mock_logging):
+    def test_create_divided_sell_order(self, mock_create_limit_sell_order, mock_get_position_balance, mock_logging):
         holdntrade.CONF = self.create_default_conf()
         holdntrade.CONF.base = 'BTC'
         holdntrade.LOG = mock_logging
         holdntrade.EXCHANGE = holdntrade.connect_to_exchange()
-        mock_get_used_balance.return_value = 10000
+        mock_get_position_balance.return_value = 10000
         holdntrade.SELL_PRICE = 11110
         order = {'side': 'sell', 'id': '1s', 'price': holdntrade.SELL_PRICE,
                  'amount': round(10000 / holdntrade.CONF.quota),

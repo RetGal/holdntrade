@@ -2,6 +2,7 @@
 import configparser
 import datetime
 import inspect
+import math
 import logging
 import os
 import pickle
@@ -53,7 +54,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.13.27"
+            self.bot_version = "1.13.28"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -219,14 +220,14 @@ def buy_executed():
             BUY_ORDERS.remove(CURR_BUY_ORDER)
         # default case: use amount of last (previous) buy order for next sell order
         # else last buy was compensation order: use same amount for next sell order as the buy order to be created next
-        last_buy_amount = CURR_BUY_ORDER_SIZE if CURR_BUY_ORDER is not None else calculate_buy_order_amount(price)
+        last_buy_amount = CURR_BUY_ORDER_SIZE if CURR_BUY_ORDER is not None else calculate_buy_order_amount()
         if not INITIAL_LEVERAGE_SET:
             INITIAL_LEVERAGE_SET = set_initial_leverage()
         mm = fetch_mayer()
         adjust_leverage(mm)
         HIBERNATE = shall_hibernate(mm)
         if not HIBERNATE:
-            if create_buy_order(price, calculate_buy_order_amount(price)):
+            if create_buy_order(price, calculate_buy_order_amount()):
                 create_sell_order(last_buy_amount)
             else:
                 LOG.warning('Resetting')
@@ -262,7 +263,7 @@ def sell_executed():
                     create_divided_sell_order()
                 cancel_current_buy_order()
                 price = get_current_price()
-                if not create_buy_order(price, calculate_buy_order_amount(price)):
+                if not create_buy_order(price, calculate_buy_order_amount()):
                     LOG.warning('Resetting')
                     init_orders(True, False)
         else:
@@ -492,17 +493,15 @@ def delay_buy_order(crypto_price: float, price: float):
     return create_buy_order(update_price(crypto_price, price), calculate_buy_order_amount())
 
 
-def calculate_buy_order_amount(crypto_price=None):
+def calculate_buy_order_amount():
     """
     Calculates the buy order amount.
-    :param crypto_price: (optional)
     :return: amount to be bought in fiat
     """
-    available = get_balance()['free']
+    available = get_position_balance()
     if available < 0:
         return 0
-    crypto_price = get_current_price() if crypto_price is None else crypto_price
-    return round(available / CONF.quota * crypto_price)
+    return round(available / CONF.quota)
 
 
 def create_market_sell_order(amount_crypto: float):
@@ -986,7 +985,7 @@ def load_existing_orders(oos: OpenOrdersSummary):
         adjust_leverage(mm)
         if not shall_hibernate(mm):
             crypto_price = get_current_price()
-            create_buy_order(crypto_price, calculate_buy_order_amount(crypto_price))
+            create_buy_order(crypto_price, calculate_buy_order_amount())
     del oos
     LOG.info('Initialization complete (using existing orders)')
     # No "compensate" necessary
@@ -1603,11 +1602,13 @@ def adjust_leverage(mayer: dict = None):
             set_leverage(leverage+0.1)
         elif leverage > target_leverage:
             LOG.debug('Leverage is higher than target leverage {:.1f} > {:.1f}'.format(leverage, target_leverage))
-            if leverage - target_leverage >= 0.3 and set_leverage(leverage-0.3):
+            if leverage - target_leverage > 1 and set_leverage(leverage-math.floor(leverage-target_leverage)):
                 leverage = get_leverage()
-            if leverage - target_leverage >= 0.2 and set_leverage(leverage-0.2):
+            if round(leverage - target_leverage, 1) >= 0.3 and set_leverage(leverage-0.3):
                 leverage = get_leverage()
-            if leverage - target_leverage >= 0.1:
+            if round(leverage - target_leverage, 1) >= 0.2 and set_leverage(leverage-0.2):
+                leverage = get_leverage()
+            if round(leverage - target_leverage, 1) >= 0.1:
                 set_leverage(leverage-0.1)
 
 
