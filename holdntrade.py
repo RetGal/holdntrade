@@ -978,7 +978,8 @@ def load_existing_orders(oos: OpenOrdersSummary):
     # All sell orders executed
     if not oos.sell_orders:
         SELL_PRICE = round(get_current_price() * (1 + CONF.change))
-        create_sell_order()
+        used_bal = get_used_balance()
+        create_sell_order(round(used_bal / CONF.quota))
     # All buy orders executed
     elif not oos.buy_orders:
         mm = fetch_mayer()
@@ -1704,4 +1705,5 @@ if __name__ == '__main__':
             daily_report()
             LOG.info('Going to hibernate')
             sleep_for(600, 900)
+            adjust_leverage()
             HIBERNATE = shall_hibernate()
