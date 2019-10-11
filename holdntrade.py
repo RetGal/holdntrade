@@ -640,7 +640,7 @@ def get_wallet_balance():
 def get_balance():
     """
     Fetch the balance in crypto.
-    output: balance (used,free,total)
+    output: balance (used,free,total) in crypto
     """
     try:
         if CONF.exchange != 'liquid':

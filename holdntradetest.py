@@ -152,7 +152,7 @@ class HoldntradeTest(unittest.TestCase):
 
         mock_get_balance.return_value = {'free': 20}
 
-        holdntrade.create_sell_order(holdntrade.CONF.change)
+        holdntrade.create_sell_order(10)
 
         assert not mock_create_limit_sell_order.called, 'create_order was called but should have not'
 
@@ -168,9 +168,9 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.LOG = mock_logging
         holdntrade.CONF = self.create_default_conf()
 
-        mock_get_balance.return_value = {'free': 9}
+        mock_get_balance.return_value = {'free': 1}
 
-        holdntrade.create_sell_order(holdntrade.CONF.change)
+        holdntrade.create_sell_order(40001)
 
         assert not mock_create_limit_sell_order.called, 'create_order was called but should have not'
 
