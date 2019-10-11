@@ -349,8 +349,8 @@ def create_divided_sell_order():
     global SELL_PRICE
 
     try:
-        used_bal = get_used_balance()
-        amount = round(used_bal / CONF.quota)
+        available = get_position_balance()
+        amount = round(available / CONF.quota)
 
         if not is_order_below_limit(amount, SELL_PRICE):
             if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
@@ -673,9 +673,9 @@ def get_balance():
         return get_balance()
 
 
-def get_used_balance():
+def get_position_balance():
     """
-    Fetch the used balance in fiat.
+    Fetch the position balance in fiat.
     output: balance
     """
     try:
@@ -690,7 +690,7 @@ def get_used_balance():
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return get_used_balance()
+        return get_position_balance()
 
 
 def get_net_deposits():
@@ -978,8 +978,8 @@ def load_existing_orders(oos: OpenOrdersSummary):
     # All sell orders executed
     if not oos.sell_orders:
         SELL_PRICE = round(get_current_price() * (1 + CONF.change))
-        used_bal = get_used_balance()
-        create_sell_order(round(used_bal / CONF.quota))
+        available = get_position_balance()
+        create_sell_order(round(available / CONF.quota))
     # All buy orders executed
     elif not oos.buy_orders:
         mm = fetch_mayer()
@@ -1118,7 +1118,7 @@ def print_position_info(oos: OpenOrdersSummary):
             LOG.info("No position found, I will create one for you")
             return False
     elif CONF.exchange == 'kraken':
-        LOG.info("Position {}: {:>13}".format(CONF.quote, get_used_balance()))
+        LOG.info("Position {}: {:>13}".format(CONF.quote, get_position_balance()))
         LOG.info("Entry price: {:>16.1f}".format(calculate_avg_entry_price_and_total_quantity(oos.orders)['avg']))
         LOG.info("Market price: {:>15.1f}".format(get_current_price()))
     elif CONF.exchange == 'liquid':
@@ -1363,7 +1363,7 @@ def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance:
         actual_leverage = get_margin_leverage()
         part['mail'].append("Actual leverage: {:>18.2f}x".format(actual_leverage))
         part['csv'].append("Actual leverage:; {:.2f}".format(actual_leverage))
-    used_balance = get_used_balance()
+    used_balance = get_position_balance()
     part['mail'].append("Position " + CONF.quote + ": {:>21}".format(used_balance))
     part['csv'].append("Position " + CONF.quote + ":; {}".format(used_balance))
 
