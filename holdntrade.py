@@ -54,7 +54,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.13.29"
+            self.bot_version = "1.13.30"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -294,9 +294,9 @@ def create_first_sell_order():
     global SELL_PRICE
 
     SELL_PRICE = round(get_current_price() * (1 + CONF.change))
-    available = get_position_balance()
-    LOG.info("Creating first sell order")
-    create_sell_order(round(available / CONF.quota))
+    position_size = get_position_balance()
+    LOG.info("Creating first sell order (%s / %s)", position_size, CONF.quota)
+    create_sell_order(round(position_size / CONF.quota))
 
 
 def create_first_buy_order():
@@ -306,14 +306,18 @@ def create_first_buy_order():
     adjust_leverage(mm)
     HIBERNATE = shall_hibernate(mm)
     if not HIBERNATE:
-        LOG.info("Creating first buy order")
-        create_buy_order(get_current_price(), calculate_buy_order_amount())
+        wallet_available = get_balance()['free']
+        price = get_current_price()
+        LOG.info("Creating first buy order (%s / %s * %s)", wallet_available, CONF.quota, price)
+        buy_amount = round(wallet_available / CONF.quota * price)
+        create_buy_order(price, buy_amount)
 
 
 def create_sell_order(fixed_order_size: int = None):
     """
-    Loop that starts after buy order is executed and sends sell order to exchange
-    as well as appends the orderID to the sell_orders list.
+    :param fixed_order_size the order volume (optional)
+    Creates a sell order. Relies on the global set SELL_PRICE. Used by other functions.
+    It appends the created order to the global SELL_ORDERS list.
     """
     global SELL_PRICE
     global CURR_BUY_ORDER_SIZE
@@ -431,8 +435,8 @@ def create_buy_order(price: float, buy_amount: int):
     Creates a buy order and sets the values as global ones. Used by other functions.
     :param price current price of crypto
     :param buy_amount the order volume
-    output: calculate the price to get long (price + change) and to get short (price - change).
-    In addition set the current orderID and current order size as global values.
+    output: calculate the SELL_PRICE (price + change) and the BUY_PRICE (price - change).
+    In addition sets the CURR_ORDER, CURR_ORDER_SIZE and adds the created order to the BUY_ORDERS as global values.
     If the amount is below the order limit or there is not enough margin and there are open sell orders, the function
     is going to sleep, allowing sell orders to be filled - afterwards the amount is recalculated and the function calls
     itself with the new amount
