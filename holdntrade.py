@@ -54,7 +54,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.13.30"
+            self.bot_version = "1.13.31"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1197,6 +1197,12 @@ def write_control_file():
         f.write(str(os.getpid()) + ' ' + INSTANCE)
 
 
+def write_position_info(info: str):
+    if info is not None:
+        with open(INSTANCE + '.position.info.txt', 'w') as f:
+            f.write(info)
+
+
 def daily_report(immediately: bool = False):
     """
     Creates a daily report email around 12:10 UTC or immediately if told to do so
@@ -1674,6 +1680,8 @@ if __name__ == '__main__':
                 AUTO_CONF = True
             elif sys.argv[2] == '-eo':
                 EMAIL_ONLY = True
+            elif sys.argv[2] == '-pi':
+                POSITION_INFO = True
     else:
         INSTANCE = os.path.basename(input('Filename with API Keys (config): ') or 'config')
     LOG_FILENAME = 'log' + os.path.sep + INSTANCE
@@ -1693,6 +1701,9 @@ if __name__ == '__main__':
 
     if EMAIL_ONLY:
         daily_report(True)
+        exit(0)
+    if POSITION_INFO:
+        write_position_info(get_position_info())
         exit(0)
 
     LOOP = init_orders(False, AUTO_CONF)
