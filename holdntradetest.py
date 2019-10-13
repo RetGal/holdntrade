@@ -139,6 +139,22 @@ class HoldntradeTest(unittest.TestCase):
         self.assertEqual(100, balance['total'])
 
     @patch('holdntrade.logging')
+    @patch('holdntrade.get_position_balance', return_value=100)
+    @patch('holdntrade.get_current_price', return_value=10000)
+    @patch('holdntrade.create_sell_order')
+    def test_create_first_sell_order_should_create_sell_order_with_expected_amount(self, mock_create_sell_order,
+                                                                                   mock_get_current_price,
+                                                                                   mock_get_position_balance,
+                                                                                   mock_logging):
+        holdntrade.LOG = mock_logging
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.EXCHANGE = ccxt.bitmex
+
+        holdntrade.create_first_sell_order()
+
+        assert mock_create_sell_order.called_with(10050, 25)
+
+    @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
     @mock.patch.object(holdntrade, 'get_balance')
     def test_create_sell_order_should_not_create_order_if_order_is_below_limit(self, mock_get_balance,
@@ -191,6 +207,27 @@ class HoldntradeTest(unittest.TestCase):
 
         mock_create_limit_sell_order.assert_called_with(holdntrade.CONF.pair, holdntrade.CURR_BUY_ORDER_SIZE,
                                                         holdntrade.SELL_PRICE)
+
+    @patch('holdntrade.logging')
+    @patch('holdntrade.fetch_mayer')
+    @patch('holdntrade.adjust_leverage')
+    @patch('holdntrade.shall_hibernate', return_value=False)
+    @patch('holdntrade.get_balance', return_value={'free': 0.1})
+    @patch('holdntrade.get_current_price', return_value=10000)
+    @patch('holdntrade.create_buy_order')
+    def test_create_first_buy_order_should_create_buy_order_with_expected_amount(self, mock_create_buy_order,
+                                                                                 mock_get_current_price,
+                                                                                 mock_get_balance,
+                                                                                 mock_shall_hibernate,
+                                                                                 mock_adjust_leverage,
+                                                                                 mock_fetch_mayer, mock_logging):
+        holdntrade.LOG = mock_logging
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.EXCHANGE = ccxt.bitmex
+
+        holdntrade.create_first_buy_order()
+
+        assert mock_create_buy_order.called_with(10000, 250)
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
