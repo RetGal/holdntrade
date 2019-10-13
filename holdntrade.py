@@ -1686,7 +1686,7 @@ if __name__ == '__main__':
         INSTANCE = os.path.basename(input('Filename with API Keys (config): ') or 'config')
     LOG_FILENAME = 'log' + os.path.sep + INSTANCE
 
-    if not EMAIL_ONLY:
+    if not EMAIL_ONLY and not POSITION_INFO:
         write_control_file()
 
     if not os.path.exists('log'):
