@@ -139,6 +139,34 @@ class HoldntradeTest(unittest.TestCase):
         self.assertEqual(100, balance['total'])
 
     @patch('holdntrade.logging')
+    @patch('holdntrade.get_balance', return_value={'free': 0.1})
+    @patch('holdntrade.get_current_price', return_value=10000)
+    def test_calculate_buy_order_size_should_return_expected_amount_for_first_buy(self, mock_get_current_price,
+                                                                                  mock_get_balance, mock_logging):
+        holdntrade.LOG = mock_logging
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.EXCHANGE = ccxt.bitmex
+        holdntrade.FIRST_BUY = True
+
+        buy_amount = holdntrade.calculate_buy_order_amount()
+
+        self.assertEqual(0.1 * 10000 / holdntrade.CONF.quota, buy_amount)
+
+    @patch('holdntrade.logging')
+    @patch('holdntrade.get_position_balance', return_value=400)
+    @patch('holdntrade.get_current_price', return_value=10000)
+    def test_calculate_buy_order_size_should_return_expected_amount_for_regular_buy(self, mock_get_current_price,
+                                                                                    mock_get_balance, mock_logging):
+        holdntrade.LOG = mock_logging
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.EXCHANGE = ccxt.bitmex
+        holdntrade.FIRST_BUY = False
+
+        buy_amount = holdntrade.calculate_buy_order_amount()
+
+        self.assertEqual(400 / holdntrade.CONF.quota, buy_amount)
+
+    @patch('holdntrade.logging')
     @patch('holdntrade.get_position_balance', return_value=100)
     @patch('holdntrade.get_current_price', return_value=10000)
     @patch('holdntrade.create_sell_order')
@@ -226,9 +254,11 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.EXCHANGE = ccxt.bitmex
         holdntrade.FIRST_BUY = True
 
+        self.assertTrue(holdntrade.FIRST_BUY)
         holdntrade.create_first_buy_order()
 
         assert mock_create_buy_order.called_with(10000, 250)
+        self.assertFalse(holdntrade.FIRST_BUY)
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'fetch_ticker')

@@ -57,7 +57,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.13.33"
+            self.bot_version = "1.13.34"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -328,7 +328,6 @@ def create_sell_order(fixed_order_size: int = None):
     order_size = CURR_BUY_ORDER_SIZE if fixed_order_size is None else fixed_order_size
 
     available = get_balance()['free'] * SELL_PRICE
-    LOG.debug('Will create sell order %s over %s@%s', CONF.pair, order_size, SELL_PRICE)
     if available < order_size:
         # sold out - the main loop will re-init if there are no other sell orders open
         LOG.warning('Not executing sell order over %d (only %d left)', order_size, available)
@@ -372,7 +371,6 @@ def create_divided_sell_order():
         available = get_position_balance()
         amount = round(available / CONF.quota)
 
-        LOG.debug('Will create sell order %s over %s@%s', CONF.pair, amount, SELL_PRICE)
         if not is_order_below_limit(amount, SELL_PRICE):
             if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
                 new_order = EXCHANGE.create_limit_sell_order(CONF.pair, amount, SELL_PRICE)
@@ -457,7 +455,6 @@ def create_buy_order(price: float, buy_amount: int):
     curr_price = get_current_price()
 
     try:
-        LOG.debug('Will create buy order %s over %s@%s', CONF.pair, buy_amount, BUY_PRICE)
         if not is_order_below_limit(buy_amount, BUY_PRICE):
             if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
                 new_order = EXCHANGE.create_limit_buy_order(CONF.pair, buy_amount, BUY_PRICE)
