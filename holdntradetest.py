@@ -224,6 +224,7 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.LOG = mock_logging
         holdntrade.CONF = self.create_default_conf()
         holdntrade.EXCHANGE = ccxt.bitmex
+        holdntrade.FIRST_BUY = True
 
         holdntrade.create_first_buy_order()
 

@@ -39,7 +39,8 @@ STARTED = datetime.datetime.utcnow().replace(microsecond=0)
 STATS = None
 HIBERNATE = False
 INITIAL_LEVERAGE_SET = False
-STOP_ERRORS = ['nsufficient', 'too low', 'not_enough_free_balance', 'margin_below']
+STOP_ERRORS = ['nsufficient', 'too low', 'not_enough_free_balance', 'margin_below', 'liqudation price']
+FIRST_BUY = False
 
 # ------------------------------------------------------------------------------
 
@@ -56,7 +57,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.13.32"
+            self.bot_version = "1.13.33"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -303,16 +304,15 @@ def create_first_sell_order():
 
 def create_first_buy_order():
     global HIBERNATE
+    global FIRST_BUY
 
     mm = fetch_mayer()
     adjust_leverage(mm)
     HIBERNATE = shall_hibernate(mm)
     if not HIBERNATE:
-        wallet_available = get_balance()['free']
         price = get_current_price()
-        LOG.info("Creating first buy order (%s / %s * %s)", wallet_available, CONF.quota, price)
-        buy_amount = round(wallet_available / CONF.quota * price)
-        create_buy_order(price, buy_amount)
+        if create_buy_order(price, calculate_buy_order_amount(price)):
+            FIRST_BUY = False
 
 
 def create_sell_order(fixed_order_size: int = None):
@@ -328,6 +328,7 @@ def create_sell_order(fixed_order_size: int = None):
     order_size = CURR_BUY_ORDER_SIZE if fixed_order_size is None else fixed_order_size
 
     available = get_balance()['free'] * SELL_PRICE
+    LOG.debug('Will create sell order %s over %s@%s', CONF.pair, order_size, SELL_PRICE)
     if available < order_size:
         # sold out - the main loop will re-init if there are no other sell orders open
         LOG.warning('Not executing sell order over %d (only %d left)', order_size, available)
@@ -371,6 +372,7 @@ def create_divided_sell_order():
         available = get_position_balance()
         amount = round(available / CONF.quota)
 
+        LOG.debug('Will create sell order %s over %s@%s', CONF.pair, amount, SELL_PRICE)
         if not is_order_below_limit(amount, SELL_PRICE):
             if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
                 new_order = EXCHANGE.create_limit_sell_order(CONF.pair, amount, SELL_PRICE)
@@ -455,6 +457,7 @@ def create_buy_order(price: float, buy_amount: int):
     curr_price = get_current_price()
 
     try:
+        LOG.debug('Will create buy order %s over %s@%s', CONF.pair, buy_amount, BUY_PRICE)
         if not is_order_below_limit(buy_amount, BUY_PRICE):
             if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
                 new_order = EXCHANGE.create_limit_buy_order(CONF.pair, buy_amount, BUY_PRICE)
@@ -501,7 +504,7 @@ def delay_buy_order(crypto_price: float, price: float):
     """
     sleep_for(90, 180)
     daily_report()
-    new_amount = round(get_balance()['free'] / CONF.quota * get_current_price())  # recalculate order size
+    new_amount = calculate_buy_order_amount()  # recalculate order size
     if is_order_below_limit(new_amount, update_price(crypto_price, price)):
         if CONF.auto_leverage and CONF.auto_leverage_escape:
             boost_leverage()
@@ -511,11 +514,17 @@ def delay_buy_order(crypto_price: float, price: float):
     return create_buy_order(update_price(crypto_price, price), calculate_buy_order_amount())
 
 
-def calculate_buy_order_amount():
+def calculate_buy_order_amount(price: float = None):
     """
     Calculates the buy order amount.
     :return: amount to be bought in fiat
     """
+    if FIRST_BUY:
+        wallet_available = get_balance()['free']
+        if price is None:
+            price = get_current_price()
+        LOG.info("Creating first buy order (%s / %s * %s)", wallet_available, CONF.quota, price)
+        return round(wallet_available / CONF.quota * price)
     available = get_position_balance()
     if available < 0:
         return 0
@@ -982,7 +991,7 @@ def init_orders(force_close: bool, auto_conf: bool):
 
 
 def load_existing_orders(oos: OpenOrdersSummary):
-    global SELL_ORDERS, SELL_PRICE, BUY_ORDERS, CURR_BUY_ORDER, BUY_PRICE, CURR_BUY_ORDER_SIZE
+    global SELL_ORDERS, SELL_PRICE, BUY_ORDERS, CURR_BUY_ORDER, BUY_PRICE, CURR_BUY_ORDER_SIZE, FIRST_BUY
     if oos.sell_orders:
         SELL_ORDERS = oos.sell_orders
         SELL_PRICE = SELL_ORDERS[-1].price  # lowest if several
@@ -996,7 +1005,9 @@ def load_existing_orders(oos: OpenOrdersSummary):
         create_first_sell_order()
     # All buy orders executed
     elif not oos.buy_orders:
-        create_first_buy_order()
+        FIRST_BUY = True
+        if create_first_buy_order():
+            FIRST_BUY = False
     del oos
     LOG.info('Initialization complete (using existing orders)')
     # No "compensate" necessary
