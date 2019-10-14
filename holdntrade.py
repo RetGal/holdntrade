@@ -2,6 +2,7 @@
 import configparser
 import datetime
 import inspect
+import json
 import math
 import logging
 import os
@@ -33,6 +34,7 @@ LOOP = False
 AUTO_CONF = False
 EMAIL_ONLY = False
 EMAIL_SENT = 0
+POSITION_INFO = False
 STARTED = datetime.datetime.utcnow().replace(microsecond=0)
 STATS = None
 HIBERNATE = False
@@ -54,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.13.31"
+            self.bot_version = "1.13.32"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1199,6 +1201,7 @@ def write_control_file():
 
 def write_position_info(info: str):
     if info is not None:
+        LOG.info('Writing %s', INSTANCE + '.position.info.txt')
         with open(INSTANCE + '.position.info.txt', 'w') as f:
             f.write(info)
 
@@ -1703,7 +1706,7 @@ if __name__ == '__main__':
         daily_report(True)
         exit(0)
     if POSITION_INFO:
-        write_position_info(get_position_info())
+        write_position_info(json.dumps(get_position_info(), indent=4))
         exit(0)
 
     LOOP = init_orders(False, AUTO_CONF)
