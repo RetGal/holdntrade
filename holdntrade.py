@@ -1670,7 +1670,7 @@ def adjust_leverage(mayer: dict = None):
             return
         if mayer is None:
             mayer = fetch_mayer()
-        leverage = get_leverage()
+        leverage = round(get_leverage(), 1)
         target_leverage = get_target_leverage(mayer)
         if leverage < target_leverage:
             LOG.debug('Leverage is lower than target leverage {:.1f} < {:.1f}'.format(leverage, target_leverage))
