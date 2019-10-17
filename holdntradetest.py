@@ -922,6 +922,29 @@ class HoldntradeTest(unittest.TestCase):
         self.assertEqual(buy_price, holdntrade.BUY_PRICE)
         self.assertEqual(3, len(holdntrade.SELL_ORDERS))
 
+    def test_config_parse(self):
+        holdntrade.INSTANCE = 'test'
+        conf = holdntrade.ExchangeConfig()
+
+        self.assertEqual('BTC/USD', conf.pair)
+        self.assertEqual('XBTUSD', conf.symbol)
+        self.assertEqual('BTC', conf.base)
+        self.assertEqual('USD', conf.quote)
+        self.assertEqual(0.0025, conf.order_crypto_min)
+        self.assertEqual(0.005, conf.change)
+        self.assertEqual(5, conf.quota)
+        self.assertEqual(30, conf.spread_factor)
+        self.assertTrue(conf.auto_leverage)
+        self.assertEqual(1.4, conf.leverage_default)
+        self.assertEqual(0.8, conf.leverage_low)
+        self.assertEqual(1.8, conf.leverage_high)
+        self.assertEqual(1.0, conf.mm_floor)
+        self.assertEqual(2.2, conf.mm_ceil)
+        self.assertEqual(2.3, conf.mm_stop_buy)
+        self.assertFalse(conf.auto_leverage_escape)
+        self.assertEqual(4, conf.leverage_escape)
+        self.assertEqual(5, conf.trade_trials)
+
     @staticmethod
     def create_default_conf():
         conf = holdntrade.ExchangeConfig
@@ -945,6 +968,7 @@ class HoldntradeTest(unittest.TestCase):
         conf.leverage_low = 1.5
         conf.leverage_escape = 3
         conf.auto_leverage_escape = True
+        conf.trade_trials = 5
         return conf
 
 

@@ -57,7 +57,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.13.34"
+            self.bot_version = "1.13.35"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -80,6 +80,7 @@ class ExchangeConfig:
             self.mm_floor = abs(float(props['mm_floor'].strip('"')))
             self.mm_ceil = abs(float(props['mm_ceil'].strip('"')))
             self.mm_stop_buy = abs(float(props['mm_stop_buy'].strip('"')))
+            self.trade_trials = abs(int(props['trade_trials'].strip('"')))
             currency = self.pair.split("/")
             self.base = currency[0]
             self.quote = currency[1]
@@ -331,7 +332,7 @@ def create_sell_order(fixed_order_size: int = None):
     if available < order_size:
         # sold out - the main loop will re-init if there are no other sell orders open
         LOG.warning('Not executing sell order over %d (only %d left)', order_size, available)
-        return
+        return False
 
     try:
         if not is_order_below_limit(order_size, SELL_PRICE):
@@ -349,6 +350,7 @@ def create_sell_order(fixed_order_size: int = None):
             order = Order(new_order)
             SELL_ORDERS.append(order)
             LOG.info('Created %s', str(order))
+            return True
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if any(e in str(error.args) for e in STOP_ERRORS):
@@ -804,10 +806,57 @@ def compensate():
         amount_crypto = float(bal['total'] / 2 - bal['used'])
         if amount_crypto > 0:
             LOG.info("Need to buy {} {} in order to reach 50% margin".format(amount_crypto, CONF.base))
-            create_market_buy_order(amount_crypto)
+            do_buy(amount_crypto)
         else:
             LOG.info("Need to sell {} {} in order to reach 50% margin".format(abs(amount_crypto), CONF.base))
             create_market_sell_order(abs(amount_crypto))
+
+
+def do_buy(crypto_amount: float):
+    """
+    Market price raised in 0.5 steps
+    :return: Order
+    """
+    global CURR_BUY_ORDER
+
+    i = 1
+    while i <= CONF.trade_trials:
+        rise = i / 2
+        buy_price = get_current_price() + rise
+        if create_buy_order(buy_price, round(crypto_amount * buy_price)):
+            sleep_for(90, 90)
+            order_status = fetch_order_status(CURR_BUY_ORDER.id)
+            if order_status == 'open':
+                cancel_current_buy_order()
+                i += 1
+                daily_report()
+            else:
+                return
+    create_market_buy_order(crypto_amount)
+
+
+def do_sell(crypto_amount: float):
+    """
+    Market price discounted in 0.5 steps
+    :return: Order
+    """
+    global SELL_PRICE
+
+    i = 1
+    while i <= CONF.trade_trials:
+        discount = i / 2
+        SELL_PRICE = get_current_price() - discount
+        if create_sell_order(round(crypto_amount * SELL_PRICE)):
+            sleep_for(90, 90)
+            order_status = fetch_order_status(SELL_ORDERS[-1].id)
+            if order_status == 'open':
+                cancel_order(SELL_ORDERS[-1])
+                del SELL_ORDERS[-1]
+                i += 1
+                daily_report()
+            else:
+                return
+    create_market_sell_order(crypto_amount)
 
 
 def spread(price: float):
@@ -1209,8 +1258,8 @@ def write_control_file():
 
 def write_position_info(info: str):
     if info is not None:
-        LOG.info('Writing %s', INSTANCE + '.position.info.txt')
-        with open(INSTANCE + '.position.info.txt', 'w') as f:
+        LOG.info('Writing %s', INSTANCE + '.position.info.json')
+        with open(INSTANCE + '.position.info.json', 'w') as f:
             f.write(info)
 
 

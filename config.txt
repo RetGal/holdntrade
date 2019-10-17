@@ -3,7 +3,7 @@
 exchange = "EXCHANGE_NAME"
 api_key = "YOUR_KEY"
 api_secret = "YOUR_SECRET"
-test = "True"
+test = True
 
 # currency properties
 pair = "BTC/USD"
@@ -23,6 +23,7 @@ mm_ceil = 2.2
 mm_stop_buy = 2.3
 auto_leverage_escape = False
 leverage_escape = 4
+trade_trials = 5
 
 # email properties
 send_emails = True
