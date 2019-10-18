@@ -518,7 +518,7 @@ def calculate_buy_order_amount(price: float = None):
     wallet_available = get_balance()['free']
     if price is None:
         price = get_current_price()
-    LOG.info("Creating first buy order (%s / %s * %s)", wallet_available, CONF.quota, price)
+    LOG.info("Calculating buy order amount (%s / %s * %s)", wallet_available, CONF.quota, price)
     return round(wallet_available / CONF.quota * price)
 
 
