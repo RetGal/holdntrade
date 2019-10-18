@@ -40,7 +40,6 @@ STATS = None
 HIBERNATE = False
 INITIAL_LEVERAGE_SET = False
 STOP_ERRORS = ['nsufficient', 'too low', 'not_enough_free_balance', 'margin_below', 'liqudation price']
-FIRST_BUY = False
 
 # ------------------------------------------------------------------------------
 
@@ -57,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.13.35"
+            self.bot_version = "1.13.36"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -305,15 +304,13 @@ def create_first_sell_order():
 
 def create_first_buy_order():
     global HIBERNATE
-    global FIRST_BUY
 
     mm = fetch_mayer()
     adjust_leverage(mm)
     HIBERNATE = shall_hibernate(mm)
     if not HIBERNATE:
         price = get_current_price()
-        if create_buy_order(price, calculate_buy_order_amount(price)):
-            FIRST_BUY = False
+        create_buy_order(price, calculate_buy_order_amount(price))
 
 
 def create_sell_order(fixed_order_size: int = None):
@@ -518,16 +515,11 @@ def calculate_buy_order_amount(price: float = None):
     Calculates the buy order amount.
     :return: amount to be bought in fiat
     """
-    if FIRST_BUY:
-        wallet_available = get_balance()['free']
-        if price is None:
-            price = get_current_price()
-        LOG.info("Creating first buy order (%s / %s * %s)", wallet_available, CONF.quota, price)
-        return round(wallet_available / CONF.quota * price)
-    available = get_position_balance()
-    if available < 0:
-        return 0
-    return round(available / CONF.quota)
+    wallet_available = get_balance()['free']
+    if price is None:
+        price = get_current_price()
+    LOG.info("Creating first buy order (%s / %s * %s)", wallet_available, CONF.quota, price)
+    return round(wallet_available / CONF.quota * price)
 
 
 def create_market_sell_order(amount_crypto: float):
@@ -1037,7 +1029,7 @@ def init_orders(force_close: bool, auto_conf: bool):
 
 
 def load_existing_orders(oos: OpenOrdersSummary):
-    global SELL_ORDERS, SELL_PRICE, BUY_ORDERS, CURR_BUY_ORDER, BUY_PRICE, CURR_BUY_ORDER_SIZE, FIRST_BUY
+    global SELL_ORDERS, SELL_PRICE, BUY_ORDERS, CURR_BUY_ORDER, BUY_PRICE, CURR_BUY_ORDER_SIZE
     if oos.sell_orders:
         SELL_ORDERS = oos.sell_orders
         SELL_PRICE = SELL_ORDERS[-1].price  # lowest if several
@@ -1051,9 +1043,7 @@ def load_existing_orders(oos: OpenOrdersSummary):
         create_first_sell_order()
     # All buy orders executed
     elif not oos.buy_orders:
-        FIRST_BUY = True
-        if create_first_buy_order():
-            FIRST_BUY = False
+        create_first_buy_order()
     del oos
     LOG.info('Initialization complete (using existing orders)')
     # No "compensate" necessary
