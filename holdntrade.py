@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.13.36"
+            self.bot_version = "1.13.37"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -355,7 +355,7 @@ def create_sell_order(fixed_order_size: int = None):
             return
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         SELL_PRICE = round(get_current_price() * (1 + CONF.change))
-        return create_sell_order(fixed_order_size)
+        create_sell_order(fixed_order_size)
 
 
 def create_divided_sell_order():
@@ -392,14 +392,14 @@ def create_divided_sell_order():
             return
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         SELL_PRICE = round(get_current_price() * (1 + CONF.change))
-        return create_divided_sell_order()
+        create_divided_sell_order()
 
 
 def fetch_order_status(order_id: str):
     """
     Fetches the status of an order
-    input: id of an order
-    output: status of the order (open, closed)
+    :param order_id of an order
+    :return status of the order (open, closed)
     """
     try:
         return EXCHANGE.fetch_order_status(order_id)
@@ -407,7 +407,7 @@ def fetch_order_status(order_id: str):
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return fetch_order_status(order_id)
+        fetch_order_status(order_id)
 
 
 def cancel_order(order: Order):
@@ -428,7 +428,7 @@ def cancel_order(order: Order):
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return cancel_order(order)
+        cancel_order(order)
 
 
 def create_buy_order(price: float, buy_amount: int):
@@ -488,7 +488,7 @@ def create_buy_order(price: float, buy_amount: int):
             return False
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return create_buy_order(update_price(curr_price, price), buy_amount)
+        create_buy_order(update_price(curr_price, price), buy_amount)
 
 
 def delay_buy_order(crypto_price: float, price: float):
@@ -513,7 +513,7 @@ def delay_buy_order(crypto_price: float, price: float):
 def calculate_buy_order_amount(price: float = None):
     """
     Calculates the buy order amount.
-    :return: amount to be bought in fiat
+    :return amount to be bought in fiat
     """
     wallet_available = get_balance()['free']
     if price is None:
@@ -525,7 +525,7 @@ def calculate_buy_order_amount(price: float = None):
 def create_market_sell_order(amount_crypto: float):
     """
     Creates a market sell order and sets the values as global ones. Used to compensate margins above 50%.
-    input: amount_crypto to be sold to reach 50% margin
+    :param amount_crypto to be sold (to reach 50% margin)
     """
     global BUY_PRICE
     global SELL_PRICE
@@ -555,13 +555,13 @@ def create_market_sell_order(amount_crypto: float):
             return
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return create_market_sell_order(amount_crypto)
+        create_market_sell_order(amount_crypto)
 
 
 def create_market_buy_order(amount_crypto: float):
     """
     Creates a market buy order and sets the values as global ones. Used to compensate margins below 50%.
-    input: amount_crypto to be bought to reach 50% margin
+    :param amount_crypto to be bought (to reach 50% margin)
     """
     global BUY_PRICE
     global SELL_PRICE
@@ -594,12 +594,13 @@ def create_market_buy_order(amount_crypto: float):
 
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return create_market_buy_order(amount_crypto)
+        create_market_buy_order(amount_crypto)
 
 
 def get_margin_leverage():
     """
     Fetch the leverage
+    :return margin leverage: float
     """
     try:
         if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
@@ -609,17 +610,18 @@ def get_margin_leverage():
         if CONF.exchange == 'liquid':
             # TODO poi = get_position_info()
             LOG.error("get_margin_leverage() not yet implemented for %s", CONF.exchange)
-            return None
+        return
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return get_margin_leverage()
+        get_margin_leverage()
 
 
 def get_relevant_leverage():
     """
     Returns the higher of the two leverages - used to set the initial leverage
+    :return leverage: float
     """
     position_leverage = get_leverage()
     margin_leverage = get_margin_leverage()
@@ -634,6 +636,7 @@ def get_relevant_leverage():
 def get_wallet_balance():
     """
     Fetch the wallet balance in crypto
+    :return balance in crypto: float
     """
     try:
         if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
@@ -644,20 +647,21 @@ def get_wallet_balance():
         if CONF.exchange == 'liquid':
             result = EXCHANGE.private_get_accounts_balance()
             if result is not None:
-                for b in result:
-                    if b['currency'] == CONF.base:
-                        return float(b['balance'])
+                for balance in result:
+                    if balance['currency'] == CONF.base:
+                        return float(balance['balance'])
+        return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return get_wallet_balance()
+        get_wallet_balance()
 
 
 def get_balance():
     """
     Fetch the balance in crypto.
-    output: balance (used,free,total) in crypto
+    :return balance in crypto dict: used: float, free: float,total: float
     """
     try:
         if CONF.exchange != 'liquid':
@@ -679,21 +683,21 @@ def get_balance():
             # no position => return wallet balance
             result = EXCHANGE.private_get_accounts_balance()
             if result is not None:
-                for b in result:
-                    if b['currency'] == CONF.base:
-                        bal = {'used': 0, 'free': float(b['balance']), 'total': float(b['balance'])}
+                for wallet in result:
+                    if wallet['currency'] == CONF.base:
+                        bal = {'used': 0, 'free': float(wallet['balance']), 'total': float(wallet['balance'])}
         return bal
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return get_balance()
+        get_balance()
 
 
 def get_position_balance():
     """
     Fetch the position balance in fiat.
-    output: balance
+    :return balance: int
     """
     try:
         if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
@@ -703,17 +707,18 @@ def get_position_balance():
             return round(float(result['e']) - float(result['mf']))
         if CONF.exchange == 'liquid':
             return round(get_balance()['used'] * get_current_price())
+        return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return get_position_balance()
+        get_position_balance()
 
 
 def get_net_deposits():
     """
     Get deposits and withdraws to calculate the net deposits in crypto.
-    return: net deposits
+    :return net deposits: float
     """
     try:
         currency = CONF.base if CONF.base != 'BTC' else 'XBt'
@@ -735,7 +740,7 @@ def get_net_deposits():
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return get_net_deposits()
+        get_net_deposits()
 
 
 def get_position_info():
@@ -757,12 +762,12 @@ def get_position_info():
                 if pos['currency_pair_code'] == CONF.symbol and pos['funding_currency'] == CONF.base and \
                         float(pos['margin']) > 0:
                     return pos
-            return None
+        return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return get_position_info()
+        get_position_info()
 
 
 def get_interest_rate():
@@ -775,13 +780,13 @@ def get_interest_rate():
             result = EXCHANGE.public_get_funding({'symbol': CONF.symbol, 'startTime': today, 'count': 1})
             if result is not None:
                 return result[0]['fundingRateDaily'] * -100
-            return None
         LOG.error("get_interest_rate() not yet implemented for %s", CONF.exchange)
+        return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return get_interest_rate()
+        get_interest_rate()
 
 
 def compensate():
@@ -807,7 +812,7 @@ def compensate():
 def do_buy(crypto_amount: float):
     """
     Market price raised in 0.5 steps
-    :return: Order
+    :return Order
     """
     global CURR_BUY_ORDER
 
@@ -830,7 +835,7 @@ def do_buy(crypto_amount: float):
 def do_sell(crypto_amount: float):
     """
     Market price discounted in 0.5 steps
-    :return: Order
+    :return Order
     """
     global SELL_PRICE
 
@@ -875,7 +880,7 @@ def spread(price: float):
 def get_margin_balance():
     """
     Fetches the margin balance in fiat (free and total)
-    return: balance in fiat
+    :return balance in fiat
     """
     try:
         if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
@@ -892,7 +897,7 @@ def get_margin_balance():
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return get_margin_balance()
+        get_margin_balance()
 
 
 def calculate_used_margin_percentage(bal=None):
@@ -913,9 +918,9 @@ def calculate_avg_entry_price_and_total_quantity(open_orders: [Order]):
     """
     total_amount = 0
     total_price = 0
-    for o in open_orders:
-        total_amount += o.amount
-        total_price += o.price * o.amount
+    for order in open_orders:
+        total_amount += order.amount
+        total_price += order.price * order.amount
     if total_amount > 0:
         return {'avg':  total_price / total_amount, 'qty': total_amount}
     return {'avg': 0, 'qty': 0}
@@ -924,7 +929,7 @@ def calculate_avg_entry_price_and_total_quantity(open_orders: [Order]):
 def get_current_price():
     """
     Fetch the current crypto price
-    output: last bid price
+    :return last bid price: float
     """
     try:
         return EXCHANGE.fetch_ticker(CONF.pair)['bid']
@@ -932,15 +937,15 @@ def get_current_price():
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return get_current_price()
+        get_current_price()
 
 
 def update_price(origin_price: float, price: float):
     """
     Update the price by considering the old and current price
-    :param origin_price:
-    :param price:
-    :return: price
+    :param origin_price
+    :param price
+    :return price float:
     """
     return (get_current_price() / origin_price) * price
 
@@ -951,7 +956,7 @@ def init_orders(force_close: bool, auto_conf: bool):
     output True if loaded and False if compensate margin is necessary
     :param force_close: close all orders/positions (reset)
     :param auto_conf: load all orders and keep position
-    :return: False if compensate is required, True if not
+    :return False if compensate is required, True if not
     """
     global SELL_PRICE
     global SELL_ORDERS
@@ -1056,21 +1061,21 @@ def cancel_orders(orders: [Order]):
     :param orders: [Order]
     """
     try:
-        for o in orders:
-            LOG.debug('Cancel %s', str(o))
-            status = EXCHANGE.fetch_order_status(o.id)
+        for order in orders:
+            LOG.debug('Cancel %s', str(order))
+            status = EXCHANGE.fetch_order_status(order.id)
             if status == 'open':
-                EXCHANGE.cancel_order(o.id)
+                EXCHANGE.cancel_order(order.id)
             else:
-                LOG.warning('Cancel %s was in state %s', str(o), status)
+                LOG.warning('Cancel %s was in state %s', str(order), status)
 
     except ccxt.OrderNotFound as error:
-        LOG.error('Cancel %s not found : %s', str(o), str(error.args))
+        LOG.error('Cancel %s not found : %s', str(order), str(error.args))
         return
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return cancel_orders(orders)
+        cancel_orders(orders)
 
 
 def close_position(symbol: str):
@@ -1092,25 +1097,25 @@ def close_position(symbol: str):
             return
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return close_position(symbol)
+        close_position(symbol)
 
 
 def get_open_position(symbol: str):
     """
     Get all open positions
-    :return: positions
+    :return positions
     """
     try:
         if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
-            for p in EXCHANGE.private_get_position():
-                if p['isOpen'] and p['symbol'] == symbol:
-                    return p
+            for position in EXCHANGE.private_get_position():
+                if position['isOpen'] and position['symbol'] == symbol:
+                    return position
         elif CONF.exchange == 'kraken':
-            a = EXCHANGE.private_post_openpositions()
-            if a['result'] == 'success':
-                for p in a['openPositions']:
-                    if p['symbol'] == symbol:
-                        return p
+            response = EXCHANGE.private_post_openpositions()
+            if response['result'] == 'success':
+                for position in response['openPositions']:
+                    if position['symbol'] == symbol:
+                        return position
         elif CONF.exchange == 'liquid':
             trades = EXCHANGE.private_get_trades({'status': 'open'})
             for model in trades['models']:
@@ -1121,13 +1126,13 @@ def get_open_position(symbol: str):
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return get_open_position(symbol)
+        get_open_position(symbol)
 
 
 def get_open_orders(tries: int = 0):
     """
     Gets all open orders
-    :return: OpenOrdersSummary
+    :return OpenOrdersSummary
     """
     try:
         return OpenOrdersSummary(EXCHANGE.fetch_open_orders(CONF.pair, since=None, limit=None, params={}))
@@ -1139,7 +1144,7 @@ def get_open_orders(tries: int = 0):
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         if tries < 20000:
-            return get_open_orders(tries+1)
+            get_open_orders(tries+1)
         return None
 
 
@@ -1147,7 +1152,7 @@ def get_unrealised_pnl(symbol: str):
     """
     Returns the unrealised pnl for the requested currency
     :param symbol:
-    :return: float
+    :return float
     """
     try:
         if get_open_position(symbol) is not None:
@@ -1157,7 +1162,7 @@ def get_unrealised_pnl(symbol: str):
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return get_unrealised_pnl(symbol)
+        get_unrealised_pnl(symbol)
 
 
 def print_position_info(oos: OpenOrdersSummary):
@@ -1173,7 +1178,7 @@ def print_position_info(oos: OpenOrdersSummary):
         else:
             LOG.info("Available balance is {}: {:>3} ".format(CONF.base, get_balance()['free']))
             LOG.info("No position found, I will create one for you")
-            return False
+            return
     elif CONF.exchange == 'kraken':
         LOG.info("Position {}: {:>13}".format(CONF.quote, get_position_balance()))
         LOG.info("Entry price: {:>16.1f}".format(calculate_avg_entry_price_and_total_quantity(oos.orders)['avg']))
@@ -1185,7 +1190,7 @@ def print_position_info(oos: OpenOrdersSummary):
         else:
             LOG.info("Available balance is {}: {:>3} ".format(CONF.base, get_balance()['free']))
             LOG.info("No position found, I will create one for you")
-            return False
+            return
     if not oos.orders:
         LOG.info("No open orders")
 
@@ -1193,7 +1198,7 @@ def print_position_info(oos: OpenOrdersSummary):
 def connect_to_exchange():
     """
     Connects to the exchange.
-    :return: exchange
+    :return exchange
     """
     exchanges = {'binance': ccxt.binance,
                  'bitfinex': ccxt.bitfinex,
@@ -1242,15 +1247,15 @@ def to_crypto_amount(fiat_amount: int, price: float):
 
 
 def write_control_file():
-    with open(INSTANCE + '.pid', 'w') as f:
-        f.write(str(os.getpid()) + ' ' + INSTANCE)
+    with open(INSTANCE + '.pid', 'w') as file:
+        file.write(str(os.getpid()) + ' ' + INSTANCE)
 
 
 def write_position_info(info: str):
     if info is not None:
         LOG.info('Writing %s', INSTANCE + '.position.info.json')
-        with open(INSTANCE + '.position.info.json', 'w') as f:
-            f.write(info)
+        with open(INSTANCE + '.position.info.json', 'w') as file:
+            file.write(info)
 
 
 def daily_report(immediately: bool = False):
@@ -1276,7 +1281,7 @@ def daily_report(immediately: bool = False):
 def create_mail_content():
     """
     Fetches and formats the data required for the daily report email
-    :return: dict: text: str, csv: str
+    :return dict: text: str, csv: str
     """
     performance_part = create_report_part_performance()
     advice_part = create_report_part_advice()
@@ -1549,7 +1554,7 @@ def calculate_daily_statistics(m_bal: float, price: float):
     Calculates, updates and persists the change in the margin balance compared with yesterday
     :param m_bal: todays margin balance
     :param price: the current rate
-    :return: todays statistics including price and margin balance changes compared with 24 and 48 hours ago
+    :return todays statistics including price and margin balance changes compared with 24 and 48 hours ago
     """
     global STATS
 
@@ -1578,30 +1583,30 @@ def load_statistics():
     content = None
     stats_file = CONF.bot_instance + '.pkl'
     if os.path.isfile(stats_file):
-        with open(stats_file, "rb") as f:
-            content = pickle.load(f)
+        with open(stats_file, "rb") as file:
+            content = pickle.load(file)
     return content
 
 
 def persist_statistics():
     stats_file = CONF.bot_instance + '.pkl'
-    with open(stats_file, "wb") as f:
-        pickle.dump(STATS, f)
+    with open(stats_file, "wb") as file:
+        pickle.dump(STATS, file)
 
 
 def read_moving_average():
     ma_file = 'maverage'
     if os.path.isfile(ma_file):
-        with open(ma_file, "rt") as f:
-            content = f.read()
+        with open(ma_file, "rt") as file:
+            content = file.read()
         return content
     return None
 
 
 def fetch_mayer(tries: int = 0):
     try:
-        r = requests.get('https://mayermultiple.info/current.json')
-        mayer = r.json()['data']
+        response = requests.get('https://mayermultiple.info/current.json')
+        mayer = response.json()['data']
         return {'current': float(mayer['current_mayer_multiple']), 'average': float(mayer['average_mayer_multiple'])}
 
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, requests.exceptions.ReadTimeout) as error:
@@ -1621,7 +1626,7 @@ def print_mayer():
         if mayer['current'] > 2.4:
             return "Mayer multiple: {:>19.2f} (> 2.4 = SELL)".format(mayer['current'])
         return "Mayer multiple: {:>19.2f} (> {:.2f} and < 2.4 = HOLD)".format(mayer['current'], mayer['average'])
-    return
+    return None
 
 
 def append_mayer(part: dict):
@@ -1695,11 +1700,12 @@ def get_leverage():
                 if pos['currency_pair_code'] == CONF.symbol:
                     return pos['leverage_level']
         LOG.error("get_leverage() not yet implemented for %s", CONF.exchange)
+        return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return get_leverage()
+        get_leverage()
 
 
 def set_leverage(new_leverage: float):
@@ -1715,7 +1721,7 @@ def set_leverage(new_leverage: float):
             return False
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        return set_leverage(new_leverage)
+        set_leverage(new_leverage)
 
 
 # ------------------------------------------------------------------------------
