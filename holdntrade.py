@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.13.37"
+            self.bot_version = "1.13.38"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -519,7 +519,7 @@ def calculate_buy_order_amount(price: float = None):
     if price is None:
         price = get_current_price()
     LOG.info("Calculating buy order amount (%s / %s * %s)", wallet_available, CONF.quota, price)
-    return round(wallet_available / CONF.quota * price)
+    return round(wallet_available / CONF.quota * price) if price is not None else 0
 
 
 def create_market_sell_order(amount_crypto: float):
