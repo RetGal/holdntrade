@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.13.38"
+            self.bot_version = "1.13.39"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1321,7 +1321,7 @@ def create_report_part_settings():
                     "Spread factor:; {}".format(str(CONF.spread_factor)),
                     "Leverage default:; {}".format(str(CONF.leverage_default)),
                     "Auto leverage:; {}".format(str('Y' if CONF.auto_leverage is True else 'N')),
-                    "Auto leverage escape: {}".format(str('Y' if CONF.auto_leverage_escape is True else 'N')),
+                    "Auto leverage escape:; {}".format(str('Y' if CONF.auto_leverage_escape is True else 'N')),
                     "Leverage low:; {}".format(str(CONF.leverage_low)),
                     "Leverage high:; {}".format(str(CONF.leverage_high)),
                     "Leverage escape:; {}".format(str(CONF.leverage_escape)),
@@ -1366,13 +1366,14 @@ def create_report_part_performance():
     sleep_for(0, 1)
     oos = get_open_orders()
     # all_sold_balance = calculate_all_sold_balance(poi, oos.sell_orders, wallet_balance, margin_balance['total'], net_deposits)
-    append_balances(part, margin_balance, poi, wallet_balance, None)
-    append_orders(part, oos)
+    price = get_current_price()
+    append_balances(part, margin_balance, poi, wallet_balance, price, None)
+    append_orders(part, oos, price)
     append_interest_rate(part)
     return part
 
 
-def append_orders(part: dict, oos: OpenOrdersSummary):
+def append_orders(part: dict, oos: OpenOrdersSummary, price: float):
     """
     Appends order statistics
     """
@@ -1380,6 +1381,25 @@ def append_orders(part: dict, oos: OpenOrdersSummary):
     part['mail'].append("Value of sell orders " + CONF.quote + ": {:>9}".format(int(oos.total_sell_order_value)))
     part['mail'].append("No. of buy orders: {:>16}".format(len(oos.buy_orders)))
     part['mail'].append("No. of sell orders: {:>15}".format(len(oos.sell_orders)))
+
+    highest_buy = sorted(oos.buy_orders, key=lambda order: order.price, reverse=True)[
+        0].price if oos.buy_orders else None
+    if highest_buy is not None:
+        buy_offset = calculate_price_offset(highest_buy, price)
+        part['mail'].append(
+            "Highest buy order {}: {:>12} ({}% below actual {} price)".format(CONF.quote, price, buy_offset, CONF.base))
+    else:
+        part['mail'].append("Highest buy order {}: {:>12}".format(CONF.quote, 'n/a'))
+
+    lowest_sell = sorted(oos.sell_orders, key=lambda order: order.price)[0].price if oos.sell_orders else None
+    if lowest_sell is not None:
+        sell_offset = calculate_price_offset(lowest_sell, price)
+        part['mail'].append(
+            "Lowest sell order {}: {:>12} ({}% above actual {} price)".format(CONF.quote, lowest_sell, sell_offset,
+                                                                              CONF.base))
+    else:
+        part['mail'].append("Lowest sell order {}: {:>12}".format(CONF.quote, 'n/a'))
+
     part['csv'].append("Value of buy orders " + CONF.quote + ":; {}".format(int(oos.total_buy_order_value)))
     part['csv'].append("Value of sell orders " + CONF.quote + ":; {}".format(int(oos.total_sell_order_value)))
     part['csv'].append("No. of buy orders:; {}".format(len(oos.buy_orders)))
@@ -1396,13 +1416,15 @@ def append_interest_rate(part: dict):
         part['csv'].append("Interest rate:; {:}".format('n/a'))
 
 
-def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance: float, all_sold_balance: float):
+def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance: float, price: float = None,
+                    all_sold_balance: float = None):
     """
     Appends liquidation price, wallet balance, margin balance (including stats), used margin and leverage information
     """
     part['mail'].append("Wallet balance " + CONF.base + ": {:>18.4f}".format(wallet_balance))
     part['csv'].append("Wallet balance " + CONF.base + ":; {:.4f}".format(wallet_balance))
-    price = get_current_price()
+    if price is None:
+        price = get_current_price()
     today = calculate_daily_statistics(margin_balance['total'], price)
     append_margin_change(part, today, CONF.base)
     if all_sold_balance is not None:
@@ -1501,6 +1523,12 @@ def calculate_all_sold_balance(poi: dict, sell_orders: [Order], wallet_balance: 
         avg_sell_price = float(sells['avg'])
         tot_sell_quantity = float(sells['qty'])
         return ((float(poi['homeNotional']) - wallet_balance + margin_balance) * avg_sell_price - tot_sell_quantity) / avg_sell_price + net_deposits
+    return None
+
+
+def calculate_price_offset(order_price: float, market_price: float):
+    if order_price is not None:
+        return round(abs(100 / (market_price / order_price) - 100), 2)
     return None
 
 
