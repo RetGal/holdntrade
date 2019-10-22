@@ -3,8 +3,8 @@ import configparser
 import datetime
 import inspect
 import json
-import math
 import logging
+import math
 import os
 import pickle
 import random
@@ -1381,7 +1381,14 @@ def append_orders(part: dict, oos: OpenOrdersSummary, price: float):
     part['mail'].append("Value of sell orders " + CONF.quote + ": {:>9}".format(int(oos.total_sell_order_value)))
     part['mail'].append("No. of buy orders: {:>16}".format(len(oos.buy_orders)))
     part['mail'].append("No. of sell orders: {:>15}".format(len(oos.sell_orders)))
+    append_order_offset(part, oos, price)
+    part['csv'].append("Value of buy orders " + CONF.quote + ":; {}".format(int(oos.total_buy_order_value)))
+    part['csv'].append("Value of sell orders " + CONF.quote + ":; {}".format(int(oos.total_sell_order_value)))
+    part['csv'].append("No. of buy orders:; {}".format(len(oos.buy_orders)))
+    part['csv'].append("No. of sell orders:; {}".format(len(oos.sell_orders)))
 
+
+def append_order_offset(part: dict, oos: OpenOrdersSummary, price: float):
     highest_buy = sorted(oos.buy_orders, key=lambda order: order.price, reverse=True)[
         0].price if oos.buy_orders else None
     if highest_buy is not None:
@@ -1399,11 +1406,6 @@ def append_orders(part: dict, oos: OpenOrdersSummary, price: float):
                                                                               CONF.base))
     else:
         part['mail'].append("Lowest sell order {}: {:>12}".format(CONF.quote, 'n/a'))
-
-    part['csv'].append("Value of buy orders " + CONF.quote + ":; {}".format(int(oos.total_buy_order_value)))
-    part['csv'].append("Value of sell orders " + CONF.quote + ":; {}".format(int(oos.total_sell_order_value)))
-    part['csv'].append("No. of buy orders:; {}".format(len(oos.buy_orders)))
-    part['csv'].append("No. of sell orders:; {}".format(len(oos.sell_orders)))
 
 
 def append_interest_rate(part: dict):
