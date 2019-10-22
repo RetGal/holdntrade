@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.13.39"
+            self.bot_version = "1.13.40"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1394,9 +1394,12 @@ def append_order_offset(part: dict, oos: OpenOrdersSummary, price: float):
     if highest_buy is not None:
         buy_offset = calculate_price_offset(highest_buy, price)
         part['mail'].append(
-            "Highest buy order {}: {:>12} ({}% below actual {} price)".format(CONF.quote, price, buy_offset, CONF.base))
+            "Highest buy order {}: {:>12} ({}% below actual {} price)".format(CONF.quote, highest_buy, buy_offset,
+                                                                              CONF.base))
+        part['csv'].append("Highest buy order {}:; {}".format(CONF.quote, highest_buy))
     else:
         part['mail'].append("Highest buy order {}: {:>12}".format(CONF.quote, 'n/a'))
+        part['csv'].append("Highest buy order {}:; {}".format(CONF.quote, 'n/a'))
 
     lowest_sell = sorted(oos.sell_orders, key=lambda order: order.price)[0].price if oos.sell_orders else None
     if lowest_sell is not None:
@@ -1404,8 +1407,10 @@ def append_order_offset(part: dict, oos: OpenOrdersSummary, price: float):
         part['mail'].append(
             "Lowest sell order {}: {:>12} ({}% above actual {} price)".format(CONF.quote, lowest_sell, sell_offset,
                                                                               CONF.base))
+        part['csv'].append("Lowest sell order {}:; {}".format(CONF.quote, lowest_sell))
     else:
         part['mail'].append("Lowest sell order {}: {:>12}".format(CONF.quote, 'n/a'))
+        part['csv'].append("Lowest sell order {}:; {}".format(CONF.quote, 'n/a'))
 
 
 def append_interest_rate(part: dict):
@@ -1415,7 +1420,7 @@ def append_interest_rate(part: dict):
         part['csv'].append("Interest rate:; {:+2f}%".format(interest_rate))
     else:
         part['mail'].append("Interest rate: {:>20}".format('n/a'))
-        part['csv'].append("Interest rate:; {:}".format('n/a'))
+        part['csv'].append("Interest rate:; {}".format('n/a'))
 
 
 def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance: float, price: float = None,
