@@ -39,7 +39,7 @@ STARTED = datetime.datetime.utcnow().replace(microsecond=0)
 STATS = None
 HIBERNATE = False
 INITIAL_LEVERAGE_SET = False
-STOP_ERRORS = ['nsufficient', 'too low', 'not_enough_free_balance', 'margin_below', 'liqudation price']
+STOP_ERRORS = ['insufficient', 'too low', 'not_enough_free_balance', 'margin_below', 'liqudation price']
 
 # ------------------------------------------------------------------------------
 
@@ -211,7 +211,7 @@ def buy_executed():
         LOG.debug('Open Buy Order! Amount: %d @ %.1f', int(CURR_BUY_ORDER_SIZE), float(BUY_PRICE))
         LOG.debug('Current Price: %.1f', price)
     elif status in ['closed', 'canceled']:
-        LOG.info('Buy executed, starting follow up')
+        LOG.info('Buy executed %s, starting follow up', str(CURR_BUY_ORDER))
         # use amount of last (previous) buy order for next sell order
         last_buy_amount = CURR_BUY_ORDER_SIZE
         if CURR_BUY_ORDER in BUY_ORDERS:
@@ -228,7 +228,7 @@ def buy_executed():
                 LOG.warning('Resetting')
                 init_orders(True, False)
     else:
-        LOG.warning('You should not be here, order state is %s', status)
+        LOG.warning('Should not be here, order status is %s', status)
 
 
 def sell_executed():
@@ -249,7 +249,7 @@ def sell_executed():
         elif status in ['closed', 'canceled']:
             if order in SELL_ORDERS:
                 SELL_ORDERS.remove(order)
-            LOG.info('Sell executed')
+            LOG.info('Sell executed %s', str(order))
             mm = fetch_mayer()
             adjust_leverage(mm)
             HIBERNATE = shall_hibernate(mm)
@@ -262,7 +262,7 @@ def sell_executed():
                     LOG.warning('Resetting')
                     init_orders(True, False)
         else:
-            LOG.warning('You should not be here, order state: %s', status)
+            LOG.warning('Should not be here, order status: %s', status)
 
 
 def shall_hibernate(mayer: dict = None):
@@ -352,7 +352,7 @@ def create_sell_order(fixed_order_size: int = None):
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if any(e in str(error.args) for e in STOP_ERRORS):
             LOG.error('Insufficient funds - not selling %d', order_size)
-            return
+            return False
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         SELL_PRICE = round(get_current_price() * (1 + CONF.change))
         create_sell_order(fixed_order_size)
@@ -404,6 +404,9 @@ def fetch_order_status(order_id: str):
     try:
         return EXCHANGE.fetch_order_status(order_id)
 
+    except ccxt.OrderNotFound as error:
+        LOG.error('Order status not found  %s %s', order_id, str(error.args))
+        return 'not found'
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
@@ -471,7 +474,7 @@ def create_buy_order(price: float, buy_amount: int):
             return True
         if SELL_ORDERS:
             LOG.info('Could not create buy order, waiting for a sell order to be realised')
-            return delay_buy_order(curr_price, price)
+            delay_buy_order(curr_price, price)
 
         LOG.warning('Could not create buy order over %d and there are no open sell orders, reset required', buy_amount)
         return False
@@ -507,7 +510,7 @@ def delay_buy_order(crypto_price: float, price: float):
         elif CONF.auto_leverage:
             mm = fetch_mayer()
             adjust_leverage(mm)
-    return create_buy_order(update_price(crypto_price, price), calculate_buy_order_amount())
+    create_buy_order(update_price(crypto_price, price), calculate_buy_order_amount())
 
 
 def calculate_buy_order_amount(price: float = None):
@@ -806,7 +809,7 @@ def compensate():
             do_buy(amount_crypto)
         else:
             LOG.info("Need to sell {} {} in order to reach 50% margin".format(abs(amount_crypto), CONF.base))
-            create_market_sell_order(abs(amount_crypto))
+            do_sell(abs(amount_crypto))
 
 
 def do_buy(crypto_amount: float):
@@ -820,15 +823,16 @@ def do_buy(crypto_amount: float):
     while i <= CONF.trade_trials:
         rise = i / 2
         buy_price = get_current_price() + rise
-        if create_buy_order(buy_price, round(crypto_amount * buy_price)):
-            sleep_for(90, 90)
-            order_status = fetch_order_status(CURR_BUY_ORDER.id)
-            if order_status == 'open':
-                cancel_current_buy_order()
-                i += 1
-                daily_report()
-            else:
-                return
+        if not create_buy_order(buy_price, round(crypto_amount * buy_price)):
+            return
+        sleep_for(90, 90)
+        order_status = fetch_order_status(CURR_BUY_ORDER.id)
+        if order_status in ['open', 'not found']:
+            cancel_current_buy_order()
+            i += 1
+            daily_report()
+        else:
+            return
     create_market_buy_order(crypto_amount)
 
 
@@ -843,16 +847,17 @@ def do_sell(crypto_amount: float):
     while i <= CONF.trade_trials:
         discount = i / 2
         SELL_PRICE = get_current_price() - discount
-        if create_sell_order(round(crypto_amount * SELL_PRICE)):
-            sleep_for(90, 90)
-            order_status = fetch_order_status(SELL_ORDERS[-1].id)
-            if order_status == 'open':
-                cancel_order(SELL_ORDERS[-1])
-                del SELL_ORDERS[-1]
-                i += 1
-                daily_report()
-            else:
-                return
+        if not create_sell_order(round(crypto_amount * SELL_PRICE)):
+            return
+        sleep_for(90, 90)
+        order_status = fetch_order_status(SELL_ORDERS[-1].id)
+        if order_status in ['open', 'not found']:
+            cancel_order(SELL_ORDERS[-1])
+            del SELL_ORDERS[-1]
+            i += 1
+            daily_report()
+        else:
+            return
     create_market_sell_order(crypto_amount)
 
 
