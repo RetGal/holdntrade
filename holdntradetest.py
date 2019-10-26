@@ -1,11 +1,10 @@
-import unittest
-from unittest import mock
-
-import ccxt
+import os
 import datetime
 import time
+import unittest
+from unittest import mock
 from unittest.mock import patch
-
+import ccxt
 import holdntrade
 
 
@@ -904,6 +903,52 @@ class HoldntradeTest(unittest.TestCase):
         self.assertEqual(2, len(holdntrade.BUY_ORDERS))
         self.assertEqual(buy_price, holdntrade.BUY_PRICE)
         self.assertEqual(3, len(holdntrade.SELL_ORDERS))
+
+    @patch('holdntrade.logging')
+    @mock.patch.object(os, 'remove')
+    @mock.patch.object(holdntrade, 'send_mail')
+    def test_deactivate_bot(self, mock_send_mail, mock_os_remove, mock_logging):
+        holdntrade.INSTANCE = 'test'
+        holdntrade.LOG = mock_logging
+
+        terminated = False
+        try:
+            holdntrade.deactivate_bot()
+        except SystemExit:
+            terminated = True
+
+        mock_os_remove.assert_called_with('test.pid')
+        mock_send_mail.assert_called()
+        self.assertTrue(terminated)
+
+    @patch('holdntrade.logging')
+    @mock.patch.object(os, 'remove')
+    @mock.patch.object(holdntrade, 'send_mail')
+    def test_deactivate_bot(self, mock_send_mail, mock_os_remove, mock_logging):
+        holdntrade.INSTANCE = 'test'
+        holdntrade.LOG = mock_logging
+
+        terminated = False
+        try:
+            holdntrade.deactivate_bot()
+        except SystemExit:
+            terminated = True
+
+        mock_os_remove.assert_called_with('test.pid')
+        mock_send_mail.assert_called()
+        self.assertTrue(terminated)
+
+    @patch('holdntrade.logging')
+    @patch('ccxt.bitmex.fetch_ticker', side_effect=ccxt.ExchangeError('key is disabled'))
+    @mock.patch.object(holdntrade, 'deactivate_bot')
+    def test_get_current_price_should_deactivate_bot(self, mock_deactivate_bot, mock_fetch_ticker, mock_logging):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.LOG = mock_logging
+        holdntrade.EXCHANGE = holdntrade.connect_to_exchange()
+
+        holdntrade.get_current_price()
+
+        mock_deactivate_bot.assert_called()
 
     def test_config_parse(self):
         holdntrade.INSTANCE = 'test'

@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.13.40"
+            self.bot_version = "1.13.41"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -940,6 +940,9 @@ def get_current_price():
         return EXCHANGE.fetch_ticker(CONF.pair)['bid']
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+        if "key is disabled" in str(error.args):
+            LOG.warning('Key is disabled')
+            return deactivate_bot()
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_current_price()
@@ -981,14 +984,6 @@ def init_orders(force_close: bool, auto_conf: bool):
 
         # Handle open orders
         oos = get_open_orders()
-
-        # deactivate bot instance
-        if oos is None:
-            os.remove(INSTANCE + '.pid')
-            text = "Deactivated {}".format(CONF.bot_instance)
-            LOG.error(text)
-            send_mail(text, text)
-            exit(1)
 
         LOG.info("Used margin: {:>17.2f}%".format(calculate_used_margin_percentage()))
         print_position_info(oos)
@@ -1145,7 +1140,8 @@ def get_open_orders(tries: int = 0):
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if "key is disabled" in str(error.args):
             LOG.warning('Key is disabled')
-            return None
+            return deactivate_bot()
+
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         if tries < 20000:
@@ -1762,6 +1758,14 @@ def set_leverage(new_leverage: float):
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         set_leverage(new_leverage)
+
+
+def deactivate_bot():
+    os.remove(INSTANCE + '.pid')
+    text = "Deactivated {}".format(INSTANCE)
+    LOG.error(text)
+    send_mail(text, text)
+    exit(0)
 
 
 # ------------------------------------------------------------------------------
