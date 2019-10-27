@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.13.41"
+            self.bot_version = "1.13.42"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -222,11 +222,8 @@ def buy_executed():
         adjust_leverage(mm)
         HIBERNATE = shall_hibernate(mm)
         if not HIBERNATE:
-            if create_buy_order(price, calculate_buy_order_amount()):
-                create_sell_order(last_buy_amount)
-            else:
-                LOG.warning('Resetting')
-                init_orders(True, False)
+            create_buy_order(price, calculate_buy_order_amount())
+            create_sell_order(last_buy_amount)
     else:
         LOG.warning('Should not be here, order status is %s', status)
 
@@ -258,9 +255,7 @@ def sell_executed():
                     create_divided_sell_order()
                 cancel_current_buy_order()
                 price = get_current_price()
-                if not create_buy_order(price, calculate_buy_order_amount()):
-                    LOG.warning('Resetting')
-                    init_orders(True, False)
+                create_buy_order(price, calculate_buy_order_amount())
         else:
             LOG.warning('Should not be here, order status: %s', status)
 
