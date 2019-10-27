@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.13.43"
+            self.bot_version = "1.13.44"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -305,7 +305,7 @@ def create_first_buy_order():
     HIBERNATE = shall_hibernate(mm)
     if not HIBERNATE:
         price = get_current_price()
-        create_buy_order(price, calculate_buy_order_amount())
+        create_buy_order(price, calculate_buy_order_amount(price))
 
 
 def create_sell_order(fixed_order_size: int = None):
@@ -508,14 +508,16 @@ def delay_buy_order(crypto_price: float, price: float):
     create_buy_order(update_price(crypto_price, price), calculate_buy_order_amount())
 
 
-def calculate_buy_order_amount():
+def calculate_buy_order_amount(price: float = None):
     """
     Calculates the buy order amount.
     :return amount to be bought in fiat
     """
-    position_available = get_position_balance()
-    LOG.info("Calculating buy order amount (%s / %s)", position_available, CONF.quota)
-    return round(position_available / CONF.quota)
+    wallet_available = get_balance()['free']
+    if price is None:
+        price = get_current_price()
+    LOG.info("Calculating buy order amount (%s / %s * %s)", wallet_available, CONF.quota, price)
+    return round(wallet_available / CONF.quota * price) if price is not None else 0
 
 
 def create_market_sell_order(amount_crypto: float):
@@ -1791,8 +1793,6 @@ if __name__ == '__main__':
     LOG.info('Holdntrade version: %s', CONF.bot_version)
     EXCHANGE = connect_to_exchange()
     STATS = load_statistics()
-
-    get_balance()
 
     if EMAIL_ONLY:
         daily_report(True)
