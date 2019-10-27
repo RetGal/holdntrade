@@ -138,17 +138,16 @@ class HoldntradeTest(unittest.TestCase):
         self.assertEqual(100, balance['total'])
 
     @patch('holdntrade.logging')
-    @patch('holdntrade.get_balance', return_value={'free': 0.1})
-    @patch('holdntrade.get_current_price', return_value=10000)
-    def test_calculate_buy_order_size_should_return_expected_amount_for_first_buy(self, mock_get_current_price,
-                                                                                  mock_get_balance, mock_logging):
+    @patch('holdntrade.get_position_balance', return_value=100)
+    def test_calculate_buy_order_size_should_return_expected_amount_for_first_buy(self, mock_get_positionbalance,
+                                                                                  mock_logging):
         holdntrade.LOG = mock_logging
         holdntrade.CONF = self.create_default_conf()
         holdntrade.EXCHANGE = ccxt.bitmex
 
         buy_amount = holdntrade.calculate_buy_order_amount()
 
-        self.assertEqual(0.1 * 10000 / holdntrade.CONF.quota, buy_amount)
+        self.assertEqual(100 / holdntrade.CONF.quota, buy_amount)
 
     @patch('holdntrade.logging')
     @patch('holdntrade.get_position_balance', return_value=100)
@@ -168,8 +167,8 @@ class HoldntradeTest(unittest.TestCase):
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
-    @mock.patch.object(holdntrade, 'get_balance')
-    def test_create_sell_order_should_not_create_order_if_order_is_below_limit(self, mock_get_balance,
+    @patch('holdntrade.get_position_balance', return_value=100)
+    def test_create_sell_order_should_not_create_order_if_order_is_below_limit(self, mock_get_position_balance,
                                                                                mock_create_limit_sell_order,
                                                                                mock_logging):
         holdntrade.SELL_PRICE = 8000
@@ -178,16 +177,15 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.LOG = mock_logging
         holdntrade.CONF = self.create_default_conf()
 
-        mock_get_balance.return_value = {'free': 20}
-
         holdntrade.create_sell_order(10)
 
         assert not mock_create_limit_sell_order.called, 'create_order was called but should have not'
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
-    @mock.patch.object(holdntrade, 'get_balance')
-    def test_create_sell_order_should_not_create_order_if_order_is_bigger_than_used_balance(self, mock_get_balance,
+    @patch('holdntrade.get_position_balance', return_value=1)
+    def test_create_sell_order_should_not_create_order_if_order_is_bigger_than_used_balance(self,
+                                                                                            mock_get_position_balance,
                                                                                             mock_create_limit_sell_order,
                                                                                             mock_logging):
         holdntrade.SELL_PRICE = 4000
@@ -196,24 +194,20 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.LOG = mock_logging
         holdntrade.CONF = self.create_default_conf()
 
-        mock_get_balance.return_value = {'free': 1}
-
         holdntrade.create_sell_order(40001)
 
         assert not mock_create_limit_sell_order.called, 'create_order was called but should have not'
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
-    @mock.patch.object(holdntrade, 'get_balance')
-    def test_create_sell_order_should_create_order(self, mock_get_balance, mock_create_limit_sell_order,
+    @patch('holdntrade.get_position_balance', return_value=100)
+    def test_create_sell_order_should_create_order(self, mock_get_position_balance, mock_create_limit_sell_order,
                                                    mock_logging):
         holdntrade.SELL_PRICE = 4000
         holdntrade.SELL_ORDERS = []
         holdntrade.CURR_BUY_ORDER_SIZE = 10
         holdntrade.LOG = mock_logging
         holdntrade.CONF = self.create_default_conf()
-
-        mock_get_balance.return_value = {'free': 20}
 
         holdntrade.create_sell_order()
 
@@ -224,12 +218,12 @@ class HoldntradeTest(unittest.TestCase):
     @patch('holdntrade.fetch_mayer')
     @patch('holdntrade.adjust_leverage')
     @patch('holdntrade.shall_hibernate', return_value=False)
-    @patch('holdntrade.get_balance', return_value={'free': 0.1})
+    @patch('holdntrade.get_position_balance', return_value=1000)
     @patch('holdntrade.get_current_price', return_value=10000)
     @patch('holdntrade.create_buy_order')
     def test_create_first_buy_order_should_create_buy_order_with_expected_amount(self, mock_create_buy_order,
                                                                                  mock_get_current_price,
-                                                                                 mock_get_balance,
+                                                                                 mock_get_position_balance,
                                                                                  mock_shall_hibernate,
                                                                                  mock_adjust_leverage,
                                                                                  mock_fetch_mayer, mock_logging):
@@ -805,12 +799,12 @@ class HoldntradeTest(unittest.TestCase):
     @patch('holdntrade.get_current_price', return_value=9000)
     @patch('holdntrade.calculate_buy_order_amount', return_value=100)
     @patch('holdntrade.shall_hibernate', return_value=False)
-    @mock.patch.object(ccxt.bitmex, 'fetch_balance')
+    @patch('holdntrade.get_position_balance', return_value=800)
     @mock.patch.object(ccxt.bitmex, 'fetch_order_status')
     @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
     def test_buy_executed_regular(self, mock_create_limit_sell_order, mock_create_limit_buy_order,
-                                  mock_fetch_order_status, mock_fetch_balance, mock_shall_hibernate,
+                                  mock_fetch_order_status, mock_position_balance, mock_shall_hibernate,
                                   mock_calculate_buy_order_amount, mock_get_current_price, mock_sleep_for,
                                   mock_set_initial_leverage, mock_logging):
         holdntrade.CONF = self.create_default_conf()
@@ -823,7 +817,6 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.BUY_ORDERS.append(holdntrade.CURR_BUY_ORDER)
 
         holdntrade.CURR_BUY_ORDER_SIZE = 222
-        mock_fetch_balance.return_value = {'BTC': {'used': 300, 'free': 400, 'total': 700}}
         mock_fetch_order_status.return_value = 'closed'
         price = 9000
         buy_price = round(price * (1 - holdntrade.CONF.change))
@@ -858,8 +851,8 @@ class HoldntradeTest(unittest.TestCase):
                                                         holdntrade.SELL_PRICE)
 
     @patch('holdntrade.logging')
+    @patch('holdntrade.get_position_balance', return_value=200)
     @mock.patch.object(ccxt.bitmex, 'cancel_order')
-    @mock.patch.object(ccxt.bitmex, 'fetch_balance')
     @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
     @mock.patch.object(ccxt.bitmex, 'fetch_order_status')
     @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
@@ -869,8 +862,8 @@ class HoldntradeTest(unittest.TestCase):
                                                                                         mock_create_limit_buy_order,
                                                                                         mock_fetch_order_status,
                                                                                         mock_fetch_ticker,
-                                                                                        mock_fetch_balance,
                                                                                         mock_cancel_order,
+                                                                                        mock_get_position_balance,
                                                                                         mock_logging):
         holdntrade.CONF = self.create_default_conf()
         holdntrade.CONF.base = 'BTC'
@@ -889,7 +882,6 @@ class HoldntradeTest(unittest.TestCase):
         return_values = {'2': 'open'}
         mock_fetch_order_status.side_effect = return_values.get
         mock_fetch_ticker.return_value = {'bid': market_price}
-        mock_fetch_balance.return_value = {'BTC': {'used': 300, 'free': 200, 'total': 500}}
         buy_price = round(market_price * (1 - holdntrade.CONF.change))
         sell_price = round(market_price * (1 + holdntrade.CONF.change))
         holdntrade.EXCHANGE = holdntrade.connect_to_exchange()
