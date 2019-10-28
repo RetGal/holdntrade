@@ -1,6 +1,6 @@
 [config]
 # exchange properties
-exchange = "EXCHANGE_NAME"
+exchange = "bitmex"
 api_key = "YOUR_KEY"
 api_secret = "YOUR_SECRET"
 test = True
@@ -12,7 +12,7 @@ order_crypto_min = 0.0025
 
 # bot properties
 change = 0.005
-auto_quota = False
+auto_quota = True
 quota = 5
 spread_factor = 30
 auto_leverage = True

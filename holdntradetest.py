@@ -897,22 +897,52 @@ class HoldntradeTest(unittest.TestCase):
         self.assertEqual(buy_price, holdntrade.BUY_PRICE)
         self.assertEqual(3, len(holdntrade.SELL_ORDERS))
 
-    @patch('holdntrade.logging')
-    @mock.patch.object(os, 'remove')
-    @mock.patch.object(holdntrade, 'send_mail')
-    def test_deactivate_bot(self, mock_send_mail, mock_os_remove, mock_logging):
-        holdntrade.INSTANCE = 'test'
-        holdntrade.LOG = mock_logging
+    @patch('holdntrade.get_wallet_balance', return_value=4)
+    def test_calculate_quota(self, mock_get_wallet_balance):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.CONF.auto_quota = True
+        holdntrade.CONF.change = 0.002
 
-        terminated = False
-        try:
-            holdntrade.deactivate_bot()
-        except SystemExit:
-            terminated = True
+        quota = holdntrade.calculate_quota(10)
+        self.assertEqual(2, quota)
 
-        mock_os_remove.assert_called_with('test.pid')
-        mock_send_mail.assert_called()
-        self.assertTrue(terminated)
+        quota = holdntrade.calculate_quota(1000)
+        self.assertEqual(4, quota)
+
+        quota = holdntrade.calculate_quota(10000)
+        self.assertEqual(11, quota)
+
+        quota = holdntrade.calculate_quota(100000)
+        self.assertEqual(20, quota)
+
+        holdntrade.CONF.change = 0.008
+
+        quota = holdntrade.calculate_quota(10)
+        self.assertEqual(2, quota)
+
+        quota = holdntrade.calculate_quota(1000)
+        self.assertEqual(5, quota)
+
+        quota = holdntrade.calculate_quota(10000)
+        self.assertEqual(12, quota)
+
+        quota = holdntrade.calculate_quota(100000)
+        self.assertEqual(20, quota)
+
+        holdntrade.CONF.change = 0.032
+
+        quota = holdntrade.calculate_quota(10)
+        self.assertEqual(7, quota)
+
+        quota = holdntrade.calculate_quota(1000)
+        self.assertEqual(10, quota)
+
+        quota = holdntrade.calculate_quota(10000)
+        self.assertEqual(17, quota)
+
+        quota = holdntrade.calculate_quota(100000)
+        self.assertEqual(20, quota)
+
 
     @patch('holdntrade.logging')
     @mock.patch.object(os, 'remove')
@@ -953,6 +983,7 @@ class HoldntradeTest(unittest.TestCase):
         self.assertEqual('USD', conf.quote)
         self.assertEqual(0.0025, conf.order_crypto_min)
         self.assertEqual(0.005, conf.change)
+        self.assertTrue(conf.auto_quota)
         self.assertEqual(5, conf.quota)
         self.assertEqual(30, conf.spread_factor)
         self.assertTrue(conf.auto_leverage)
@@ -973,6 +1004,7 @@ class HoldntradeTest(unittest.TestCase):
         conf.pair = 'BTC/USD'
         conf.symbol = 'XBTUSD'
         conf.change = 0.005
+        conf.auto_quota = False
         conf.quota = 4
         conf.spread_factor = 2
         conf.order_crypto_min = 0.0025

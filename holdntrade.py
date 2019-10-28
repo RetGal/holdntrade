@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.13.44"
+            self.bot_version = "1.14.0"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -66,6 +66,7 @@ class ExchangeConfig:
             self.order_crypto_min = float(props['order_crypto_min'].strip('"'))
             self.satoshi_factor = 0.00000001
             self.change = abs(float(props['change'].strip('"')))
+            self.auto_quota = bool(props['auto_quota'].strip('"').lower() == 'true')
             self.quota = abs(int(props['quota'].strip('"')))
             if self.quota < 1:
                 self.quota = 1
@@ -291,10 +292,11 @@ def cancel_current_buy_order():
 def create_first_sell_order():
     global SELL_PRICE
 
-    SELL_PRICE = round(get_current_price() * (1 + CONF.change))
     position_size = get_position_balance()
-    LOG.info("Creating first sell order (%s / %s)", position_size, CONF.quota)
-    create_sell_order(round(position_size / CONF.quota))
+    quota = calculate_quota() if CONF.auto_quota else CONF.quota
+    LOG.info("Creating first sell order (%s / %s)", position_size, quota)
+    SELL_PRICE = round(get_current_price() * (1 + CONF.change))
+    create_sell_order(round(position_size / quota))
 
 
 def create_first_buy_order():
@@ -363,7 +365,8 @@ def create_divided_sell_order():
 
     try:
         available = get_position_balance()
-        amount = round(available / CONF.quota)
+        quota = calculate_quota() if CONF.auto_quota else CONF.quota
+        amount = round(available / quota)
 
         if not is_order_below_limit(amount, SELL_PRICE):
             if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
@@ -516,8 +519,9 @@ def calculate_buy_order_amount(price: float = None):
     wallet_available = get_balance()['free']
     if price is None:
         price = get_current_price()
-    LOG.info("Calculating buy order amount (%s / %s * %s)", wallet_available, CONF.quota, price)
-    return round(wallet_available / CONF.quota * price) if price is not None else 0
+    quota = calculate_quota(price) if CONF.auto_quota else CONF.quota
+    LOG.info("Calculating buy order amount (%s / %s * %s)", wallet_available, quota, price)
+    return round(wallet_available / quota * price) if price is not None else 0
 
 
 def create_market_sell_order(amount_crypto: float):
@@ -539,7 +543,8 @@ def create_market_sell_order(amount_crypto: float):
             if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
                 new_order = EXCHANGE.create_market_sell_order(CONF.pair, amount_fiat)
             elif CONF.exchange == 'kraken':
-                new_order = EXCHANGE.create_market_sell_order(CONF.pair, amount_crypto, {'leverage': CONF.leverage_default})
+                new_order = EXCHANGE.create_market_sell_order(CONF.pair, amount_crypto,
+                                                              {'leverage': CONF.leverage_default})
             elif CONF.exchange == 'liquid':
                 new_order = EXCHANGE.create_market_sell_order(CONF.pair, amount_fiat,
                                                               {'leverage_level': CONF.leverage_default})
@@ -1302,6 +1307,7 @@ def create_mail_content():
 def create_report_part_settings():
     return {'mail': ["Rate change: {:>22.1f}%".format(CONF.change * 100),
                      "Quota: {:>28}".format('1/' + str(CONF.quota)),
+                     "Auto quota: {:>23}".format(str('Y' if CONF.auto_quota is True else 'N')),
                      "Spread factor: {:>20}".format(str(CONF.spread_factor)),
                      "Leverage default: {:>17}x".format(str(CONF.leverage_default)),
                      "Auto leverage: {:>20}".format(str('Y' if CONF.auto_leverage is True else 'N')),
@@ -1314,6 +1320,7 @@ def create_report_part_settings():
                      "Mayer multiple stop buy: {:>10}".format(str(CONF.mm_stop_buy))],
             'csv': ["Rate change:; {:.1f}%".format(float(CONF.change * 100)),
                     "Quota:; {:.3f}".format(1 / CONF.quota),
+                    "Auto quota:; {}".format(str('Y' if CONF.auto_quota is True else 'N')),
                     "Spread factor:; {}".format(str(CONF.spread_factor)),
                     "Leverage default:; {}".format(str(CONF.leverage_default)),
                     "Auto leverage:; {}".format(str('Y' if CONF.auto_leverage is True else 'N')),
@@ -1753,6 +1760,14 @@ def set_leverage(new_leverage: float):
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
         set_leverage(new_leverage)
+
+
+def calculate_quota(price: float = None):
+    balance = get_wallet_balance()
+    if price is None:
+        price = get_current_price()
+    quota = round((math.sqrt(balance * price) / 15) * 0.8 + (CONF.change * 200))
+    return 2 if quota < 2 else 20 if quota > 20 else quota
 
 
 def deactivate_bot():
