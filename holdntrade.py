@@ -517,9 +517,9 @@ def calculate_buy_order_amount(price: float = None):
     :return amount to be bought in fiat
     """
     wallet_available = get_balance()['free']
-    quota = calculate_quota() if CONF.auto_quota else CONF.quota
     if price is None:
         price = get_current_price()
+    quota = calculate_quota(price) if CONF.auto_quota else CONF.quota
     LOG.info("Calculating buy order amount (%s / %s * %s)", wallet_available, quota, price)
     return round(wallet_available / quota * price) if price is not None else 0
 
@@ -1284,8 +1284,9 @@ def create_mail_content():
     Fetches and formats the data required for the daily report email
     :return dict: text: str, csv: str
     """
-    performance_part = create_report_part_performance()
-    advice_part = create_report_part_advice()
+    price = get_current_price()
+    performance_part = create_report_part_performance(price)
+    advice_part = create_report_part_advice(price)
     settings_part = create_report_part_settings()
     general_part = create_mail_part_general()
 
@@ -1345,7 +1346,7 @@ def create_mail_part_general():
     return general
 
 
-def create_report_part_advice():
+def create_report_part_advice(price: float):
     moving_average = read_moving_average()
     if moving_average is not None:
         padding = 6 + len(moving_average)
@@ -1355,11 +1356,11 @@ def create_report_part_advice():
         part = {'mail': ["Moving average 144d/21d: {:>10}".format('n/a')],
                 'csv': ["Moving average 144d/21d:; {}".format('n/a')]}
     append_mayer(part)
-    append_suggested_quota(part)
+    append_suggested_quota(part, price)
     return part
 
 
-def create_report_part_performance():
+def create_report_part_performance(price: float):
     part = {'mail': [], 'csv': []}
     margin_balance = get_margin_balance()
     net_deposits = get_net_deposits()
@@ -1369,7 +1370,6 @@ def create_report_part_performance():
     wallet_balance = get_wallet_balance()
     sleep_for(0, 1)
     oos = get_open_orders()
-    price = get_current_price()
     # all_sold_balance = calculate_all_sold_balance(poi, oos.sell_orders, wallet_balance, margin_balance['total'], net_deposits)
     append_balances(part, margin_balance, poi, wallet_balance, price, None)
     append_orders(part, oos, price)
@@ -1675,8 +1675,8 @@ def append_mayer(part: dict):
         part['csv'].append(text.replace('  ', '').replace(':', ':;'))
 
 
-def append_suggested_quota(part: dict):
-    quota = "1/{}".format(calculate_quota())
+def append_suggested_quota(part: dict, price: float):
+    quota = "1/{}".format(calculate_quota(price))
     part['mail'].append("Suggsted quota: {:>19}".format(quota))
     part['csv'].append("Suggsted quota:; {}".format(quota))
 
@@ -1769,9 +1769,11 @@ def set_leverage(new_leverage: float):
         set_leverage(new_leverage)
 
 
-def calculate_quota():
+def calculate_quota(price: float = None):
     margin_balance = get_margin_balance()['free']
-    quota = round((math.sqrt(margin_balance) / 15) * 0.8 + (CONF.change * 200))
+    if price is None:
+        price = get_current_price()
+    quota = round((math.sqrt(margin_balance * price) / 15) * 0.8 + (CONF.change * 200))
     return 2 if quota < 2 else 20 if quota > 20 else quota
 
 

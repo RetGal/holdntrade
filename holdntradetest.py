@@ -898,51 +898,53 @@ class HoldntradeTest(unittest.TestCase):
         self.assertEqual(3, len(holdntrade.SELL_ORDERS))
 
     @patch('holdntrade.get_margin_balance')
-    def test_calculate_quota(self, mock_get_margin_balance):
+    @patch('holdntrade.get_current_price')
+    def test_calculate_quota(self, mock_get_current_price, mock_get_margin_balance):
         holdntrade.CONF = self.create_default_conf()
         holdntrade.CONF.auto_quota = True
 
         holdntrade.CONF.change = 0.002
-        balances = [{'free': 200}, {'free': 4000}, {'free': 40000}, {'free': 100000}, {'free': 1000000}]
+        balances = [{'free': 0.02}, {'free': 0.4}, {'free': 4}, {'free': 10}, {'free': 100}]
         mock_get_margin_balance.side_effect = balances
 
-        quota = holdntrade.calculate_quota()
+        quota = holdntrade.calculate_quota(10000)
         self.assertEqual(2, quota)
 
-        quota = holdntrade.calculate_quota()
+        quota = holdntrade.calculate_quota(10000)
         self.assertEqual(4, quota)
 
-        quota = holdntrade.calculate_quota()
+        quota = holdntrade.calculate_quota(10000)
         self.assertEqual(11, quota)
 
-        quota = holdntrade.calculate_quota()
+        quota = holdntrade.calculate_quota(10000)
         self.assertEqual(17, quota)
 
-        quota = holdntrade.calculate_quota()
+        quota = holdntrade.calculate_quota(10000)
         self.assertEqual(20, quota)
 
         holdntrade.CONF.change = 0.008
-        balances = [{'free': 200}, {'free': 4000}, {'free': 40000}, {'free': 100000}, {'free': 1000000}]
+        balances = [{'free': 0.005}, {'free': 1}, {'free': 10}, {'free': 25}, {'free': 250}]
         mock_get_margin_balance.side_effect = balances
 
-        quota = holdntrade.calculate_quota()
+        quota = holdntrade.calculate_quota(4000)
         self.assertEqual(2, quota)
 
-        quota = holdntrade.calculate_quota()
+        quota = holdntrade.calculate_quota(4000)
         self.assertEqual(5, quota)
 
-        quota = holdntrade.calculate_quota()
+        quota = holdntrade.calculate_quota(4000)
         self.assertEqual(12, quota)
 
-        quota = holdntrade.calculate_quota()
+        quota = holdntrade.calculate_quota(4000)
         self.assertEqual(18, quota)
 
-        quota = holdntrade.calculate_quota()
+        quota = holdntrade.calculate_quota(4000)
         self.assertEqual(20, quota)
 
         holdntrade.CONF.change = 0.032
-        balances = [{'free': 200}, {'free': 4000}, {'free': 40000}, {'free': 100000}, {'free': 1000000}]
+        balances = [{'free': 0.01}, {'free': 0.2}, {'free': 2}, {'free': 5}, {'free': 50}]
         mock_get_margin_balance.side_effect = balances
+        mock_get_current_price.return_value = 20000
 
         quota = holdntrade.calculate_quota()
         self.assertEqual(7, quota)
