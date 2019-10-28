@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.0"
+            self.bot_version = "1.14.1"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1284,8 +1284,9 @@ def create_mail_content():
     Fetches and formats the data required for the daily report email
     :return dict: text: str, csv: str
     """
-    performance_part = create_report_part_performance()
-    advice_part = create_report_part_advice()
+    price = get_current_price()
+    performance_part = create_report_part_performance(price)
+    advice_part = create_report_part_advice(price)
     settings_part = create_report_part_settings()
     general_part = create_mail_part_general()
 
@@ -1345,7 +1346,7 @@ def create_mail_part_general():
     return general
 
 
-def create_report_part_advice():
+def create_report_part_advice(price: float):
     moving_average = read_moving_average()
     if moving_average is not None:
         padding = 6 + len(moving_average)
@@ -1355,10 +1356,11 @@ def create_report_part_advice():
         part = {'mail': ["Moving average 144d/21d: {:>10}".format('n/a')],
                 'csv': ["Moving average 144d/21d:; {}".format('n/a')]}
     append_mayer(part)
+    append_suggested_quota(part, price)
     return part
 
 
-def create_report_part_performance():
+def create_report_part_performance(price: float):
     part = {'mail': [], 'csv': []}
     margin_balance = get_margin_balance()
     net_deposits = get_net_deposits()
@@ -1369,7 +1371,6 @@ def create_report_part_performance():
     sleep_for(0, 1)
     oos = get_open_orders()
     # all_sold_balance = calculate_all_sold_balance(poi, oos.sell_orders, wallet_balance, margin_balance['total'], net_deposits)
-    price = get_current_price()
     append_balances(part, margin_balance, poi, wallet_balance, price, None)
     append_orders(part, oos, price)
     append_interest_rate(part)
@@ -1672,6 +1673,12 @@ def append_mayer(part: dict):
     if text is not None:
         part['mail'].append(text)
         part['csv'].append(text.replace('  ', '').replace(':', ':;'))
+
+
+def append_suggested_quota(part: dict, price: float):
+    quota = "1/{}".format(calculate_quota(price))
+    part['mail'].append("Suggsted quota: {:>19}".format(quota))
+    part['csv'].append("Suggsted quota:; {}".format(quota))
 
 
 def boost_leverage():
