@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.1"
+            self.bot_version = "1.14.2"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -97,6 +97,8 @@ class OpenOrdersSummary:
     """
     Creates and holds an open orders summary
     """
+    __slots__ = 'orders', 'sell_orders', 'buy_orders', 'total_sell_order_value', 'total_buy_order_value'
+
     def __init__(self, open_orders):
         self.orders = []
         self.sell_orders = []
@@ -130,6 +132,8 @@ class Order:
     """
     Creates and holds the relevant data of an order
     """
+    __slots__ = 'id', 'price', 'amount', 'side', 'datetime'
+
     def __init__(self, order):
         self.id = order['id']
         self.price = order['price']
@@ -613,7 +617,7 @@ def get_margin_leverage():
         if CONF.exchange == 'liquid':
             # TODO poi = get_position_info()
             LOG.error("get_margin_leverage() not yet implemented for %s", CONF.exchange)
-        return
+        return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
@@ -1215,7 +1219,7 @@ def connect_to_exchange():
         # 'verbose': True,
     })
 
-    #pprint(dir(exchange))
+    # pprint(dir(exchange))
 
     if hasattr(CONF, 'test') & CONF.test:
         if 'test' in exchange.urls:
@@ -1677,8 +1681,8 @@ def append_mayer(part: dict):
 
 def append_suggested_quota(part: dict, price: float):
     quota = "1/{}".format(calculate_quota(price))
-    part['mail'].append("Suggsted quota: {:>19}".format(quota))
-    part['csv'].append("Suggsted quota:; {}".format(quota))
+    part['mail'].append("Suggested quota: {:>18}".format(quota))
+    part['csv'].append("Suggested quota:; {}".format(quota))
 
 
 def boost_leverage():
