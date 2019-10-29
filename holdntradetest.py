@@ -904,8 +904,11 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.CONF.auto_quota = True
 
         holdntrade.CONF.change = 0.002
-        balances = [{'free': 0.02}, {'free': 0.4}, {'free': 4}, {'free': 10}, {'free': 100}]
+        balances = [{'free': -0.04}, {'free': 0.02}, {'free': 0.4}, {'free': 4}, {'free': 10}, {'free': 100}]
         mock_get_margin_balance.side_effect = balances
+
+        quota = holdntrade.calculate_quota(10000)
+        self.assertEqual(2, quota)
 
         quota = holdntrade.calculate_quota(10000)
         self.assertEqual(2, quota)

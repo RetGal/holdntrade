@@ -1775,6 +1775,8 @@ def set_leverage(new_leverage: float):
 
 def calculate_quota(price: float = None):
     margin_balance = get_margin_balance()['free']
+    if margin_balance < 0:
+        return 2
     if price is None:
         price = get_current_price()
     quota = round((math.sqrt(margin_balance * price) / 15) * 0.8 + (CONF.change * 200))
