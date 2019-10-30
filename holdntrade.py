@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.3"
+            self.bot_version = "1.14.4"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1790,7 +1790,7 @@ def set_leverage(new_leverage: float):
 
 
 def calculate_quota(price: float = None):
-    margin_balance = get_margin_balance()['free']
+    margin_balance = get_margin_balance()['total']
     if margin_balance < 0:
         return 2
     if price is None:
