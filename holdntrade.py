@@ -521,6 +521,8 @@ def calculate_buy_order_amount(price: float = None):
     :return amount to be bought in fiat
     """
     wallet_available = get_balance()['free']
+    if wallet_available < 0:
+        return 0
     if price is None:
         price = get_current_price()
     quota = calculate_quota(price) if CONF.auto_quota else CONF.quota
