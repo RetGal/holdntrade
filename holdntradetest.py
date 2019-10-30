@@ -944,6 +944,10 @@ class HoldntradeTest(unittest.TestCase):
         quota = holdntrade.calculate_quota(4000)
         self.assertEqual(20, quota)
 
+        mock_get_margin_balance.side_effect = [{'free': 0.5932}]
+        quota = holdntrade.calculate_quota(9139)
+        self.assertEqual(6, quota)
+
         holdntrade.CONF.change = 0.032
         balances = [{'free': 0.01}, {'free': 0.2}, {'free': 2}, {'free': 5}, {'free': 50}]
         mock_get_margin_balance.side_effect = balances
@@ -963,7 +967,6 @@ class HoldntradeTest(unittest.TestCase):
 
         quota = holdntrade.calculate_quota()
         self.assertEqual(20, quota)
-
 
     @patch('holdntrade.logging')
     @mock.patch.object(os, 'remove')

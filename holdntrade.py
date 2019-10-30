@@ -1681,8 +1681,12 @@ def append_mayer(part: dict):
 
 def append_suggested_quota(part: dict, price: float):
     quota = "1/{}".format(calculate_quota(price))
-    part['mail'].append("Suggested quota: {:>18}".format(quota))
-    part['csv'].append("Suggested quota:; {}".format(quota))
+    if CONF.auto_quota:
+        part['mail'].append("Current quota: {:>20}".format(quota))
+        part['csv'].append("Current quota:; {}".format(quota))
+    else:
+        part['mail'].append("Suggested quota: {:>18}".format(quota))
+        part['csv'].append("Suggested quota:; {}".format(quota))
 
 
 def boost_leverage():
