@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.2"
+            self.bot_version = "1.14.3"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1549,17 +1549,29 @@ def calculate_price_offset(order_price: float, market_price: float):
 
 def write_csv(csv: str, filename_csv: str):
     if not is_already_written(filename_csv):
-        write_mode = 'a' if int(datetime.date.today().strftime("%j")) != 1 else 'w'
+        if int(datetime.date.today().strftime("%j")) == 1:
+            last_line = read_last_line(filename_csv)
+            if last_line is not None:
+                csv = last_line + csv
+            write_mode = 'w'
+        else:
+            write_mode = 'a'
         with open(filename_csv, write_mode) as file:
             file.write(csv)
 
 
 def is_already_written(filename_csv: str):
+    last_line = read_last_line(filename_csv)
+    if last_line is not None:
+        return str(datetime.date.today().isoformat()) in last_line
+    return False
+
+
+def read_last_line(filename_csv: str):
     if os.path.isfile(filename_csv):
         with open(filename_csv, 'r') as file:
-            last_line = list(file)[-1]
-            return str(datetime.date.today().isoformat()) in last_line
-    return False
+            return list(file)[-1]
+    return None
 
 
 def send_mail(subject: str, text: str, attachment: str = None):

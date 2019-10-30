@@ -94,6 +94,10 @@ class HoldntradeTest(unittest.TestCase):
         self.assertGreater(diff, 1, 'Should have slept for more than 1 second, but did not')
         self.assertLessEqual(diff, 3, 'Should have slept for less than 3 seconds, but did not')
 
+    def test_read_last_line(self):
+        last_line = holdntrade.read_last_line('test.txt')
+        self.assertEqual('mail_server = "mail.example.com"\n', last_line)
+
     def test_is_order_below_limit_true(self):
         price = 8000
         amount = 10
