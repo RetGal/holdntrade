@@ -1448,11 +1448,11 @@ def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance:
     part['csv'].append("Available balance {}:;{:.4f}".format(CONF.base, margin_balance['free']))
     append_price_change(part, today, price)
     if poi is not None and 'liquidationPrice' in poi:
-        part['mail'].append("Liquidation price: {:>16.1f}".format(poi['liquidationPrice']))
-        part['csv'].append("Liquidation price:;{:.1f}".format(poi['liquidationPrice']))
+        part['mail'].append("Liquidation price {}: {:>12.1f}".format(CONF.quote, poi['liquidationPrice']))
+        part['csv'].append("Liquidation price {}:;{:.1f}".format(CONF.quote, poi['liquidationPrice']))
     else:
-        part['mail'].append("Liquidation price: {:>16}".format('n/a'))
-        part['csv'].append("Liquidation price:;{}".format('n/a'))
+        part['mail'].append("Liquidation price {}: {:>12}".format('n/a'))
+        part['csv'].append("Liquidation price {}:;{}".format('n/a'))
     used_margin = calculate_used_margin_percentage(margin_balance)
     part['mail'].append("Used margin: {:>22.2f}%".format(used_margin))
     part['csv'].append("Used margin:;{:.2f}%".format(used_margin))
