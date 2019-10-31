@@ -13,6 +13,7 @@ do
     if [ $? -eq 1 ]; then
       tmux new -d -s $param
     fi
+    sleep 1
     tmux send-keys -t "$param" C-z "$holdntradeDir/holdntrade.py $param -ac" C-m
   else
     echo $param is running
