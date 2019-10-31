@@ -223,9 +223,9 @@ def buy_executed():
             BUY_ORDERS.remove(CURR_BUY_ORDER)
         if not INITIAL_LEVERAGE_SET:
             INITIAL_LEVERAGE_SET = set_initial_leverage()
-        mm = fetch_mayer()
-        adjust_leverage(mm)
-        HIBERNATE = shall_hibernate(mm)
+        mamu = fetch_mayer()
+        adjust_leverage(mamu)
+        HIBERNATE = shall_hibernate(mamu)
         if not HIBERNATE:
             create_buy_order(price, calculate_buy_order_amount())
             create_sell_order(last_buy_amount)
@@ -252,9 +252,9 @@ def sell_executed():
             if order in SELL_ORDERS:
                 SELL_ORDERS.remove(order)
             LOG.info('Sell executed %s', str(order))
-            mm = fetch_mayer()
-            adjust_leverage(mm)
-            HIBERNATE = shall_hibernate(mm)
+            mamu = fetch_mayer()
+            adjust_leverage(mamu)
+            HIBERNATE = shall_hibernate(mamu)
             if not HIBERNATE:
                 if not SELL_ORDERS:
                     create_divided_sell_order()
@@ -306,9 +306,9 @@ def create_first_sell_order():
 def create_first_buy_order():
     global HIBERNATE
 
-    mm = fetch_mayer()
-    adjust_leverage(mm)
-    HIBERNATE = shall_hibernate(mm)
+    mamu = fetch_mayer()
+    adjust_leverage(mamu)
+    HIBERNATE = shall_hibernate(mamu)
     if not HIBERNATE:
         price = get_current_price()
         create_buy_order(price, calculate_buy_order_amount(price))
@@ -510,8 +510,8 @@ def delay_buy_order(crypto_price: float, price: float):
         if CONF.auto_leverage and CONF.auto_leverage_escape:
             boost_leverage()
         elif CONF.auto_leverage:
-            mm = fetch_mayer()
-            adjust_leverage(mm)
+            mamu = fetch_mayer()
+            adjust_leverage(mamu)
     create_buy_order(update_price(crypto_price, price), calculate_buy_order_amount())
 
 
