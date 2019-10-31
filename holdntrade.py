@@ -1357,7 +1357,7 @@ def create_report_part_advice(price: float):
     if moving_average is not None:
         padding = 6 + len(moving_average)
         part = {'mail': ["Moving average 144d/21d: {:>{}}".format(moving_average, padding)],
-                'csv': ["Moving average 144d/21d:;{}".format(moving_average.replace(' =', ';').replace(' (', ';('))]}
+                'csv': ["Moving average 144d/21d:;{}".format(moving_average.replace(' = ', ';').replace(' (', ';('))]}
     else:
         part = {'mail': ["Moving average 144d/21d: {:>10}".format('n/a')],
                 'csv': ["Moving average 144d/21d:;n/a;n/a;n/a"]}
@@ -1683,7 +1683,7 @@ def append_mayer(part: dict):
     text = print_mayer()
     if text is not None:
         part['mail'].append(text)
-        part['csv'].append(text.replace('  ', '').replace('(', '').replace(')', '').replace(':', ':;').replace('=', ';'))
+        part['csv'].append(text.replace('  ', '').replace('(', '').replace(')', '').replace(':', ':;').replace(' = ', ';'))
     else:
         part['mail'].append("Mayer multiple: {:>19}".format('n/a'))
         part['csv'].append("Mayer multiple:;n/a;n/a")
