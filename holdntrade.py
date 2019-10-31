@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.5"
+            self.bot_version = "1.14.6"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1326,7 +1326,7 @@ def create_report_part_settings():
                      "Mayer multiple ceil: {:>14}".format(str(CONF.mm_ceil)),
                      "Mayer multiple stop buy: {:>10}".format(str(CONF.mm_stop_buy))],
             'csv': ["Rate change:;{:.1f}%".format(float(CONF.change * 100)),
-                    "Quota:;1/{}".format(str(CONF.quota)),
+                    "Quota:;'1/{}'".format(str(CONF.quota)),
                     "Auto quota:;{}".format(str('Y' if CONF.auto_quota is True else 'N')),
                     "Spread factor:;{}".format(str(CONF.spread_factor)),
                     "Leverage default:;{}".format(str(CONF.leverage_default)),
@@ -1693,10 +1693,10 @@ def append_suggested_quota(part: dict, price: float):
     quota = "1/{}".format(calculate_quota(price))
     if CONF.auto_quota:
         part['mail'].append("Current quota: {:>20}".format(quota))
-        part['csv'].append("Current quota:;{}".format(quota))
+        part['csv'].append("Current quota:;'{}'".format(quota))
     else:
         part['mail'].append("Suggested quota: {:>18}".format(quota))
-        part['csv'].append("Suggested quota:;{}".format(quota))
+        part['csv'].append("Suggested quota:;'{}'".format(quota))
 
 
 def boost_leverage():
