@@ -383,21 +383,6 @@ class HoldntradeTest(unittest.TestCase):
         mock_fetch_balance.assert_called()
         self.assertTrue(percentage == 80)
 
-    @patch('holdntrade.logging')
-    def test_calculate_all_sold_balance(self, mock_logging):
-        holdntrade.CONF = self.create_default_conf()
-        holdntrade.LOG = mock_logging
-        holdntrade.EXCHANGE = holdntrade.connect_to_exchange()
-        poi = {'homeNotional': 0.464}
-        orders = [holdntrade.Order({'side': 'sell', 'id': '1', 'price': 40000, 'amount': 4444, 'datetime': datetime.datetime.today().isoformat()})]
-        wallet_balance = 0.1995
-        margin_balance = 0.1166
-        net_deposits = 0.2
-
-        all_sold_balance = holdntrade.calculate_all_sold_balance(poi, orders, wallet_balance, margin_balance, net_deposits)
-
-        self.assertAlmostEqual(0.47, all_sold_balance, 2)
-
     def test_shall_hibernate_by_mm(self):
         holdntrade.CONF = self.create_default_conf()
         holdntrade.CONF.mm_stop_buy = 2.3

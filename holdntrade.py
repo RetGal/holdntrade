@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.4"
+            self.bot_version = "1.14.5"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1325,19 +1325,19 @@ def create_report_part_settings():
                      "Mayer multiple floor: {:>13}".format(str(CONF.mm_floor)),
                      "Mayer multiple ceil: {:>14}".format(str(CONF.mm_ceil)),
                      "Mayer multiple stop buy: {:>10}".format(str(CONF.mm_stop_buy))],
-            'csv': ["Rate change:; {:.1f}%".format(float(CONF.change * 100)),
-                    "Quota:; {:.3f}".format(1 / CONF.quota),
-                    "Auto quota:; {}".format(str('Y' if CONF.auto_quota is True else 'N')),
-                    "Spread factor:; {}".format(str(CONF.spread_factor)),
-                    "Leverage default:; {}".format(str(CONF.leverage_default)),
-                    "Auto leverage:; {}".format(str('Y' if CONF.auto_leverage is True else 'N')),
-                    "Auto leverage escape:; {}".format(str('Y' if CONF.auto_leverage_escape is True else 'N')),
-                    "Leverage low:; {}".format(str(CONF.leverage_low)),
-                    "Leverage high:; {}".format(str(CONF.leverage_high)),
-                    "Leverage escape:; {}".format(str(CONF.leverage_escape)),
-                    "Mayer multiple floor:; {}".format(str(CONF.mm_floor)),
-                    "Mayer multiple ceil:; {}".format(str(CONF.mm_ceil)),
-                    "Mayer multiple stop buy:; {}".format(str(CONF.mm_stop_buy))]}
+            'csv': ["Rate change:;{:.1f}%".format(float(CONF.change * 100)),
+                    "Quota:;1/{}".format(str(CONF.quota)),
+                    "Auto quota:;{}".format(str('Y' if CONF.auto_quota is True else 'N')),
+                    "Spread factor:;{}".format(str(CONF.spread_factor)),
+                    "Leverage default:;{}".format(str(CONF.leverage_default)),
+                    "Auto leverage:;{}".format(str('Y' if CONF.auto_leverage is True else 'N')),
+                    "Auto leverage escape:;{}".format(str('Y' if CONF.auto_leverage_escape is True else 'N')),
+                    "Leverage low:;{}".format(str(CONF.leverage_low)),
+                    "Leverage high:;{}".format(str(CONF.leverage_high)),
+                    "Leverage escape:;{}".format(str(CONF.leverage_escape)),
+                    "Mayer multiple floor:;{}".format(str(CONF.mm_floor)),
+                    "Mayer multiple ceil:;{}".format(str(CONF.mm_ceil)),
+                    "Mayer multiple stop buy:;{}".format(str(CONF.mm_stop_buy))]}
 
 
 def create_mail_part_general():
@@ -1357,10 +1357,10 @@ def create_report_part_advice(price: float):
     if moving_average is not None:
         padding = 6 + len(moving_average)
         part = {'mail': ["Moving average 144d/21d: {:>{}}".format(moving_average, padding)],
-                'csv': ["Moving average 144d/21d:; {}".format(moving_average)]}
+                'csv': ["Moving average 144d/21d:;{}".format(moving_average.replace(' =', ';').replace(' (', ';('))]}
     else:
         part = {'mail': ["Moving average 144d/21d: {:>10}".format('n/a')],
-                'csv': ["Moving average 144d/21d:; {}".format('n/a')]}
+                'csv': ["Moving average 144d/21d:;n/a;n/a;n/a"]}
     append_mayer(part)
     append_suggested_quota(part, price)
     return part
@@ -1376,8 +1376,7 @@ def create_report_part_performance(price: float):
     wallet_balance = get_wallet_balance()
     sleep_for(0, 1)
     oos = get_open_orders()
-    # all_sold_balance = calculate_all_sold_balance(poi, oos.sell_orders, wallet_balance, margin_balance['total'], net_deposits)
-    append_balances(part, margin_balance, poi, wallet_balance, price, None)
+    append_balances(part, margin_balance, poi, wallet_balance, price)
     append_orders(part, oos, price)
     append_interest_rate(part)
     return part
@@ -1387,15 +1386,15 @@ def append_orders(part: dict, oos: OpenOrdersSummary, price: float):
     """
     Appends order statistics
     """
-    part['mail'].append("Value of buy orders " + CONF.quote + ": {:>10}".format(int(oos.total_buy_order_value)))
-    part['mail'].append("Value of sell orders " + CONF.quote + ": {:>9}".format(int(oos.total_sell_order_value)))
+    part['mail'].append("Value of buy orders {}: {:>10}".format(CONF.quote, int(oos.total_buy_order_value)))
+    part['mail'].append("Value of sell orders {}: {:>9}".format(CONF.quote, int(oos.total_sell_order_value)))
     part['mail'].append("No. of buy orders: {:>16}".format(len(oos.buy_orders)))
     part['mail'].append("No. of sell orders: {:>15}".format(len(oos.sell_orders)))
     append_order_offset(part, oos, price)
-    part['csv'].append("Value of buy orders " + CONF.quote + ":; {}".format(int(oos.total_buy_order_value)))
-    part['csv'].append("Value of sell orders " + CONF.quote + ":; {}".format(int(oos.total_sell_order_value)))
-    part['csv'].append("No. of buy orders:; {}".format(len(oos.buy_orders)))
-    part['csv'].append("No. of sell orders:; {}".format(len(oos.sell_orders)))
+    part['csv'].append("Value of buy orders {}:;{}".format(CONF.quote, int(oos.total_buy_order_value)))
+    part['csv'].append("Value of sell orders {}:;{}".format(CONF.quote, int(oos.total_sell_order_value)))
+    part['csv'].append("No. of buy orders:;{}".format(len(oos.buy_orders)))
+    part['csv'].append("No. of sell orders:;{}".format(len(oos.sell_orders)))
 
 
 def append_order_offset(part: dict, oos: OpenOrdersSummary, price: float):
@@ -1403,77 +1402,74 @@ def append_order_offset(part: dict, oos: OpenOrdersSummary, price: float):
         0].price if oos.buy_orders else None
     if highest_buy is not None:
         buy_offset = calculate_price_offset(highest_buy, price)
-        part['mail'].append(
-            "Highest buy order {}: {:>12} ({}% below actual {} price)".format(CONF.quote, highest_buy, buy_offset,
-                                                                              CONF.base))
-        part['csv'].append("Highest buy order {}:; {}".format(CONF.quote, highest_buy))
+        part['mail'].append("Highest buy order {}: {:>12} ({}% below actual {} price)".format(CONF.quote,
+                                                                                              highest_buy,
+                                                                                              buy_offset,
+                                                                                              CONF.base))
+        part['csv'].append("Highest buy order {}:;{}".format(CONF.quote, highest_buy))
     else:
         part['mail'].append("Highest buy order {}: {:>12}".format(CONF.quote, 'n/a'))
-        part['csv'].append("Highest buy order {}:; {}".format(CONF.quote, 'n/a'))
+        part['csv'].append("Highest buy order {}:;{}".format(CONF.quote, 'n/a'))
 
     lowest_sell = sorted(oos.sell_orders, key=lambda order: order.price)[0].price if oos.sell_orders else None
     if lowest_sell is not None:
         sell_offset = calculate_price_offset(lowest_sell, price)
-        part['mail'].append(
-            "Lowest sell order {}: {:>12} ({}% above actual {} price)".format(CONF.quote, lowest_sell, sell_offset,
-                                                                              CONF.base))
-        part['csv'].append("Lowest sell order {}:; {}".format(CONF.quote, lowest_sell))
+        part['mail'].append("Lowest sell order {}: {:>12} ({}% above actual {} price)".format(CONF.quote,
+                                                                                              lowest_sell,
+                                                                                              sell_offset,
+                                                                                              CONF.base))
+        part['csv'].append("Lowest sell order {}:;{}".format(CONF.quote, lowest_sell))
     else:
         part['mail'].append("Lowest sell order {}: {:>12}".format(CONF.quote, 'n/a'))
-        part['csv'].append("Lowest sell order {}:; {}".format(CONF.quote, 'n/a'))
+        part['csv'].append("Lowest sell order {}:;{}".format(CONF.quote, 'n/a'))
 
 
 def append_interest_rate(part: dict):
     interest_rate = get_interest_rate()
     if interest_rate is not None:
         part['mail'].append("Interest rate: {:>+20.2f}%".format(interest_rate))
-        part['csv'].append("Interest rate:; {:+2f}%".format(interest_rate))
+        part['csv'].append("Interest rate:;{:+.2f}%".format(interest_rate))
     else:
         part['mail'].append("Interest rate: {:>20}".format('n/a'))
-        part['csv'].append("Interest rate:; {}".format('n/a'))
+        part['csv'].append("Interest rate:;{}".format('n/a'))
 
 
-def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance: float, price: float = None,
-                    all_sold_balance: float = None):
+def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance: float, price: float = None):
     """
     Appends liquidation price, wallet balance, margin balance (including stats), used margin and leverage information
     """
-    part['mail'].append("Wallet balance " + CONF.base + ": {:>18.4f}".format(wallet_balance))
-    part['csv'].append("Wallet balance " + CONF.base + ":; {:.4f}".format(wallet_balance))
+    part['mail'].append("Wallet balance {}: {:>18.4f}".format(CONF.base, wallet_balance))
+    part['csv'].append("Wallet balance {}:;{:.4f}".format(CONF.base, wallet_balance))
     if price is None:
         price = get_current_price()
     today = calculate_daily_statistics(margin_balance['total'], price)
     append_margin_change(part, today, CONF.base)
-    if all_sold_balance is not None:
-        part['mail'].append("All sold balance " + CONF.base + ": {:>16.4f}".format(all_sold_balance))
-        part['csv'].append("All sold balance " + CONF.base + ":; {:.4f}".format(all_sold_balance))
-    else:
-        part['mail'].append("All sold balance: {:>17}".format('n/a'))
-        part['csv'].append("All sold balance:; {}".format('n/a'))
+    part['mail'].append("Available balance {}: {:>15.4f}".format(CONF.base, margin_balance['free']))
+    part['csv'].append("Available balance {}:;{:.4f}".format(CONF.base, margin_balance['free']))
     append_price_change(part, today, price)
     if poi is not None and 'liquidationPrice' in poi:
         part['mail'].append("Liquidation price: {:>16.1f}".format(poi['liquidationPrice']))
-        part['csv'].append("Liquidation price:; {:.1f}".format(poi['liquidationPrice']))
+        part['csv'].append("Liquidation price:;{:.1f}".format(poi['liquidationPrice']))
     else:
         part['mail'].append("Liquidation price: {:>16}".format('n/a'))
-        part['csv'].append("Liquidation price:; {}".format('n/a'))
+        part['csv'].append("Liquidation price:;{}".format('n/a'))
     used_margin = calculate_used_margin_percentage(margin_balance)
     part['mail'].append("Used margin: {:>22.2f}%".format(used_margin))
-    part['csv'].append("Used margin:; {:.2f}%".format(used_margin))
+    part['csv'].append("Used margin:;{:.2f}%".format(used_margin))
     if CONF.exchange == 'kraken':
         actual_leverage = get_margin_leverage()
         part['mail'].append("Actual leverage: {:>18.2f}%".format(actual_leverage))
-        part['csv'].append("Actual leverage:; {:.2f}%".format(actual_leverage))
+        part['csv'].append("Actual leverage:;{:.2f}%".format(actual_leverage))
     elif CONF.exchange == 'liquid':
         part['mail'].append("Actual leverage: {:>18}".format('n/a'))
-        part['csv'].append("Actual leverage:; {}".format('n/a'))
+        part['csv'].append("Actual leverage:;{}".format('n/a'))
     else:
         actual_leverage = get_margin_leverage()
         part['mail'].append("Actual leverage: {:>18.2f}x".format(actual_leverage))
-        part['csv'].append("Actual leverage:; {:.2f}".format(actual_leverage))
+        part['csv'].append("Actual leverage:;{:.2f}".format(actual_leverage))
     used_balance = get_position_balance()
-    part['mail'].append("Position " + CONF.quote + ": {:>21}".format(used_balance))
-    part['csv'].append("Position " + CONF.quote + ":; {}".format(used_balance))
+    part['mail'].append("Position {}: {:>21}".format(CONF.quote, used_balance))
+    part['csv'].append("Position {}:;{}".format(CONF.quote, used_balance))
 
 
 def append_performance(part: dict, margin_balance: float, net_deposits: float):
@@ -1481,24 +1477,24 @@ def append_performance(part: dict, margin_balance: float, net_deposits: float):
     Calculates and appends the absolute and relative overall performance
     """
     if net_deposits is None:
-        part['mail'].append("Net deposits " + CONF.base + ": {:>17}".format('n/a'))
-        part['mail'].append("Overall performance in " + CONF.base + ": {:>7}".format('n/a'))
-        part['csv'].append("Net deposits " + CONF.base + ":; {}".format('n/a'))
-        part['csv'].append("Overall performance in " + CONF.base + ":; {}".format('n/a'))
+        part['mail'].append("Net deposits {}: {:>17}".format(CONF.base, 'n/a'))
+        part['mail'].append("Overall performance in {}: {:>7}".format(CONF.base, 'n/a'))
+        part['csv'].append("Net deposits {}:;{}".format(CONF.base, 'n/a'))
+        part['csv'].append("Overall performance in {}:;{}".format(CONF.base, 'n/a'))
     else:
-        part['mail'].append("Net deposits " + CONF.base + ": {:>20.4f}".format(net_deposits))
-        part['csv'].append("Net deposits " + CONF.base + ":; {:.4f}".format(net_deposits))
+        part['mail'].append("Net deposits {}: {:>20.4f}".format(CONF.base, net_deposits))
+        part['csv'].append("Net deposits {}:;{:.4f}".format(CONF.base, net_deposits))
         absolute_performance = margin_balance - net_deposits
         if net_deposits > 0:
             relative_performance = round(100 / (net_deposits / absolute_performance), 2)
             part['mail'].append(
                 "Overall performance in " + CONF.base + ": {:>+10.4f} ({:+.2f}%)".format(absolute_performance,
                                                                                          relative_performance))
-            part['csv'].append("Overall performance in " + CONF.base + ":; {:.4f}".format(absolute_performance))
+            part['csv'].append("Overall performance in " + CONF.base + ":;{:.4f}".format(absolute_performance))
         else:
             part['mail'].append(
-                "Overall performance in " + CONF.base + ": {:>+10.4f} (% n/a)".format(absolute_performance))
-            part['csv'].append("Overall performance in " + CONF.base + ":; {:.4f}".format(absolute_performance))
+                "Overall performance in {}: {:>+10.4f} (% n/a)".format(CONF.base, absolute_performance))
+            part['csv'].append("Overall performance in {}:;{:.4f}".format(CONF.base, absolute_performance))
 
 
 def append_margin_change(part: dict, today: dict, currency: str):
@@ -1515,14 +1511,18 @@ def append_margin_change(part: dict, today: dict, currency: str):
         m_bal += ")*"
     part['mail'].append(m_bal)
     formatter = .4 if currency == CONF.base else .2
-    part['csv'].append("Margin balance " + currency + ":; {:{}f}".format(today['mBal'], formatter))
+    if 'mBalChan24' in today:
+        part['csv'].append("Margin balance {}:;{:{}f};{:+.2f}%".format(currency, today['mBal'], formatter,
+                                                                       today['mBalChan24']))
+    else:
+        part['csv'].append("Margin balance {}:;{:{}f};% n/a".format(currency, today['mBal'], formatter))
 
 
 def append_price_change(part: dict, today: dict, price: float):
     """
     Appends price changes
     """
-    rate = CONF.base + " price " + CONF.quote + ": {:>20.1f}".format(price)
+    rate = "{} price {}: {:>20.1f}".format(CONF.base, CONF.quote, price)
     if 'priceChan24' in today:
         rate += "    ("
         rate += "{:+.2f}%".format(today['priceChan24'])
@@ -1530,17 +1530,10 @@ def append_price_change(part: dict, today: dict, price: float):
             rate += ", {:+.2f}%".format(today['priceChan48'])
         rate += ")*"
     part['mail'].append(rate)
-    part['csv'].append(CONF.base + " price " + CONF.quote + ":; {:.1f}".format(price))
-
-
-def calculate_all_sold_balance(poi: dict, sell_orders: [Order], wallet_balance: float, margin_balance: float,
-                               net_deposits: float):
-    if CONF.exchange == 'bitmex':
-        sells = calculate_avg_entry_price_and_total_quantity(sell_orders)
-        avg_sell_price = float(sells['avg'])
-        tot_sell_quantity = float(sells['qty'])
-        return ((float(poi['homeNotional']) - wallet_balance + margin_balance) * avg_sell_price - tot_sell_quantity) / avg_sell_price + net_deposits
-    return None
+    if 'priceChan24' in today:
+        part['csv'].append("{} price {}:;{:.1f};{:+.2f}%".format(CONF.base, CONF.quote, price, today['priceChan24']))
+    else:
+        part['csv'].append("{} price {}:;{:.1f};% n/a".format(CONF.base, CONF.quote, price))
 
 
 def calculate_price_offset(order_price: float, market_price: float):
@@ -1690,17 +1683,20 @@ def append_mayer(part: dict):
     text = print_mayer()
     if text is not None:
         part['mail'].append(text)
-        part['csv'].append(text.replace('  ', '').replace(':', ':;'))
+        part['csv'].append(text.replace('  ', '').replace('(', '').replace(')', '').replace(':', ':;').replace('=', ';'))
+    else:
+        part['mail'].append("Mayer multiple: {:>19}".format('n/a'))
+        part['csv'].append("Mayer multiple:;n/a;n/a")
 
 
 def append_suggested_quota(part: dict, price: float):
     quota = "1/{}".format(calculate_quota(price))
     if CONF.auto_quota:
         part['mail'].append("Current quota: {:>20}".format(quota))
-        part['csv'].append("Current quota:; {}".format(quota))
+        part['csv'].append("Current quota:;{}".format(quota))
     else:
         part['mail'].append("Suggested quota: {:>18}".format(quota))
-        part['csv'].append("Suggested quota:; {}".format(quota))
+        part['csv'].append("Suggested quota:;{}".format(quota))
 
 
 def boost_leverage():
