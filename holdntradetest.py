@@ -499,10 +499,11 @@ class HoldntradeTest(unittest.TestCase):
                   {'side': 'buy', 'id': '12345abcdg', 'price': 5000, 'amount': 20,
                    'datetime': datetime.datetime.today().isoformat()}]
 
-        avg_total = holdntrade.calculate_avg_entry_price_and_total_quantity(holdntrade.OpenOrdersSummary(orders).orders)
+        order_stats = holdntrade.calculate_order_stats(holdntrade.OpenOrdersSummary(orders).orders)
 
-        self.assertEqual(8750, avg_total['avg'])
-        self.assertEqual(40, avg_total['qty'])
+        self.assertEqual(8750, order_stats['avg'])
+        self.assertEqual(40, order_stats['qty'])
+        self.assertAlmostEqual(0.00567, order_stats['val'], 5)
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'cancel_order')
@@ -956,6 +957,19 @@ class HoldntradeTest(unittest.TestCase):
 
         quota = holdntrade.calculate_quota()
         self.assertEqual(20, quota)
+
+    @patch('holdntrade.logging')
+    def test_calculate_all_sold_balance(self, mock_logging):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.LOG = mock_logging
+        holdntrade.EXCHANGE = holdntrade.connect_to_exchange()
+        poi = {'markPrice': 9160.34}
+        orders = [holdntrade.Order({'side': 'sell', 'id': '1', 'price': 9441.5, 'amount': 262, 'datetime': datetime.datetime.today().isoformat()})]
+        margin_balance = 0.1158
+
+        all_sold_balance = holdntrade.calculate_all_sold_balance(poi, orders, margin_balance)
+
+        self.assertAlmostEqual(0.1167, all_sold_balance, 4)
 
     @patch('holdntrade.logging')
     @mock.patch.object(os, 'remove')

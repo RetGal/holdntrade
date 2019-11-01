@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.6"
+            self.bot_version = "1.14.8"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -922,18 +922,20 @@ def calculate_used_margin_percentage(bal=None):
     return float(100 - (bal['free'] / bal['total']) * 100)
 
 
-def calculate_avg_entry_price_and_total_quantity(open_orders: [Order]):
+def calculate_order_stats(open_orders: [Order]):
     """"
-    Calculates the average price and the quantity of the remaining amount of all open orders
+    Calculates the average price and the fiat/crypto quantity (value) of a list of open orders
     :param open_orders: [Order]
     """
-    total_amount = 0
+    total_amount_fiat = 0
+    total_amount_crypto = 0
     total_price = 0
     for order in open_orders:
-        total_amount += order.amount
+        total_amount_fiat += order.amount
+        total_amount_crypto += order.amount / order.price
         total_price += order.price * order.amount
-    if total_amount > 0:
-        return {'avg':  total_price / total_amount, 'qty': total_amount}
+    if total_amount_fiat > 0:
+        return {'avg':  total_price / total_amount_fiat, 'qty': total_amount_fiat, 'val': total_amount_crypto}
     return {'avg': 0, 'qty': 0}
 
 
@@ -1188,11 +1190,11 @@ def print_position_info(oos: OpenOrdersSummary):
             return
     elif CONF.exchange == 'kraken':
         LOG.info("Position {}: {:>13}".format(CONF.quote, get_position_balance()))
-        LOG.info("Entry price: {:>16.1f}".format(calculate_avg_entry_price_and_total_quantity(oos.orders)['avg']))
+        LOG.info("Entry price: {:>16.1f}".format(calculate_order_stats(oos.orders)['avg']))
         LOG.info("Market price: {:>15.1f}".format(get_current_price()))
     elif CONF.exchange == 'liquid':
         poi = get_position_info()
-        if float(poi['position']) > 0:
+        if poi is not None and float(poi['position']) > 0:
             LOG.info("Position {}: {:>13.2f}".format(CONF.base, float(poi['position'])))
         else:
             LOG.info("Available balance is {}: {:>3} ".format(CONF.base, get_balance()['free']))
@@ -1376,7 +1378,8 @@ def create_report_part_performance(price: float):
     wallet_balance = get_wallet_balance()
     sleep_for(0, 1)
     oos = get_open_orders()
-    append_balances(part, margin_balance, poi, wallet_balance, price)
+    all_sold_balance = calculate_all_sold_balance(poi, oos.sell_orders, margin_balance['total'])
+    append_balances(part, margin_balance, poi, wallet_balance, price, all_sold_balance)
     append_orders(part, oos, price)
     append_interest_rate(part)
     return part
@@ -1434,7 +1437,8 @@ def append_interest_rate(part: dict):
         part['csv'].append("Interest rate:;{}".format('n/a'))
 
 
-def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance: float, price: float = None):
+def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance: float, price: float = None,
+                    all_sold_balance: float = None):
     """
     Appends liquidation price, wallet balance, margin balance (including stats), used margin and leverage information
     """
@@ -1453,6 +1457,10 @@ def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance:
     else:
         part['mail'].append("Liquidation price {}: {:>12}".format('n/a'))
         part['csv'].append("Liquidation price {}:;{}".format('n/a'))
+    if all_sold_balance is not None:
+        part['mail'].append("All sold balance {}: {:>16.4f}".format(CONF.base, all_sold_balance))
+    else:
+        part['mail'].append("All sold balance: {:>17}".format('n/a'))
     used_margin = calculate_used_margin_percentage(margin_balance)
     part['mail'].append("Used margin: {:>22.2f}%".format(used_margin))
     part['csv'].append("Used margin:;{:.2f}%".format(used_margin))
@@ -1534,6 +1542,16 @@ def append_price_change(part: dict, today: dict, price: float):
         part['csv'].append("{} price {}:;{:.1f};{:+.2f}%".format(CONF.base, CONF.quote, price, today['priceChan24']))
     else:
         part['csv'].append("{} price {}:;{:.1f};% n/a".format(CONF.base, CONF.quote, price))
+
+
+def calculate_all_sold_balance(poi: dict, sell_orders: [Order], margin_balance: float):
+    if CONF.exchange == 'bitmex':
+        sells = calculate_order_stats(sell_orders)
+        tot_sell_quantity = float(sells['qty'])
+        tot_sell_value = float(sells['val'])
+        mark_price = float(poi['markPrice'])
+        return (((tot_sell_quantity / (tot_sell_value * mark_price)) - 1) * tot_sell_value) + margin_balance
+    return None
 
 
 def calculate_price_offset(order_price: float, market_price: float):
