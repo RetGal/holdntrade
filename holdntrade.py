@@ -1459,6 +1459,12 @@ def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance:
     append_margin_change(part, today, CONF.base)
     part['mail'].append("Available balance {}: {:>15.4f}".format(CONF.base, margin_balance['free']))
     part['csv'].append("Available balance {}:;{:.4f}".format(CONF.base, margin_balance['free']))
+    if all_sold_balance is not None:
+        part['mail'].append("All sold balance {}: {:>16.4f}".format(CONF.base, all_sold_balance))
+        part['csv'].append("All sold balance {}:;{:.4f}".format(CONF.base, all_sold_balance))
+    else:
+        part['mail'].append("All sold balance: {:>17}".format('n/a'))
+        part['csv'].append("All sold balance:;n/a")
     append_price_change(part, today, price)
     if poi is not None and 'liquidationPrice' in poi:
         part['mail'].append("Liquidation price {}: {:>12.1f}".format(CONF.quote, poi['liquidationPrice']))
@@ -1466,10 +1472,6 @@ def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance:
     else:
         part['mail'].append("Liquidation price {}: {:>12}".format('n/a'))
         part['csv'].append("Liquidation price {}:;{}".format('n/a'))
-    if all_sold_balance is not None:
-        part['mail'].append("All sold balance {}: {:>16.4f}".format(CONF.base, all_sold_balance))
-    else:
-        part['mail'].append("All sold balance: {:>17}".format('n/a'))
     used_margin = calculate_used_margin_percentage(margin_balance)
     part['mail'].append("Used margin: {:>22.2f}%".format(used_margin))
     part['csv'].append("Used margin:;{:.2f}%".format(used_margin))
