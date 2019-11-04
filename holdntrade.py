@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.9"
+            self.bot_version = "1.14.10"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -274,8 +274,8 @@ def shall_hibernate(mayer: dict = None):
         if mayer['current'] > CONF.mm_stop_buy:
             return True
         if CONF.auto_leverage_escape:
-            return get_leverage() > CONF.leverage_escape
-        return get_leverage() > get_target_leverage(mayer)
+            return round(get_leverage(), 1) > CONF.leverage_escape
+        return round(get_leverage(), 1) > get_target_leverage(mayer)
     return HIBERNATE
 
 

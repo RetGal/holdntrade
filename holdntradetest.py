@@ -424,6 +424,17 @@ class HoldntradeTest(unittest.TestCase):
 
         self.assertTrue(holdntrade.shall_hibernate(mayer))
 
+    @patch('holdntrade.get_leverage', return_value=1.1001)
+    @patch('holdntrade.get_target_leverage', return_value=1.1)
+    def test_shall_not_hibernate_by_leverage_if_leverage_is_only_a_fraction_too_high(self, mock_get_target_leverage,
+                                                                                     mock_get_leverage):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.CONF.mm_stop_buy = 2.3
+        holdntrade.CONF.auto_leverage_escape = False
+        mayer = {'current': 1.4}
+
+        self.assertFalse(holdntrade.shall_hibernate(mayer))
+
     @patch('holdntrade.get_leverage', return_value=3.1)
     @patch('holdntrade.get_target_leverage', return_value=1)
     def test_shall_hibernate_by_leverage_with_auto_escape(self, mock_get_target_leverage, mock_get_leverage):
