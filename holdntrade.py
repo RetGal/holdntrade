@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.8"
+            self.bot_version = "1.14.9"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -110,16 +110,16 @@ class OpenOrdersSummary:
             o = Order(oo)
             self.orders.append(o)
             if o.side == 'sell':
-                if CONF.exchange == 'kraken':
-                    self.total_sell_order_value += o.amount * o.price
-                else:
+                if CONF.exchange == 'bitmex':
                     self.total_sell_order_value += o.amount
+                else:
+                    self.total_sell_order_value += o.amount * o.price
                 self.sell_orders.append(o)
             elif o.side == 'buy':
-                if CONF.exchange == 'kraken':
-                    self.total_buy_order_value += o.amount * o.price
-                else:
+                if CONF.exchange == 'bitmex':
                     self.total_buy_order_value += o.amount
+                else:
+                    self.total_buy_order_value += o.amount * o.price
                 self.buy_orders.append(o)
             else:
                 LOG.error(inspect.stack()[1][3], ' ?!?')
@@ -213,7 +213,7 @@ def buy_executed():
     LOG.debug(time.ctime())
     price = get_current_price()
     if status == 'open':
-        LOG.debug('Open Buy Order! Amount: %d @ %.1f', int(CURR_BUY_ORDER_SIZE), float(BUY_PRICE))
+        LOG.debug('Open Buy Order! Amount: %s @ %.1f', str(CURR_BUY_ORDER_SIZE), float(BUY_PRICE))
         LOG.debug('Current Price: %.1f', price)
     elif status in ['closed', 'canceled']:
         LOG.info('Buy executed %s, starting follow up', str(CURR_BUY_ORDER))
@@ -227,7 +227,7 @@ def buy_executed():
         adjust_leverage(mamu)
         HIBERNATE = shall_hibernate(mamu)
         if not HIBERNATE:
-            create_buy_order(price, calculate_buy_order_amount())
+            create_buy_order(price, calculate_buy_order_amount(), False)
             create_sell_order(last_buy_amount)
     else:
         LOG.warning('Should not be here, order status is %s', status)
@@ -260,7 +260,7 @@ def sell_executed():
                     create_divided_sell_order()
                 cancel_current_buy_order()
                 price = get_current_price()
-                create_buy_order(price, calculate_buy_order_amount())
+                create_buy_order(price, calculate_buy_order_amount(), False)
         else:
             LOG.warning('Should not be here, order status: %s', status)
 
@@ -300,7 +300,7 @@ def create_first_sell_order():
     quota = calculate_quota() if CONF.auto_quota else CONF.quota
     LOG.info("Creating first sell order (%s / %s)", position_size, quota)
     SELL_PRICE = round(get_current_price() * (1 + CONF.change))
-    create_sell_order(round(position_size / quota))
+    create_sell_order(math.floor(position_size / quota))
 
 
 def create_first_buy_order():
@@ -311,7 +311,7 @@ def create_first_buy_order():
     HIBERNATE = shall_hibernate(mamu)
     if not HIBERNATE:
         price = get_current_price()
-        create_buy_order(price, calculate_buy_order_amount(price))
+        create_buy_order(price, calculate_buy_order_amount(price), False)
 
 
 def create_sell_order(fixed_order_size: int = None):
@@ -436,11 +436,12 @@ def cancel_order(order: Order):
         cancel_order(order)
 
 
-def create_buy_order(price: float, buy_amount: int):
+def create_buy_order(price: float, buy_amount: int, fixed_price: bool = False):
     """
-    Creates a buy order and sets the values as global ones. Used by other functions.
+    Creates a buy order for the requested amount. The order price is calculated using the configured change.
     :param price current price of crypto
     :param buy_amount the order volume
+    :param fixed_price buys to the requested price without subtracting change
     output: calculate the SELL_PRICE (price + change) and the BUY_PRICE (price - change).
     In addition sets the CURR_ORDER, CURR_ORDER_SIZE and adds the created order to the BUY_ORDERS as global values.
     If the amount is below the order limit or there is not enough margin and there are open sell orders, the function
@@ -453,7 +454,11 @@ def create_buy_order(price: float, buy_amount: int):
     global CURR_BUY_ORDER
     global BUY_ORDERS
 
-    BUY_PRICE = round(price * (1 - CONF.change))
+    if fixed_price:
+        BUY_PRICE = price
+    else:
+        BUY_PRICE = round(price * (1 - CONF.change))
+
     SELL_PRICE = round(price * (1 + CONF.change))
     CURR_BUY_ORDER_SIZE = buy_amount
     curr_price = get_current_price()
@@ -493,7 +498,7 @@ def create_buy_order(price: float, buy_amount: int):
             return False
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
-        create_buy_order(update_price(curr_price, price), buy_amount)
+        create_buy_order(update_price(curr_price, price), buy_amount, fixed_price)
 
 
 def delay_buy_order(crypto_price: float, price: float):
@@ -512,7 +517,7 @@ def delay_buy_order(crypto_price: float, price: float):
         elif CONF.auto_leverage:
             mamu = fetch_mayer()
             adjust_leverage(mamu)
-    create_buy_order(update_price(crypto_price, price), calculate_buy_order_amount())
+    create_buy_order(update_price(crypto_price, price), calculate_buy_order_amount(), False)
 
 
 def calculate_buy_order_amount(price: float = None):
@@ -521,13 +526,20 @@ def calculate_buy_order_amount(price: float = None):
     :return amount to be bought in fiat
     """
     wallet_available = get_balance()['free']
+    if CONF.exchange == 'liquid':
+        orders = EXCHANGE.private_get_orders({'status': 'live', 'side': 'sell'})['models']
+        used = 0
+        if orders:
+            for order in orders:
+                used += float(order['quantity'])
+            wallet_available -= used
     if wallet_available < 0:
         return 0
     if price is None:
         price = get_current_price()
     quota = calculate_quota(price) if CONF.auto_quota else CONF.quota
     LOG.info("Calculating buy order amount (%s / %s * %s)", wallet_available, quota, price)
-    return round(wallet_available / quota * price) if price is not None else 0
+    return math.floor(wallet_available / quota * price) if price is not None else 0
 
 
 def create_market_sell_order(amount_crypto: float):
@@ -682,12 +694,9 @@ def get_balance():
             return bal
 
         bal = None
-        result = EXCHANGE.private_get_trading_accounts()
-        if result is not None:
-            for acc in result:
-                if acc['currency_pair_code'] == CONF.symbol and float(acc['margin']) > 0:
-                    bal = {'used': float(acc['margin']), 'free': float(acc['free_margin']),
-                           'total': float(acc['equity'])}
+        pos = get_position_info()
+        if pos is not None:
+            bal = {'used': float(pos['margin']), 'free': float(pos['free_margin']), 'total': float(pos['equity'])}
         if bal is None:
             # no position => return wallet balance
             result = EXCHANGE.private_get_accounts_balance()
@@ -829,7 +838,7 @@ def do_buy(crypto_amount: float):
     while i <= CONF.trade_trials:
         rise = i / 2
         buy_price = get_current_price() + rise
-        if not create_buy_order(buy_price, round(crypto_amount * buy_price)):
+        if not create_buy_order(buy_price, round(crypto_amount * buy_price), True):
             return
         sleep_for(90, 90)
         order_status = fetch_order_status(CURR_BUY_ORDER.id)
@@ -884,7 +893,7 @@ def spread(price: float):
                 LOG.info("Canceling highest %s", str(highest_buy_order))
                 cancel_order(highest_buy_order)
                 BUY_ORDERS.remove(highest_buy_order)
-                if create_buy_order(price, highest_buy_order.amount):
+                if create_buy_order(price, highest_buy_order.amount, False):
                     create_sell_order()
 
 
@@ -1252,7 +1261,7 @@ def is_crypto_amount_below_limit(crypto_amount: float):
 
 
 def to_crypto_amount(fiat_amount: int, price: float):
-    return round(fiat_amount / price, 8)
+    return round(fiat_amount / price - 0.000000006, 8)
 
 
 def write_control_file():

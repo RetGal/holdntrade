@@ -254,27 +254,51 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.EXCHANGE = ccxt.bitmex
         mock_fetch_ticker.return_value = {'bid': 99}
 
-        holdntrade.create_buy_order(price, amount)
+        holdntrade.create_buy_order(price, amount, False)
 
         assert not mock_create_limit_buy_order.called, 'create_order was called but should have not'
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
     @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
-    def test_create_buy_order_should_create_order_if_order_is_above_limit(self, mock_create_limit_buy_order,
-                                                                          mock_fetch_ticker, mock_logging):
+    def test_create_buy_order_should_create_order_and_calculate_prices_if_order_is_above_limit(
+            self, mock_create_limit_buy_order, mock_fetch_ticker, mock_logging):
+
         price = 4000
         holdntrade.SELL_ORDERS = []
         amount = 10
         holdntrade.LOG = mock_logging
         holdntrade.CONF = self.create_default_conf()
-        holdntrade.BUY_PRICE = 1234
         holdntrade.EXCHANGE = ccxt.bitmex
         mock_fetch_ticker.return_value = {'bid': 99}
+        expected_buy_price = 3980
+        expected_sell_price = 4020
 
-        holdntrade.create_buy_order(price, amount)
+        holdntrade.create_buy_order(price, amount, False)
 
-        mock_create_limit_buy_order.assert_called_with(holdntrade.CONF.pair, amount, holdntrade.BUY_PRICE)
+        self.assertEqual(expected_buy_price, holdntrade.BUY_PRICE)
+        self.assertEqual(expected_sell_price, holdntrade.SELL_PRICE)
+        mock_create_limit_buy_order.assert_called_with(holdntrade.CONF.pair, amount, expected_buy_price)
+
+    @patch('holdntrade.logging')
+    @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
+    @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
+    def test_create_buy_order_should_create_order_with_requested_price_if_order_is_above_limit(
+            self, mock_create_limit_buy_order, mock_fetch_ticker, mock_logging):
+
+        price = 4000
+        holdntrade.SELL_ORDERS = []
+        amount = 10
+        holdntrade.LOG = mock_logging
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.EXCHANGE = ccxt.bitmex
+        mock_fetch_ticker.return_value = {'bid': 99}
+        expected_sell_price = 4020
+
+        holdntrade.create_buy_order(price, amount, True)
+
+        self.assertEqual(expected_sell_price, holdntrade.SELL_PRICE)
+        mock_create_limit_buy_order.assert_called_with(holdntrade.CONF.pair, amount, price)
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'fetch_order_status')
