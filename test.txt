@@ -25,6 +25,7 @@ mm_stop_buy = 2.3
 auto_leverage_escape = False
 leverage_escape = 4
 trade_trials = 5
+stop_on_top = False
 
 # email properties
 send_emails = True

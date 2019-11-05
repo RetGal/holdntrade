@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.10"
+            self.bot_version = "1.14.11"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -81,6 +81,7 @@ class ExchangeConfig:
             self.mm_ceil = abs(float(props['mm_ceil'].strip('"')))
             self.mm_stop_buy = abs(float(props['mm_stop_buy'].strip('"')))
             self.trade_trials = abs(int(props['trade_trials'].strip('"')))
+            self.stop_on_top = bool(props['stop_on_top'].strip('"').lower() == 'true')
             currency = self.pair.split("/")
             self.base = currency[0]
             self.quote = currency[1]
@@ -207,6 +208,7 @@ def buy_executed():
     global BUY_ORDERS
     global HIBERNATE
     global INITIAL_LEVERAGE_SET
+    global SELL_PRICE
 
     status = fetch_order_status(CURR_BUY_ORDER.id) if CURR_BUY_ORDER is not None else 'suspect'
     LOG.debug('-------------------------------')
@@ -227,7 +229,10 @@ def buy_executed():
         adjust_leverage(mamu)
         HIBERNATE = shall_hibernate(mamu)
         if not HIBERNATE:
-            create_buy_order(price, calculate_buy_order_amount(), False)
+            if keep_buying(price):
+                create_buy_order(price, calculate_buy_order_amount(), False)
+            else:
+                SELL_PRICE = round(price * (1 + CONF.change))
             create_sell_order(last_buy_amount)
     else:
         LOG.warning('Should not be here, order status is %s', status)
@@ -260,9 +265,23 @@ def sell_executed():
                     create_divided_sell_order()
                 cancel_current_buy_order()
                 price = get_current_price()
-                create_buy_order(price, calculate_buy_order_amount(), False)
+                if keep_buying(price):
+                    create_buy_order(price, calculate_buy_order_amount(), False)
         else:
             LOG.warning('Should not be here, order status: %s', status)
+
+
+def keep_buying(price: float):
+    """
+    Checks if it makes sense to create another buy order although the bot is configured to sell out
+    :param price: current market price
+    :return: True or False
+    """
+    if not CONF.stop_on_top:
+        return True
+    if SELL_ORDERS:
+        return round(price * (1 + CONF.change)) < sorted(SELL_ORDERS, key=lambda order: order.price, reverse=True)[0].price
+    return False
 
 
 def shall_hibernate(mayer: dict = None):
@@ -1881,8 +1900,11 @@ if __name__ == '__main__':
                 buy_executed()
                 sell_executed()
                 if not SELL_ORDERS:
-                    LOG.info('No sell orders, resetting all orders')
-                    LOOP = init_orders(True, False)
+                    if not CONF.stop_on_top:
+                        LOG.info('No sell orders, resetting all orders')
+                        LOOP = init_orders(True, False)
+                    else:
+                        HIBERNATE = True
                 else:
                     spread(get_current_price())
             if not LOOP:

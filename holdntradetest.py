@@ -1035,6 +1035,27 @@ class HoldntradeTest(unittest.TestCase):
 
         mock_deactivate_bot.assert_called()
 
+    def test_keep_buying(self):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.CONF.stop_on_top = True
+        holdntrade.CONF.change = 0.005
+
+        sell1 = holdntrade.Order({'id': '3', 'price': 10050, 'amount': 1500, 'side': 'sell',
+                                  'datetime': datetime.datetime.now()})
+        sell2 = holdntrade.Order({'id': '4', 'price': 9950, 'amount': 1000, 'side': 'sell',
+                                  'datetime': datetime.datetime.now()})
+        holdntrade.SELL_ORDERS = [sell1, sell2]
+
+        self.assertFalse(holdntrade.keep_buying(10000))
+
+        self.assertTrue(holdntrade.keep_buying(9999))
+
+        holdntrade.SELL_ORDERS = []
+        self.assertFalse(holdntrade.keep_buying(9000))
+
+        holdntrade.CONF.stop_on_top = False
+        self.assertTrue(holdntrade.keep_buying(15000))
+
     def test_config_parse(self):
         holdntrade.INSTANCE = 'test'
         conf = holdntrade.ExchangeConfig()
@@ -1058,6 +1079,7 @@ class HoldntradeTest(unittest.TestCase):
         self.assertFalse(conf.auto_leverage_escape)
         self.assertEqual(4, conf.leverage_escape)
         self.assertEqual(5, conf.trade_trials)
+        self.assertFalse(conf.stop_on_top)
 
     @staticmethod
     def create_default_conf():
@@ -1084,6 +1106,7 @@ class HoldntradeTest(unittest.TestCase):
         conf.leverage_escape = 3
         conf.auto_leverage_escape = True
         conf.trade_trials = 5
+        conf.stop_on_top = False
         return conf
 
 
