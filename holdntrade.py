@@ -830,6 +830,8 @@ def compensate():
     """
     Approaches the margin used towards 50% by selling or buying the difference to market price
     """
+    if CONF.stop_on_top:
+        return
     if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
         bal = get_balance()
     elif CONF.exchange == 'kraken':
@@ -1079,12 +1081,13 @@ def load_existing_orders(oos: OpenOrdersSummary):
         CURR_BUY_ORDER = BUY_ORDERS[0]  # highest if several
         BUY_PRICE = CURR_BUY_ORDER.price
         CURR_BUY_ORDER_SIZE = CURR_BUY_ORDER.amount
-    # All sell orders executed
-    if not oos.sell_orders:
-        create_first_sell_order()
-    # All buy orders executed
-    elif not oos.buy_orders:
-        create_first_buy_order()
+    if not CONF.stop_on_top:
+        # All sell orders executed
+        if not oos.sell_orders:
+            create_first_sell_order()
+        # All buy orders executed
+        elif not oos.buy_orders:
+            create_first_buy_order()
     del oos
     LOG.info('Initialization complete (using existing orders)')
     # No "compensate" necessary
@@ -1909,7 +1912,7 @@ if __name__ == '__main__':
                     spread(get_current_price())
             if not LOOP:
                 compensate()
-                if not BUY_ORDERS and not SELL_ORDERS:
+                if not BUY_ORDERS and not SELL_ORDERS and not CONF.stop_on_top:
                     if not INITIAL_LEVERAGE_SET:
                         INITIAL_LEVERAGE_SET = set_initial_leverage()
                     create_first_sell_order()
