@@ -160,7 +160,7 @@ class Stats:
         if existing is None:
             data['day'] = day_of_year
             if len(self.days) > 2:
-                self.days = sorted(self.days, key=lambda data: data['day'], reverse=True)  # desc
+                self.days = sorted(self.days, key=lambda item: item['day'], reverse=True)  # desc
                 self.days.pop()
             self.days.append(data)
 
@@ -505,8 +505,7 @@ def delay_buy_order(crypto_price: float, price: float):
         if CONF.auto_leverage and CONF.auto_leverage_escape:
             boost_leverage()
         elif CONF.auto_leverage:
-            mamu = fetch_mayer()
-            adjust_leverage(mamu)
+            adjust_leverage()
     create_buy_order(update_price(crypto_price, price), calculate_buy_order_amount(), False)
 
 
@@ -832,7 +831,7 @@ def do_buy(crypto_amount: float):
         buy_price = get_current_price() + rise
         if not create_buy_order(buy_price, round(crypto_amount * buy_price), True):
             return
-        sleep_for(90, 90)
+        sleep_for(89, 91)
         order_status = fetch_order_status(CURR_BUY_ORDER.id)
         if order_status in ['open', 'not found']:
             cancel_current_buy_order()
@@ -856,7 +855,7 @@ def do_sell(crypto_amount: float):
         SELL_PRICE = get_current_price() - discount
         if not create_sell_order(round(crypto_amount * SELL_PRICE)):
             return
-        sleep_for(90, 90)
+        sleep_for(89, 91)
         order_status = fetch_order_status(SELL_ORDERS[-1].id)
         if order_status in ['open', 'not found']:
             cancel_order(SELL_ORDERS[-1])
@@ -1465,8 +1464,8 @@ def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance:
         part['mail'].append("Liquidation price {}: {:>12.1f}".format(CONF.quote, poi['liquidationPrice']))
         part['csv'].append("Liquidation price {}:;{:.1f}".format(CONF.quote, poi['liquidationPrice']))
     else:
-        part['mail'].append("Liquidation price {}: {:>12}".format('n/a'))
-        part['csv'].append("Liquidation price {}:;n/a")
+        part['mail'].append("Liquidation price {}: {:>12}".format(CONF.quote, 'n/a'))
+        part['csv'].append("Liquidation price {}:;{}".format(CONF.quote, 'n/a'))
     used_margin = calculate_used_margin_percentage(margin_balance)
     part['mail'].append("Used margin: {:>22.2f}%".format(used_margin))
     part['csv'].append("Used margin:;{:.2f}%".format(used_margin))
