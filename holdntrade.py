@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.12"
+            self.bot_version = "1.14.13"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -1328,7 +1328,7 @@ def create_report_part_settings():
                      "Mayer multiple floor: {:>13}".format(str(CONF.mm_floor)),
                      "Mayer multiple ceil: {:>14}".format(str(CONF.mm_ceil)),
                      "Mayer multiple stop buy: {:>10}".format(str(CONF.mm_stop_buy)),
-                     "Sell_on top: {:>22}".format(str('Y' if CONF.sell_on_top is True else 'N'))],
+                     "Stop_on top: {:>22}".format(str('Y' if CONF.stop_on_top is True else 'N'))],
             'csv': ["Rate change:;{:.1f}%".format(float(CONF.change * 100)),
                     "Quota:;'1/{}'".format(str(CONF.quota)),
                     "Auto quota:;{}".format(str('Y' if CONF.auto_quota is True else 'N')),
@@ -1342,7 +1342,7 @@ def create_report_part_settings():
                     "Mayer multiple floor:;{}".format(str(CONF.mm_floor)),
                     "Mayer multiple ceil:;{}".format(str(CONF.mm_ceil)),
                     "Mayer multiple stop buy:;{}".format(str(CONF.mm_stop_buy)),
-                    "Sell on top:;{}".format(str('Y' if CONF.sell_on_top is True else 'N'))]}
+                    "Stop on top:;{}".format(str('Y' if CONF.stop_on_top is True else 'N'))]}
 
 
 def create_mail_part_general():
