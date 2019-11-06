@@ -209,15 +209,16 @@ class HoldntradeTest(unittest.TestCase):
     @patch('holdntrade.get_position_balance', return_value=100)
     def test_create_sell_order_should_create_order(self, mock_get_position_balance, mock_create_limit_sell_order,
                                                    mock_logging):
+        holdntrade.EXCHANGE = ccxt.bitmex
         holdntrade.SELL_PRICE = 4000
         holdntrade.SELL_ORDERS = []
-        holdntrade.CURR_BUY_ORDER_SIZE = 10
+        holdntrade.CURR_BUY_ORDER = holdntrade.Order({'id': 1, 'price': 3950, 'side': 'BUY', 'datetime': '', 'amount': 10})
         holdntrade.LOG = mock_logging
         holdntrade.CONF = self.create_default_conf()
 
         holdntrade.create_sell_order()
 
-        mock_create_limit_sell_order.assert_called_with(holdntrade.CONF.pair, holdntrade.CURR_BUY_ORDER_SIZE,
+        mock_create_limit_sell_order.assert_called_with(holdntrade.CONF.pair, holdntrade.CURR_BUY_ORDER.amount,
                                                         holdntrade.SELL_PRICE)
 
     @patch('holdntrade.logging')
@@ -885,7 +886,7 @@ class HoldntradeTest(unittest.TestCase):
     @mock.patch.object(ccxt.bitmex, 'cancel_order')
     @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
     @mock.patch.object(ccxt.bitmex, 'fetch_order_status')
-    @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
+    @patch('holdntrade.create_buy_order')
     @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
     def test_spread_should_cancel_highest_buy_order_and_create_a_new_sell_and_buy_order(self,
                                                                                         mock_create_limit_sell_order,
@@ -897,6 +898,8 @@ class HoldntradeTest(unittest.TestCase):
                                                                                         mock_logging):
         holdntrade.CONF = self.create_default_conf()
         holdntrade.CONF.base = 'BTC'
+        holdntrade.EXCHANGE = ccxt.bitmex
+        holdntrade.LOG = mock_logging
         buy1 = holdntrade.Order({'id': '1', 'price': 100, 'amount': 101, 'side': 'buy',
                                  'datetime': datetime.datetime.now()})
         buy2 = holdntrade.Order({'id': '2', 'price': 200, 'amount': 102, 'side': 'buy',
@@ -907,23 +910,20 @@ class HoldntradeTest(unittest.TestCase):
         sell2 = holdntrade.Order({'id': '4', 'price': 500, 'amount': 104, 'side': 'sell',
                                   'datetime': datetime.datetime.now()})
         holdntrade.SELL_ORDERS = [sell1, sell2]
-        holdntrade.LOG = mock_logging
+        buy3 = holdntrade.Order({'id': '3', 'price': 301.5, 'amount': 102, 'side': 'buy',
+                                 'datetime': datetime.datetime.now()})
+        holdntrade.CURR_BUY_ORDER = buy3
         market_price = 300
+        holdntrade.SELL_PRICE = round(market_price * (1 + holdntrade.CONF.change))
         return_values = {'2': 'open'}
         mock_fetch_order_status.side_effect = return_values.get
         mock_fetch_ticker.return_value = {'bid': market_price}
-        buy_price = round(market_price * (1 - holdntrade.CONF.change))
-        sell_price = round(market_price * (1 + holdntrade.CONF.change))
-        holdntrade.EXCHANGE = holdntrade.connect_to_exchange()
 
         holdntrade.spread(market_price)
 
         mock_fetch_order_status.assert_called_with(buy2.id)
         mock_cancel_order.assert_called_with(buy2.id)
-        mock_create_limit_buy_order.assert_called_with('BTC/USD', 102, buy_price)
-        mock_create_limit_sell_order.assert_called_with('BTC/USD', 102, sell_price)
-        self.assertEqual(2, len(holdntrade.BUY_ORDERS))
-        self.assertEqual(buy_price, holdntrade.BUY_PRICE)
+        mock_create_limit_sell_order.assert_called_with('BTC/USD', 102, holdntrade.SELL_PRICE)
         self.assertEqual(3, len(holdntrade.SELL_ORDERS))
 
     @patch('holdntrade.get_margin_balance')
@@ -1074,6 +1074,7 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.INSTANCE = 'test'
         conf = holdntrade.ExchangeConfig()
 
+        self.assertEqual('test', conf.bot_instance)
         self.assertEqual('BTC/USD', conf.pair)
         self.assertEqual('XBTUSD', conf.symbol)
         self.assertEqual('BTC', conf.base)

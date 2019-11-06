@@ -28,7 +28,6 @@ SELL_ORDERS = []
 BUY_PRICE = 0
 BUY_ORDERS = []
 CURR_BUY_ORDER = None
-CURR_BUY_ORDER_SIZE = 0
 RESET_COUNTER = 0
 LOOP = False
 AUTO_CONF = False
@@ -39,7 +38,7 @@ STARTED = datetime.datetime.utcnow().replace(microsecond=0)
 STATS = None
 HIBERNATE = False
 INITIAL_LEVERAGE_SET = False
-STOP_ERRORS = ['insufficient', 'too low', 'not_enough_free_balance', 'margin_below', 'liqudation price']
+STOP_ERRORS = ['insufficient', 'too low', 'not_enough_free_balance', 'margin_below', 'liquidation price']
 
 # ------------------------------------------------------------------------------
 
@@ -50,46 +49,46 @@ class ExchangeConfig:
     """
     def __init__(self):
 
-        config = configparser.RawConfigParser()
+        config = configparser.ConfigParser()
         config.read(INSTANCE + ".txt")
 
         try:
-            props = dict(config.items('config'))
+            props = config['config']
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.13"
-            self.exchange = props['exchange'].strip('"').lower()
-            self.api_key = props['api_key'].strip('"')
-            self.api_secret = props['api_secret'].strip('"')
-            self.test = bool(props['test'].strip('"').lower() == 'true')
-            self.pair = props['pair'].strip('"')
-            self.symbol = props['symbol'].strip('"')
-            self.order_crypto_min = float(props['order_crypto_min'].strip('"'))
+            self.bot_version = "1.14.14"
+            self.exchange = str(props['exchange']).strip('"').lower()
+            self.api_key = str(props['api_key']).strip('"')
+            self.api_secret = str(props['api_secret']).strip('"')
+            self.test = bool(str(props['test']).strip('"').lower() == 'true')
+            self.pair = str(props['pair']).strip('"')
+            self.symbol = str(props['symbol']).strip('"')
+            self.order_crypto_min = float(props['order_crypto_min'])
             self.satoshi_factor = 0.00000001
-            self.change = abs(float(props['change'].strip('"')))
-            self.auto_quota = bool(props['auto_quota'].strip('"').lower() == 'true')
-            self.quota = abs(int(props['quota'].strip('"')))
+            self.change = abs(float(props['change']))
+            self.auto_quota = bool(str(props['auto_quota']).strip('"').lower() == 'true')
+            self.quota = abs(int(props['quota']))
             if self.quota < 1:
                 self.quota = 1
-            self.spread_factor = abs(float(props['spread_factor'].strip('"')))
-            self.auto_leverage = bool(props['auto_leverage'].strip('"').lower() == 'true')
-            self.auto_leverage_escape = bool(props['auto_leverage_escape'].strip('"').lower() == 'true')
-            self.leverage_default = abs(float(props['leverage_default'].strip('"')))
-            self.leverage_low = abs(float(props['leverage_low'].strip('"')))
-            self.leverage_high = abs(float(props['leverage_high'].strip('"')))
-            self.leverage_escape = abs(float(props['leverage_escape'].strip('"')))
-            self.mm_floor = abs(float(props['mm_floor'].strip('"')))
-            self.mm_ceil = abs(float(props['mm_ceil'].strip('"')))
-            self.mm_stop_buy = abs(float(props['mm_stop_buy'].strip('"')))
-            self.trade_trials = abs(int(props['trade_trials'].strip('"')))
-            self.stop_on_top = bool(props['stop_on_top'].strip('"').lower() == 'true')
+            self.spread_factor = abs(float(props['spread_factor']))
+            self.auto_leverage = bool(str(props['auto_leverage']).strip('"').lower() == 'true')
+            self.auto_leverage_escape = bool(str(props['auto_leverage_escape']).strip('"').lower() == 'true')
+            self.leverage_default = abs(float(props['leverage_default']))
+            self.leverage_low = abs(float(props['leverage_low']))
+            self.leverage_high = abs(float(props['leverage_high']))
+            self.leverage_escape = abs(float(props['leverage_escape']))
+            self.mm_floor = abs(float(props['mm_floor']))
+            self.mm_ceil = abs(float(props['mm_ceil']))
+            self.mm_stop_buy = abs(float(props['mm_stop_buy']))
+            self.trade_trials = abs(int(props['trade_trials']))
+            self.stop_on_top = bool(str(props['stop_on_top']).strip('"').lower() == 'true')
             currency = self.pair.split("/")
             self.base = currency[0]
             self.quote = currency[1]
-            self.send_emails = bool(props['send_emails'].strip('"').lower() == 'true')
-            self.recipient_addresses = props['recipient_addresses'].strip('"').replace(' ', '').split(",")
-            self.sender_address = props['sender_address'].strip('"')
-            self.sender_password = props['sender_password'].strip('"')
-            self.mail_server = props['mail_server'].strip('"')
+            self.send_emails = bool(str(props['send_emails']).strip('"').lower() == 'true')
+            self.recipient_addresses = str(props['recipient_addresses']).strip('"').replace(' ', '').split(",")
+            self.sender_address = str(props['sender_address']).strip('"')
+            self.sender_password = str(props['sender_password']).strip('"')
+            self.mail_server = str(props['mail_server']).strip('"')
         except (configparser.NoSectionError, KeyError):
             raise SystemExit('invalid configuration for ' + INSTANCE)
 
@@ -204,7 +203,6 @@ def buy_executed():
     Else if the order is closed, we follow with the followup function and createbuyorder and
     pass on the variables we got from input.
     """
-    global CURR_BUY_ORDER_SIZE
     global BUY_ORDERS
     global HIBERNATE
     global INITIAL_LEVERAGE_SET
@@ -215,12 +213,12 @@ def buy_executed():
     LOG.debug(time.ctime())
     price = get_current_price()
     if status == 'open':
-        LOG.debug('Open Buy Order! Amount: %s @ %.1f', str(CURR_BUY_ORDER_SIZE), float(BUY_PRICE))
+        LOG.debug('Open Buy Order! Amount: %s @ %.1f', str(CURR_BUY_ORDER.amount), float(BUY_PRICE))
         LOG.debug('Current Price: %.1f', price)
     elif status in ['closed', 'canceled']:
         LOG.info('Buy executed %s, starting follow up', str(CURR_BUY_ORDER))
         # use amount of last (previous) buy order for next sell order
-        last_buy_amount = CURR_BUY_ORDER_SIZE
+        last_buy_amount = CURR_BUY_ORDER.amount
         if CURR_BUY_ORDER in BUY_ORDERS:
             BUY_ORDERS.remove(CURR_BUY_ORDER)
         if not INITIAL_LEVERAGE_SET:
@@ -285,8 +283,6 @@ def keep_buying(price: float):
 
 
 def shall_hibernate(mayer: dict = None):
-    global HIBERNATE
-
     if mayer is None:
         mayer = fetch_mayer()
     if mayer is not None and mayer['current']:
@@ -303,6 +299,7 @@ def cancel_current_buy_order():
     Cancels the current buy order
     """
     global CURR_BUY_ORDER
+    global BUY_ORDERS
 
     if CURR_BUY_ORDER is not None:
         cancel_order(CURR_BUY_ORDER)
@@ -348,10 +345,9 @@ def create_sell_order(fixed_order_size: int = None):
     It appends the created order to the global SELL_ORDERS list.
     """
     global SELL_PRICE
-    global CURR_BUY_ORDER_SIZE
     global SELL_ORDERS
 
-    order_size = CURR_BUY_ORDER_SIZE if fixed_order_size is None else fixed_order_size
+    order_size = fixed_order_size if fixed_order_size is not None else CURR_BUY_ORDER.amount if CURR_BUY_ORDER is not None else 0
 
     available = get_position_balance()
     if available < order_size:
@@ -433,24 +429,18 @@ def create_buy_order(price: float, buy_amount: int, fixed_price: bool = False):
     :param buy_amount the order volume
     :param fixed_price buys to the requested price without subtracting change
     output: calculate the SELL_PRICE (price + change) and the BUY_PRICE (price - change).
-    In addition sets the CURR_ORDER, CURR_ORDER_SIZE and adds the created order to the BUY_ORDERS as global values.
+    In addition sets the CURR_ORDER and adds the created order to the BUY_ORDERS as global values.
     If the amount is below the order limit or there is not enough margin and there are open sell orders, the function
     is going to sleep, allowing sell orders to be filled - afterwards the amount is recalculated and the function calls
     itself with the new amount
     """
     global SELL_PRICE
     global BUY_PRICE
-    global CURR_BUY_ORDER_SIZE
     global CURR_BUY_ORDER
     global BUY_ORDERS
 
-    if fixed_price:
-        BUY_PRICE = price
-    else:
-        BUY_PRICE = round(price * (1 - CONF.change))
-
+    BUY_PRICE = price if fixed_price else round(price * (1 - CONF.change))
     SELL_PRICE = round(price * (1 + CONF.change))
-    CURR_BUY_ORDER_SIZE = buy_amount
     curr_price = get_current_price()
 
     try:
@@ -976,7 +966,6 @@ def init_orders(force_close: bool, auto_conf: bool):
     """
     global SELL_PRICE
     global SELL_ORDERS
-    global CURR_BUY_ORDER_SIZE
     global CURR_BUY_ORDER
     global BUY_ORDERS
     global BUY_PRICE
@@ -1042,7 +1031,12 @@ def init_orders(force_close: bool, auto_conf: bool):
 
 
 def load_existing_orders(oos: OpenOrdersSummary):
-    global SELL_ORDERS, SELL_PRICE, BUY_ORDERS, CURR_BUY_ORDER, BUY_PRICE, CURR_BUY_ORDER_SIZE
+    global SELL_ORDERS
+    global SELL_PRICE
+    global BUY_ORDERS
+    global CURR_BUY_ORDER
+    global BUY_PRICE
+
     if oos.sell_orders:
         SELL_ORDERS = oos.sell_orders
         SELL_PRICE = SELL_ORDERS[-1].price  # lowest if several
@@ -1050,13 +1044,12 @@ def load_existing_orders(oos: OpenOrdersSummary):
         BUY_ORDERS = oos.buy_orders
         CURR_BUY_ORDER = BUY_ORDERS[0]  # highest if several
         BUY_PRICE = CURR_BUY_ORDER.price
-        CURR_BUY_ORDER_SIZE = CURR_BUY_ORDER.amount
     if not CONF.stop_on_top:
         # All sell orders executed
         if not oos.sell_orders:
             create_first_sell_order()
         # All buy orders executed
-        elif not oos.buy_orders:
+        if not oos.buy_orders:
             create_first_buy_order()
     del oos
     LOG.info('Initialization complete (using existing orders)')
