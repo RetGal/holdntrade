@@ -1,5 +1,6 @@
 import os
 import datetime
+import math
 import time
 import unittest
 from unittest import mock
@@ -857,24 +858,27 @@ class HoldntradeTest(unittest.TestCase):
 
     @patch('holdntrade.logging')
     @patch('holdntrade.get_position_balance')
-    @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
-    def test_create_divided_sell_order(self, mock_create_limit_sell_order, mock_get_position_balance, mock_logging):
+    @patch('holdntrade.calculate_quota', return_value=8)
+    def test_calculate_sell_order_amount(self, mock_calculate_quota, mock_get_position_balance, mock_logging):
         holdntrade.CONF = self.create_default_conf()
-        holdntrade.CONF.base = 'BTC'
         holdntrade.LOG = mock_logging
-        holdntrade.EXCHANGE = holdntrade.connect_to_exchange()
         mock_get_position_balance.return_value = 10000
-        holdntrade.SELL_PRICE = 11110
-        order = {'side': 'sell', 'id': '1s', 'price': holdntrade.SELL_PRICE,
-                 'amount': round(10000 / holdntrade.CONF.quota),
-                 'datetime': datetime.datetime.today().isoformat()}
-        mock_create_limit_sell_order.return_value = order
 
-        holdntrade.create_divided_sell_order()
+        amount = holdntrade.calculate_sell_order_amount()
+        self.assertEqual(2500, amount)
+        self.assertEqual(math.floor(10000 / holdntrade.CONF.quota), amount)
+        mock_calculate_quota.assert_not_called()
 
-        mock_logging.info.assert_called_with('Created %s', str(holdntrade.Order(order)))
-        mock_create_limit_sell_order.assert_called_with(holdntrade.CONF.pair, round(10000 / holdntrade.CONF.quota),
-                                                        holdntrade.SELL_PRICE)
+        holdntrade.CONF.quota = 6
+        amount = holdntrade.calculate_sell_order_amount()
+        self.assertEqual(1666, amount)
+        self.assertEqual(math.floor(10000 / holdntrade.CONF.quota), amount)
+        mock_calculate_quota.assert_not_called()
+
+        holdntrade.CONF.auto_quota = True
+        amount = holdntrade.calculate_sell_order_amount()
+        self.assertEqual(1250, amount)
+        mock_calculate_quota.assert_called()
 
     @patch('holdntrade.logging')
     @patch('holdntrade.get_position_balance', return_value=200)
@@ -1055,6 +1059,16 @@ class HoldntradeTest(unittest.TestCase):
 
         holdntrade.CONF.stop_on_top = False
         self.assertTrue(holdntrade.keep_buying(15000))
+
+    @patch('holdntrade.get_balance')
+    @patch('holdntrade.get_margin_balance')
+    def test_compensate(self, mock_get_margin_balance, mock_get_balance):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.CONF.stop_on_top = True
+
+        holdntrade.compensate()
+        mock_get_balance.assert_not_called()
+        mock_get_margin_balance.assert_not_called()
 
     def test_config_parse(self):
         holdntrade.INSTANCE = 'test'

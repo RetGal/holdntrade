@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = dict(config.items('config'))
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.11"
+            self.bot_version = "1.14.12"
             self.exchange = props['exchange'].strip('"').lower()
             self.api_key = props['api_key'].strip('"')
             self.api_secret = props['api_secret'].strip('"')
@@ -262,7 +262,7 @@ def sell_executed():
             HIBERNATE = shall_hibernate(mamu)
             if not HIBERNATE:
                 if not SELL_ORDERS:
-                    create_divided_sell_order()
+                    create_sell_order(calculate_sell_order_amount())
                 cancel_current_buy_order()
                 price = get_current_price()
                 if keep_buying(price):
@@ -315,11 +315,19 @@ def cancel_current_buy_order():
 def create_first_sell_order():
     global SELL_PRICE
 
-    position_size = get_position_balance()
-    quota = calculate_quota() if CONF.auto_quota else CONF.quota
-    LOG.info("Creating first sell order (%s / %s)", position_size, quota)
     SELL_PRICE = round(get_current_price() * (1 + CONF.change))
-    create_sell_order(math.floor(position_size / quota))
+    create_sell_order(calculate_sell_order_amount())
+
+
+def calculate_sell_order_amount():
+    """
+    Calculates the sell order amount.
+    :return amount to be sold in fiat
+    """
+    available = get_position_balance()
+    quota = calculate_quota() if CONF.auto_quota else CONF.quota
+    LOG.info("Calculating sell order amount (%s / %s)", available, quota)
+    return math.floor(available / quota)
 
 
 def create_first_buy_order():
@@ -350,24 +358,25 @@ def create_sell_order(fixed_order_size: int = None):
         # sold out - the main loop will re-init if there are no other sell orders open
         LOG.warning('Not executing sell order over %d (only %d left)', order_size, available)
         return False
+    if is_order_below_limit(order_size, SELL_PRICE):
+        return False
 
     try:
-        if not is_order_below_limit(order_size, SELL_PRICE):
-            if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
-                new_order = EXCHANGE.create_limit_sell_order(CONF.pair, order_size, SELL_PRICE)
-            elif CONF.exchange == 'kraken':
-                rate = get_current_price()
-                new_order = EXCHANGE.create_limit_sell_order(CONF.pair, to_crypto_amount(order_size, rate), SELL_PRICE,
-                                                             {'leverage': CONF.leverage_default})
-            elif CONF.exchange == 'liquid':
-                rate = get_current_price()
-                new_order = EXCHANGE.create_limit_sell_order(CONF.pair, to_crypto_amount(order_size, rate), SELL_PRICE,
-                                                             {'leverage_level': CONF.leverage_default,
-                                                              'funding_currency': CONF.base})
-            order = Order(new_order)
-            SELL_ORDERS.append(order)
-            LOG.info('Created %s', str(order))
-            return True
+        if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase']:
+            new_order = EXCHANGE.create_limit_sell_order(CONF.pair, order_size, SELL_PRICE)
+        elif CONF.exchange == 'kraken':
+            rate = get_current_price()
+            new_order = EXCHANGE.create_limit_sell_order(CONF.pair, to_crypto_amount(order_size, rate), SELL_PRICE,
+                                                         {'leverage': CONF.leverage_default})
+        elif CONF.exchange == 'liquid':
+            rate = get_current_price()
+            new_order = EXCHANGE.create_limit_sell_order(CONF.pair, to_crypto_amount(order_size, rate), SELL_PRICE,
+                                                         {'leverage_level': CONF.leverage_default,
+                                                          'funding_currency': CONF.base})
+        order = Order(new_order)
+        SELL_ORDERS.append(order)
+        LOG.info('Created %s', str(order))
+        return True
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if any(e in str(error.args) for e in STOP_ERRORS):
@@ -376,44 +385,6 @@ def create_sell_order(fixed_order_size: int = None):
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         SELL_PRICE = round(get_current_price() * (1 + CONF.change))
         create_sell_order(fixed_order_size)
-
-
-def create_divided_sell_order():
-    """
-    Loop that starts after buy order is executed and sends sell order to exchange
-    as well as appends the orderID to the sell_orders list.
-    """
-    global SELL_ORDERS
-    global SELL_PRICE
-
-    try:
-        available = get_position_balance()
-        quota = calculate_quota() if CONF.auto_quota else CONF.quota
-        amount = round(available / quota)
-
-        if not is_order_below_limit(amount, SELL_PRICE):
-            if CONF.exchange in ['bitmex', 'binance', 'bitfinex', 'coinbase', 'liquid']:
-                new_order = EXCHANGE.create_limit_sell_order(CONF.pair, amount, SELL_PRICE)
-            elif CONF.exchange == 'kraken':
-                rate = get_current_price()
-                new_order = EXCHANGE.create_limit_sell_order(CONF.pair, to_crypto_amount(amount, rate), SELL_PRICE,
-                                                             {'leverage': CONF.leverage_default})
-            elif CONF.exchange == 'liquid':
-                rate = get_current_price()
-                new_order = EXCHANGE.create_limit_sell_order(CONF.pair, to_crypto_amount(amount, rate), SELL_PRICE,
-                                                             {'leverage_level': CONF.leverage_default,
-                                                              'funding_currency': CONF.base})
-            order = Order(new_order)
-            SELL_ORDERS.append(order)
-            LOG.info('Created %s', str(order))
-
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        if any(e in str(error.args) for e in STOP_ERRORS):
-            LOG.error('Insufficient funds - not selling %d', amount)
-            return
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
-        SELL_PRICE = round(get_current_price() * (1 + CONF.change))
-        create_divided_sell_order()
 
 
 def fetch_order_status(order_id: str):
@@ -1357,7 +1328,8 @@ def create_report_part_settings():
                      "Leverage escape: {:>18}x".format(str(CONF.leverage_high)),
                      "Mayer multiple floor: {:>13}".format(str(CONF.mm_floor)),
                      "Mayer multiple ceil: {:>14}".format(str(CONF.mm_ceil)),
-                     "Mayer multiple stop buy: {:>10}".format(str(CONF.mm_stop_buy))],
+                     "Mayer multiple stop buy: {:>10}".format(str(CONF.mm_stop_buy)),
+                     "Sell_on top: {:>22}".format(str('Y' if CONF.sell_on_top is True else 'N'))],
             'csv': ["Rate change:;{:.1f}%".format(float(CONF.change * 100)),
                     "Quota:;'1/{}'".format(str(CONF.quota)),
                     "Auto quota:;{}".format(str('Y' if CONF.auto_quota is True else 'N')),
@@ -1370,7 +1342,8 @@ def create_report_part_settings():
                     "Leverage escape:;{}".format(str(CONF.leverage_escape)),
                     "Mayer multiple floor:;{}".format(str(CONF.mm_floor)),
                     "Mayer multiple ceil:;{}".format(str(CONF.mm_ceil)),
-                    "Mayer multiple stop buy:;{}".format(str(CONF.mm_stop_buy))]}
+                    "Mayer multiple stop buy:;{}".format(str(CONF.mm_stop_buy)),
+                    "Sell on top:;{}".format(str('Y' if CONF.sell_on_top is True else 'N'))]}
 
 
 def create_mail_part_general():
@@ -1493,7 +1466,7 @@ def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance:
         part['csv'].append("Liquidation price {}:;{:.1f}".format(CONF.quote, poi['liquidationPrice']))
     else:
         part['mail'].append("Liquidation price {}: {:>12}".format('n/a'))
-        part['csv'].append("Liquidation price {}:;{}".format('n/a'))
+        part['csv'].append("Liquidation price {}:;n/a")
     used_margin = calculate_used_margin_percentage(margin_balance)
     part['mail'].append("Used margin: {:>22.2f}%".format(used_margin))
     part['csv'].append("Used margin:;{:.2f}%".format(used_margin))
