@@ -3,7 +3,7 @@
 
 ## Voraussetzungen
 
-*holdntrade* setzt *Python* Version 3 oder grösser voraus.
+*holdntrade* setzt *Python* Version >= 3.5 voraus.
 Im Kern verwendet *holdntrade* die [ccxt](https://github.com/ccxt/ccxt) Bibliothek. Diese gilt es mittels [pip](https://pypi.org/project/pip/) zu installieren:
 
 `python -m pip install ccxt`

@@ -126,7 +126,7 @@ class OpenOrdersSummary:
         self.buy_orders = sorted(self.buy_orders, key=lambda order: order.price, reverse=True)  # desc
 
     def get_orders(self):
-        return self.sell_orders + self.buy_orders
+        return [*self.sell_orders, *self.buy_orders]
 
 
 class Order:
@@ -986,7 +986,7 @@ def init_orders(force_close: bool, auto_conf: bool):
         print_position_info(oos)
 
         if oos.get_orders():
-            LOG.info("Value of buy orders {}: {:>2}".format(CONF.quote, int(oos.total_buy_order_value)))
+            LOG .info("Value of buy orders {}: {:>2}".format(CONF.quote, int(oos.total_buy_order_value)))
             LOG.info("Value of sell orders {}: {:>1}".format(CONF.quote, int(oos.total_sell_order_value)))
             LOG.info("No. of buy orders: {:>8}".format(len(oos.buy_orders)))
             LOG.info("No. of sell orders: {:>7}".format(len(oos.sell_orders)))
