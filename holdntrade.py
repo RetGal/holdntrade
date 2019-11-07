@@ -97,10 +97,9 @@ class OpenOrdersSummary:
     """
     Creates and holds an open orders summary
     """
-    __slots__ = 'orders', 'sell_orders', 'buy_orders', 'total_sell_order_value', 'total_buy_order_value'
+    __slots__ = 'sell_orders', 'buy_orders', 'total_sell_order_value', 'total_buy_order_value'
 
     def __init__(self, open_orders):
-        self.orders = []
         self.sell_orders = []
         self.buy_orders = []
         self.total_sell_order_value = 0
@@ -108,7 +107,6 @@ class OpenOrdersSummary:
 
         for oo in open_orders:
             o = Order(oo)
-            self.orders.append(o)
             if o.side == 'sell':
                 if CONF.exchange == 'bitmex':
                     self.total_sell_order_value += o.amount
@@ -126,6 +124,9 @@ class OpenOrdersSummary:
 
         self.sell_orders = sorted(self.sell_orders, key=lambda order: order.price, reverse=True)  # desc
         self.buy_orders = sorted(self.buy_orders, key=lambda order: order.price, reverse=True)  # desc
+
+    def get_orders(self):
+        return self.sell_orders + self.buy_orders
 
 
 class Order:
@@ -155,8 +156,7 @@ class Stats:
         self.add_day(day_of_year, data)
 
     def add_day(self, day_of_year: int, data: dict):
-        existing = self.get_day(day_of_year)
-        if existing is None:
+        if self.get_day(day_of_year) is None:
             data['day'] = day_of_year
             if len(self.days) > 2:
                 self.days = sorted(self.days, key=lambda item: item['day'], reverse=True)  # desc
@@ -985,7 +985,7 @@ def init_orders(force_close: bool, auto_conf: bool):
         LOG.info("Used margin: {:>17.2f}%".format(calculate_used_margin_percentage()))
         print_position_info(oos)
 
-        if oos.orders:
+        if oos.get_orders():
             LOG.info("Value of buy orders {}: {:>2}".format(CONF.quote, int(oos.total_buy_order_value)))
             LOG.info("Value of sell orders {}: {:>1}".format(CONF.quote, int(oos.total_sell_order_value)))
             LOG.info("No. of buy orders: {:>8}".format(len(oos.buy_orders)))
@@ -999,11 +999,11 @@ def init_orders(force_close: bool, auto_conf: bool):
 
             LOG.info('Unrealised PNL: %s %s', str(get_unrealised_pnl(CONF.symbol) * CONF.satoshi_factor), CONF.base)
             if force_close:
-                cancel_orders(oos.orders)
+                cancel_orders(oos.get_orders())
             else:
                 clear_position = input('There is an open ' + CONF.base + ' position! Would you like to close it? (y/n) ')
                 if clear_position.lower() in ['y', 'yes']:
-                    cancel_orders(oos.orders)
+                    cancel_orders(oos.get_orders())
                     close_position(CONF.symbol)
                 else:
                     compensate_position = input('Would you like to compensate to 50%? (y/n) ')
@@ -1184,7 +1184,7 @@ def print_position_info(oos: OpenOrdersSummary):
             return
     elif CONF.exchange == 'kraken':
         LOG.info("Position {}: {:>13}".format(CONF.quote, get_position_balance()))
-        LOG.info("Entry price: {:>16.1f}".format(calculate_order_stats(oos.orders)['avg']))
+        LOG.info("Entry price: {:>16.1f}".format(calculate_order_stats(oos.get_orders())['avg']))
         LOG.info("Market price: {:>15.1f}".format(get_current_price()))
     elif CONF.exchange == 'liquid':
         poi = get_position_info()
@@ -1194,7 +1194,7 @@ def print_position_info(oos: OpenOrdersSummary):
             LOG.info("Available balance is {}: {:>3} ".format(CONF.base, get_balance()['free']))
             LOG.info("No position found, I will create one for you")
             return
-    if not oos.orders:
+    if not oos.get_orders():
         LOG.info("No open orders")
 
 

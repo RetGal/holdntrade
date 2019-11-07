@@ -536,7 +536,7 @@ class HoldntradeTest(unittest.TestCase):
                   {'side': 'buy', 'id': '12345abcdg', 'price': 5000, 'amount': 20,
                    'datetime': datetime.datetime.today().isoformat()}]
 
-        order_stats = holdntrade.calculate_order_stats(holdntrade.OpenOrdersSummary(orders).orders)
+        order_stats = holdntrade.calculate_order_stats(holdntrade.OpenOrdersSummary(orders).get_orders())
 
         self.assertEqual(8750, order_stats['avg'])
         self.assertEqual(40, order_stats['qty'])
