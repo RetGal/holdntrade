@@ -55,7 +55,7 @@ class ExchangeConfig:
         try:
             props = config['config']
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.14"
+            self.bot_version = "1.14.15"
             self.exchange = str(props['exchange']).strip('"').lower()
             self.api_key = str(props['api_key']).strip('"')
             self.api_secret = str(props['api_secret']).strip('"')
@@ -100,11 +100,13 @@ class OpenOrdersSummary:
     __slots__ = 'sell_orders', 'buy_orders', 'total_sell_order_value', 'total_buy_order_value'
 
     def __init__(self, open_orders):
-        self.sell_orders = []
-        self.buy_orders = []
+        self.sell_orders = ()
+        self.buy_orders = ()
         self.total_sell_order_value = 0
         self.total_buy_order_value = 0
 
+        sells = []
+        buys = []
         for oo in open_orders:
             o = Order(oo)
             if o.side == 'sell':
@@ -112,21 +114,21 @@ class OpenOrdersSummary:
                     self.total_sell_order_value += o.amount
                 else:
                     self.total_sell_order_value += o.amount * o.price
-                self.sell_orders.append(o)
+                sells.append(o)
             elif o.side == 'buy':
                 if CONF.exchange == 'bitmex':
                     self.total_buy_order_value += o.amount
                 else:
                     self.total_buy_order_value += o.amount * o.price
-                self.buy_orders.append(o)
+                buys.append(o)
             else:
                 LOG.error(inspect.stack()[1][3], ' ?!?')
 
-        self.sell_orders = sorted(self.sell_orders, key=lambda order: order.price, reverse=True)  # desc
-        self.buy_orders = sorted(self.buy_orders, key=lambda order: order.price, reverse=True)  # desc
+        self.sell_orders = tuple(sorted(sells, key=lambda order: order.price, reverse=True))  # desc
+        self.buy_orders = tuple(sorted(buys, key=lambda order: order.price, reverse=True))  # desc
 
     def get_orders(self):
-        return [*self.sell_orders, *self.buy_orders]
+        return tuple(self.sell_orders + self.buy_orders)
 
 
 class Order:
@@ -208,13 +210,19 @@ def buy_executed():
     global INITIAL_LEVERAGE_SET
     global SELL_PRICE
 
-    status = fetch_order_status(CURR_BUY_ORDER.id) if CURR_BUY_ORDER is not None else 'suspect'
     LOG.debug('-------------------------------')
     LOG.debug(time.ctime())
-    price = get_current_price()
+
+    if CURR_BUY_ORDER is None:
+        if not CONF.stop_on_top:
+            LOG.warning('Current buy order is None')
+        return
+
+    status = fetch_order_status(CURR_BUY_ORDER.id)
     if status == 'open':
+        price = get_current_price()
         LOG.debug('Open Buy Order! Amount: %s @ %.1f', str(CURR_BUY_ORDER.amount), float(BUY_PRICE))
-        LOG.debug('Current Price: %.1f', price)
+        LOG.debug('Current Price: %s', price)
     elif status in ['closed', 'canceled']:
         LOG.info('Buy executed %s, starting follow up', str(CURR_BUY_ORDER))
         # use amount of last (previous) buy order for next sell order
@@ -227,6 +235,7 @@ def buy_executed():
         adjust_leverage(mamu)
         HIBERNATE = shall_hibernate(mamu)
         if not HIBERNATE:
+            price = get_current_price()
             if keep_buying(price):
                 create_buy_order(price, calculate_buy_order_amount(), False)
             else:
@@ -1038,10 +1047,10 @@ def load_existing_orders(oos: OpenOrdersSummary):
     global BUY_PRICE
 
     if oos.sell_orders:
-        SELL_ORDERS = oos.sell_orders
+        SELL_ORDERS = list(oos.sell_orders)
         SELL_PRICE = SELL_ORDERS[-1].price  # lowest if several
     if oos.buy_orders:
-        BUY_ORDERS = oos.buy_orders
+        BUY_ORDERS = list(oos.buy_orders)
         CURR_BUY_ORDER = BUY_ORDERS[0]  # highest if several
         BUY_PRICE = CURR_BUY_ORDER.price
     if not CONF.stop_on_top:
@@ -1397,8 +1406,7 @@ def append_orders(part: dict, oos: OpenOrdersSummary, price: float):
 
 
 def append_order_offset(part: dict, oos: OpenOrdersSummary, price: float):
-    highest_buy = sorted(oos.buy_orders, key=lambda order: order.price, reverse=True)[
-        0].price if oos.buy_orders else None
+    highest_buy = oos.buy_orders[0].price if oos.buy_orders else None
     if highest_buy is not None:
         buy_offset = calculate_price_offset(highest_buy, price)
         part['mail'].append("Highest buy order {}: {:>12} ({}% below actual {} price)".format(CONF.quote,
@@ -1410,7 +1418,7 @@ def append_order_offset(part: dict, oos: OpenOrdersSummary, price: float):
         part['mail'].append("Highest buy order {}: {:>12}".format(CONF.quote, 'n/a'))
         part['csv'].append("Highest buy order {}:;{}".format(CONF.quote, 'n/a'))
 
-    lowest_sell = sorted(oos.sell_orders, key=lambda order: order.price)[0].price if oos.sell_orders else None
+    lowest_sell = oos.sell_orders[-1].price if oos.sell_orders else None
     if lowest_sell is not None:
         sell_offset = calculate_price_offset(lowest_sell, price)
         part['mail'].append("Lowest sell order {}: {:>12} ({}% above actual {} price)".format(CONF.quote,
