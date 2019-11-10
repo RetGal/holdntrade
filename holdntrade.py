@@ -55,7 +55,7 @@ class ExchangeConfig:
         try:
             props = config['config']
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.16"
+            self.bot_version = "1.14.17"
             self.exchange = str(props['exchange']).strip('"').lower()
             self.api_key = str(props['api_key']).strip('"')
             self.api_secret = str(props['api_secret']).strip('"')
@@ -297,6 +297,8 @@ def shall_hibernate(mayer: dict = None):
     if mayer is not None and mayer['current']:
         if mayer['current'] > CONF.mm_stop_buy:
             return True
+        if not CONF.auto_leverage:
+            return round(get_leverage(), 1) > CONF.leverage_default
         if CONF.auto_leverage_escape:
             return round(get_leverage(), 1) > CONF.leverage_escape
         return round(get_leverage(), 1) > get_target_leverage(mayer)
@@ -1046,6 +1048,7 @@ def init_orders(force_close: bool, auto_conf: bool):
 def auto_configure(oos: OpenOrdersSummary):
     load_existing_orders(oos)
     if not CONF.stop_on_top:
+        adjust_leverage()
         if not oos.sell_orders:
             create_first_sell_order()
         if not oos.buy_orders:
@@ -1770,13 +1773,16 @@ def adjust_leverage(mayer: dict = None):
                 leverage = get_leverage()
             if round(leverage - target_leverage, 1) >= 0.1:
                 set_leverage(leverage-0.1)
+    else:
+        set_leverage(CONF.leverage_default)
 
 
 def get_target_leverage(mayer: dict):
-    if mayer is not None and mayer['current'] > CONF.mm_ceil:
-        return CONF.leverage_low
-    if mayer is not None and mayer['current'] < CONF.mm_floor:
-        return CONF.leverage_high
+    if CONF.auto_leverage:
+        if mayer is not None and mayer['current'] > CONF.mm_ceil:
+            return CONF.leverage_low
+        if mayer is not None and mayer['current'] < CONF.mm_floor:
+            return CONF.leverage_high
     return CONF.leverage_default
 
 
@@ -1887,6 +1893,7 @@ if __name__ == '__main__':
                 else:
                     spread(get_current_price())
             if not LOOP:
+                adjust_leverage()
                 compensate()
                 if not CONF.stop_on_top:
                     if not INITIAL_LEVERAGE_SET:

@@ -416,10 +416,20 @@ class HoldntradeTest(unittest.TestCase):
 
         self.assertTrue(holdntrade.shall_hibernate(mayer))
 
+    @patch('holdntrade.get_leverage', return_value=2.1)
+    def test_shall_hibernate_by_leverage_without_auto_leverage(self, mock_get_leverage):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.CONF.mm_stop_buy = 2.3
+        holdntrade.CONF.auto_leverage_escape = False
+        mayer = {'current': 1.4}
+
+        self.assertTrue(holdntrade.shall_hibernate(mayer))
+
     @patch('holdntrade.get_leverage', return_value=1.1)
     @patch('holdntrade.get_target_leverage', return_value=1)
     def test_shall_hibernate_by_leverage(self, mock_get_target_leverage, mock_get_leverage):
         holdntrade.CONF = self.create_default_conf()
+        holdntrade.CONF.auto_leverage = True
         holdntrade.CONF.mm_stop_buy = 2.3
         holdntrade.CONF.auto_leverage_escape = False
         mayer = {'current': 1.4}
@@ -525,9 +535,11 @@ class HoldntradeTest(unittest.TestCase):
         self.assertEqual(8100, holdntrade.BUY_PRICE)
 
     @patch('holdntrade.logging')
+    @patch('holdntrade.adjust_leverage')
     @patch('holdntrade.create_first_buy_order')
     @patch('holdntrade.create_first_sell_order')
-    def test_auto_configure_no_buy_orders(self, mock_create_first_sell_order, mock_create_first_buy_order, mock_logging):
+    def test_auto_configure_no_buy_orders(self, mock_create_first_sell_order, mock_create_first_buy_order,
+                                          mock_adjust_leverage, mock_logging):
         holdntrade.CONF = self.create_default_conf()
         holdntrade.LOG = mock_logging
         orders = [{'side': 'sell', 'id': '12345abcde', 'price': 10000, 'amount': 50,
@@ -538,13 +550,16 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.auto_configure(holdntrade.OpenOrdersSummary(orders))
 
         self.assertEqual(10000, holdntrade.SELL_PRICE)
+        mock_adjust_leverage.asser_called()
         mock_create_first_sell_order.assert_not_called()
         mock_create_first_buy_order.assert_called()
 
     @patch('holdntrade.logging')
+    @patch('holdntrade.adjust_leverage')
     @patch('holdntrade.create_first_buy_order')
     @patch('holdntrade.create_first_sell_order')
-    def test_auto_configure_no_sell_orders(self, mock_create_first_sell_order, mock_create_first_buy_order, mock_logging):
+    def test_auto_configure_no_sell_orders(self, mock_create_first_sell_order, mock_create_first_buy_order,
+                                           mock_adjust_leverage, mock_logging):
         holdntrade.CONF = self.create_default_conf()
         holdntrade.LOG = mock_logging
         orders = [{'side': 'buy', 'id': '12345abcdg', 'price': 8000, 'amount': 150,
@@ -555,6 +570,7 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.auto_configure(holdntrade.OpenOrdersSummary(orders))
 
         self.assertEqual(8100, holdntrade.BUY_PRICE)
+        mock_adjust_leverage.asser_called()
         mock_create_first_sell_order.assert_called()
         mock_create_first_buy_order.assert_not_called()
 
@@ -625,8 +641,17 @@ class HoldntradeTest(unittest.TestCase):
         self.assertEqual(-0.01, rate)
 
     @patch('holdntrade.logging')
+    def test_get_target_leverage_no_auto_leverage(self, mock_logging):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.LOG = mock_logging
+
+        target_leverage = holdntrade.get_target_leverage({'current': 2.8})
+        self.assertEqual(holdntrade.CONF.leverage_default, target_leverage)
+
+    @patch('holdntrade.logging')
     def test_get_target_leverage_for_mm_ceil(self, mock_logging):
         holdntrade.CONF = self.create_default_conf()
+        holdntrade.CONF.auto_leverage = True
         holdntrade.LOG = mock_logging
 
         target_leverage = holdntrade.get_target_leverage({'current': holdntrade.CONF.mm_ceil + 0.1})
@@ -635,6 +660,7 @@ class HoldntradeTest(unittest.TestCase):
     @patch('holdntrade.logging')
     def test_get_target_leverage_for_mm_floor(self, mock_logging):
         holdntrade.CONF = self.create_default_conf()
+        holdntrade.CONF.auto_leverage = True
         holdntrade.LOG = mock_logging
 
         target_leverage = holdntrade.get_target_leverage({'current': holdntrade.CONF.mm_floor - 0.1})
@@ -643,6 +669,7 @@ class HoldntradeTest(unittest.TestCase):
     @patch('holdntrade.logging')
     def test_get_target_leverage_default(self, mock_logging):
         holdntrade.CONF = self.create_default_conf()
+        holdntrade.CONF.auto_leverage = True
         holdntrade.LOG = mock_logging
 
         target_leverage = holdntrade.get_target_leverage({'current': holdntrade.CONF.mm_floor + 0.1})
@@ -788,6 +815,7 @@ class HoldntradeTest(unittest.TestCase):
         mock_logging.debug.assert_called_with('Sell still open')
 
     @patch('holdntrade.logging')
+    @patch('holdntrade.set_leverage')
     @patch('holdntrade.sleep_for', return_value=None)
     @patch('holdntrade.get_current_price', return_value=9000)
     @patch('holdntrade.calculate_buy_order_amount', return_value=99)
@@ -797,7 +825,7 @@ class HoldntradeTest(unittest.TestCase):
     @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
     def test_sell_executed(self, mock_create_limit_buy_order, mock_fetch_order_status, mock_fetch_balance,
                            mock_shall_hibernate, mock_calculate_buy_order_amount, mock_get_current_price,
-                           mock_sleep_for, mock_logging):
+                           mock_sleep_for, mock_set_leverage, mock_logging):
         holdntrade.CONF = self.create_default_conf()
         holdntrade.CONF.base = 'BTC'
         holdntrade.LOG = mock_logging
@@ -855,6 +883,7 @@ class HoldntradeTest(unittest.TestCase):
         mock_logging.info.assert_called()
 
     @patch('holdntrade.logging')
+    @patch('holdntrade.set_leverage')
     @patch('holdntrade.set_initial_leverage')
     @patch('holdntrade.sleep_for', return_value=None)
     @patch('holdntrade.get_current_price', return_value=9000)
@@ -867,7 +896,7 @@ class HoldntradeTest(unittest.TestCase):
     def test_buy_executed_regular(self, mock_create_limit_sell_order, mock_create_limit_buy_order,
                                   mock_fetch_order_status, mock_position_balance, mock_shall_hibernate,
                                   mock_calculate_buy_order_amount, mock_get_current_price, mock_sleep_for,
-                                  mock_set_initial_leverage, mock_logging):
+                                  mock_set_initial_leverage, mock_set_leverage, mock_logging):
         holdntrade.CONF = self.create_default_conf()
         holdntrade.CONF.base = 'BTC'
         holdntrade.LOG = mock_logging
