@@ -55,7 +55,7 @@ class ExchangeConfig:
         try:
             props = config['config']
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.15"
+            self.bot_version = "1.14.16"
             self.exchange = str(props['exchange']).strip('"').lower()
             self.api_key = str(props['api_key']).strip('"')
             self.api_secret = str(props['api_secret']).strip('"')
@@ -210,7 +210,7 @@ def buy_executed():
     global INITIAL_LEVERAGE_SET
     global SELL_PRICE
 
-    LOG.debug('-------------------------------')
+    LOG.debug('----------------------------------')
     LOG.debug(time.ctime())
 
     if CURR_BUY_ORDER is None:
@@ -556,7 +556,6 @@ def create_market_sell_order(amount_crypto: float):
                                                               {'leverage_level': CONF.leverage_default})
             order = Order(new_order)
             LOG.info('Created market %s', str(order))
-            SELL_ORDERS.append(order)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if any(e in str(error.args) for e in STOP_ERRORS):
@@ -574,7 +573,6 @@ def create_market_buy_order(amount_crypto: float):
     """
     global BUY_PRICE
     global SELL_PRICE
-    global CURR_BUY_ORDER
 
     cur_price = get_current_price()
     amount_fiat = round(amount_crypto * cur_price)
@@ -594,7 +592,6 @@ def create_market_buy_order(amount_crypto: float):
                                                               'funding_currency': CONF.base})
             order = Order(new_order)
             LOG.info('Created market %s', str(order))
-            CURR_BUY_ORDER = None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if "not_enough_free" or "free_margin_below" in str(error.args):
@@ -820,9 +817,9 @@ def compensate():
 def do_buy(crypto_amount: float):
     """
     Market price raised in 0.5 steps
-    :return Order
     """
     global CURR_BUY_ORDER
+    global BUY_ORDERS
 
     i = 1
     while i <= CONF.trade_trials:
@@ -837,6 +834,9 @@ def do_buy(crypto_amount: float):
             i += 1
             daily_report()
         else:
+            if CURR_BUY_ORDER in BUY_ORDERS:
+                BUY_ORDERS.remove(CURR_BUY_ORDER)
+            CURR_BUY_ORDER = None if not BUY_ORDERS else BUY_ORDERS[0]
             return
     create_market_buy_order(crypto_amount)
 
@@ -844,9 +844,9 @@ def do_buy(crypto_amount: float):
 def do_sell(crypto_amount: float):
     """
     Market price discounted in 0.5 steps
-    :return Order
     """
     global SELL_PRICE
+    global SELL_ORDERS
 
     i = 1
     while i <= CONF.trade_trials:
@@ -862,6 +862,7 @@ def do_sell(crypto_amount: float):
             i += 1
             daily_report()
         else:
+            del SELL_ORDERS[-1]
             return
     create_market_sell_order(crypto_amount)
 
@@ -991,20 +992,23 @@ def init_orders(force_close: bool, auto_conf: bool):
         # Handle open orders
         oos = get_open_orders()
 
-        LOG.info("Used margin: {:>17.2f}%".format(calculate_used_margin_percentage()))
+        LOG.info("Used margin: {:>20.2f}%".format(calculate_used_margin_percentage()))
         print_position_info(oos)
 
         if oos.get_orders():
-            LOG .info("Value of buy orders {}: {:>2}".format(CONF.quote, int(oos.total_buy_order_value)))
-            LOG.info("Value of sell orders {}: {:>1}".format(CONF.quote, int(oos.total_sell_order_value)))
-            LOG.info("No. of buy orders: {:>8}".format(len(oos.buy_orders)))
-            LOG.info("No. of sell orders: {:>7}".format(len(oos.sell_orders)))
-            LOG.info('-------------------------------')
+            LOG .info("Value of buy orders {}: {:>5}".format(CONF.quote, int(oos.total_buy_order_value)))
+            LOG.info("Value of sell orders {}: {:>4}".format(CONF.quote, int(oos.total_sell_order_value)))
+            LOG.info("No. of buy orders: {:>11}".format(len(oos.buy_orders)))
+            LOG.info("No. of sell orders: {:>10}".format(len(oos.sell_orders)))
+            LOG.info('----------------------------------')
 
             if not force_close and not auto_conf:
                 init = input('There are open orders! Would you like to load them? (y/n) ')
             if not force_close and (auto_conf or init.lower() in ['y', 'yes']):
-                return load_existing_orders(oos)
+                auto_configure(oos)
+                LOG.info('Initialization complete (using existing orders)')
+                # No "compensate" in auto configuration
+                return True
 
             LOG.info('Unrealised PNL: %s %s', str(get_unrealised_pnl(CONF.symbol) * CONF.satoshi_factor), CONF.base)
             if force_close:
@@ -1039,6 +1043,16 @@ def init_orders(force_close: bool, auto_conf: bool):
         return False
 
 
+def auto_configure(oos: OpenOrdersSummary):
+    load_existing_orders(oos)
+    if not CONF.stop_on_top:
+        if not oos.sell_orders:
+            create_first_sell_order()
+        if not oos.buy_orders:
+            create_first_buy_order()
+    del oos
+
+
 def load_existing_orders(oos: OpenOrdersSummary):
     global SELL_ORDERS
     global SELL_PRICE
@@ -1053,17 +1067,6 @@ def load_existing_orders(oos: OpenOrdersSummary):
         BUY_ORDERS = list(oos.buy_orders)
         CURR_BUY_ORDER = BUY_ORDERS[0]  # highest if several
         BUY_PRICE = CURR_BUY_ORDER.price
-    if not CONF.stop_on_top:
-        # All sell orders executed
-        if not oos.sell_orders:
-            create_first_sell_order()
-        # All buy orders executed
-        if not oos.buy_orders:
-            create_first_buy_order()
-    del oos
-    LOG.info('Initialization complete (using existing orders)')
-    # No "compensate" necessary
-    return True
 
 
 def cancel_orders(orders: [Order]):
@@ -1182,25 +1185,25 @@ def print_position_info(oos: OpenOrdersSummary):
         sleep_for(1, 2)
         poi = get_position_info()
         if poi:
-            LOG.info("Position {}: {:>13}".format(CONF.quote, poi['currentQty']))
-            LOG.info("Entry price: {:>16.1f}".format(poi['avgEntryPrice']))
-            LOG.info("Market price: {:>15.1f}".format(poi['markPrice']))
-            LOG.info("Liquidation price: {:>10.1f}".format(poi['liquidationPrice']))
+            LOG.info("Position {}: {:>16}".format(CONF.quote, poi['currentQty']))
+            LOG.info("Entry price: {:>19.1f}".format(poi['avgEntryPrice']))
+            LOG.info("Market price: {:>18.1f}".format(poi['markPrice']))
+            LOG.info("Liquidation price: {:>13.1f}".format(poi['liquidationPrice']))
             del poi
         else:
-            LOG.info("Available balance is {}: {:>3} ".format(CONF.base, get_balance()['free']))
+            LOG.info("Available balance is {}: {:>6} ".format(CONF.base, get_balance()['free']))
             LOG.info("No position found, I will create one for you")
             return
     elif CONF.exchange == 'kraken':
-        LOG.info("Position {}: {:>13}".format(CONF.quote, get_position_balance()))
-        LOG.info("Entry price: {:>16.1f}".format(calculate_order_stats(oos.get_orders())['avg']))
-        LOG.info("Market price: {:>15.1f}".format(get_current_price()))
+        LOG.info("Position {}: {:>16}".format(CONF.quote, get_position_balance()))
+        LOG.info("Entry price: {:>19.1f}".format(calculate_order_stats(oos.get_orders())['avg']))
+        LOG.info("Market price: {:>18.1f}".format(get_current_price()))
     elif CONF.exchange == 'liquid':
         poi = get_position_info()
         if poi is not None and float(poi['position']) > 0:
-            LOG.info("Position {}: {:>13.2f}".format(CONF.base, float(poi['position'])))
+            LOG.info("Position {}: {:>16.2f}".format(CONF.base, float(poi['position'])))
         else:
-            LOG.info("Available balance is {}: {:>3} ".format(CONF.base, get_balance()['free']))
+            LOG.info("Available balance is {}: {:>6} ".format(CONF.base, get_balance()['free']))
             LOG.info("No position found, I will create one for you")
             return
     if not oos.get_orders():
@@ -1854,7 +1857,7 @@ if __name__ == '__main__':
         os.makedirs('log')
 
     LOG = function_logger(logging.DEBUG, LOG_FILENAME, logging.INFO)
-    LOG.info('-------------------------------')
+    LOG.info('----------------------------------')
     CONF = ExchangeConfig()
     LOG.info('Holdntrade version: %s', CONF.bot_version)
     EXCHANGE = connect_to_exchange()
@@ -1885,11 +1888,13 @@ if __name__ == '__main__':
                     spread(get_current_price())
             if not LOOP:
                 compensate()
-                if not BUY_ORDERS and not SELL_ORDERS and not CONF.stop_on_top:
+                if not CONF.stop_on_top:
                     if not INITIAL_LEVERAGE_SET:
                         INITIAL_LEVERAGE_SET = set_initial_leverage()
-                    create_first_sell_order()
-                    create_first_buy_order()
+                    if not SELL_ORDERS:
+                        create_first_sell_order()
+                    if not BUY_ORDERS:
+                        create_first_buy_order()
                 LOG.info('Initialization complete')
                 LOOP = True
         else:

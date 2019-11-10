@@ -519,11 +519,44 @@ class HoldntradeTest(unittest.TestCase):
                   {'side': 'buy', 'id': '12345abcdh', 'price': 8100, 'amount': 49,
                    'datetime': datetime.datetime.today().isoformat()}]
 
-        result = holdntrade.load_existing_orders(holdntrade.OpenOrdersSummary(orders))
+        holdntrade.load_existing_orders(holdntrade.OpenOrdersSummary(orders))
 
-        self.assertTrue(result)
         self.assertEqual(10000, holdntrade.SELL_PRICE)
         self.assertEqual(8100, holdntrade.BUY_PRICE)
+
+    @patch('holdntrade.logging')
+    @patch('holdntrade.create_first_buy_order')
+    @patch('holdntrade.create_first_sell_order')
+    def test_auto_configure_no_buy_orders(self, mock_create_first_sell_order, mock_create_first_buy_order, mock_logging):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.LOG = mock_logging
+        orders = [{'side': 'sell', 'id': '12345abcde', 'price': 10000, 'amount': 50,
+                   'datetime': datetime.datetime.today().isoformat()},
+                  {'side': 'sell', 'id': '12345abcdf', 'price': 10100, 'amount': 49,
+                   'datetime': datetime.datetime.today().isoformat()}]
+
+        holdntrade.auto_configure(holdntrade.OpenOrdersSummary(orders))
+
+        self.assertEqual(10000, holdntrade.SELL_PRICE)
+        mock_create_first_sell_order.assert_not_called()
+        mock_create_first_buy_order.assert_called()
+
+    @patch('holdntrade.logging')
+    @patch('holdntrade.create_first_buy_order')
+    @patch('holdntrade.create_first_sell_order')
+    def test_auto_configure_no_sell_orders(self, mock_create_first_sell_order, mock_create_first_buy_order, mock_logging):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.LOG = mock_logging
+        orders = [{'side': 'buy', 'id': '12345abcdg', 'price': 8000, 'amount': 150,
+                   'datetime': datetime.datetime.today().isoformat()},
+                  {'side': 'buy', 'id': '12345abcdh', 'price': 8100, 'amount': 49,
+                   'datetime': datetime.datetime.today().isoformat()}]
+
+        holdntrade.auto_configure(holdntrade.OpenOrdersSummary(orders))
+
+        self.assertEqual(8100, holdntrade.BUY_PRICE)
+        mock_create_first_sell_order.assert_called()
+        mock_create_first_buy_order.assert_not_called()
 
     @patch('holdntrade.logging')
     def test_calculate_avg_entry_price_and_total_quantity(self, mock_logging):
