@@ -6,7 +6,11 @@
 *holdntrade* setzt *Python* Version >= 3.5 voraus.
 Im Kern verwendet *holdntrade* die [ccxt](https://github.com/ccxt/ccxt) Bibliothek. Diese gilt es mittels [pip](https://pypi.org/project/pip/) zu installieren:
 
-`python -m pip install ccxt`
+`python -m pip install ccxt requests`
+
+oder
+
+`pip install -r requirements.txt`
 
 Sollen die *holdntrade* Instanzen via Watchdog überwacht und bei Bedarf nau gestartet werden, so wird zusätzlich noch [tmux](https://github.com/tmux/tmux/wiki) benötigt:
 
