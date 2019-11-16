@@ -55,7 +55,7 @@ class ExchangeConfig:
         try:
             props = config['config']
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.17"
+            self.bot_version = "1.14.18"
             self.exchange = str(props['exchange']).strip('"').lower()
             self.api_key = str(props['api_key']).strip('"')
             self.api_secret = str(props['api_secret']).strip('"')
@@ -1111,6 +1111,10 @@ def close_position(symbol: str):
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         # no retry in case of "no volume to close position" (kraken specific error)
         if "volume to close position" in str(error.args):
+            return
+        # no retry in case of "system is currently overloaded" (bitmex specific error)
+        if "overloaded" in str(error.args):
+            LOG.info('Exchange is overloaded, close position is postponed')
             return
         LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
         sleep_for(4, 6)
