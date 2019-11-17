@@ -823,9 +823,10 @@ class HoldntradeTest(unittest.TestCase):
     @mock.patch.object(ccxt.bitmex, 'fetch_balance')
     @mock.patch.object(ccxt.bitmex, 'fetch_order_status')
     @mock.patch.object(ccxt.bitmex, 'create_limit_buy_order')
-    def test_sell_executed(self, mock_create_limit_buy_order, mock_fetch_order_status, mock_fetch_balance,
-                           mock_shall_hibernate, mock_calculate_buy_order_amount, mock_get_current_price,
-                           mock_sleep_for, mock_set_leverage, mock_logging):
+    @mock.patch.object(ccxt.bitmex, 'create_limit_sell_order')
+    def test_sell_executed(self, mock_create_limit_sell_order, mock_create_limit_buy_order, mock_fetch_order_status,
+                           mock_fetch_balance,mock_shall_hibernate, mock_calculate_buy_order_amount,
+                           mock_get_current_price, mock_sleep_for, mock_set_leverage, mock_logging):
         holdntrade.CONF = self.create_default_conf()
         holdntrade.CONF.base = 'BTC'
         holdntrade.LOG = mock_logging
@@ -844,7 +845,54 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.sell_executed()
 
         mock_logging.info.assert_called()
+        mock_create_limit_sell_order.assert_not_called()
         mock_create_limit_buy_order.assert_called_with(holdntrade.CONF.pair, 99, buy_price)
+
+    @patch('holdntrade.logging')
+    @patch('holdntrade.get_current_price', return_value=9000)
+    @patch('holdntrade.calculate_buy_order_amount', return_value=99)
+    @patch('holdntrade.shall_hibernate', return_value=False)
+    @patch('holdntrade.fetch_mayer', return_value={'current': 1, 'average': 1})
+    @patch('holdntrade.adjust_leverage')
+    @patch('holdntrade.create_sell_order')
+    @patch('holdntrade.create_buy_order')
+    @patch('holdntrade.calculate_sell_order_amount', return_value=1)
+    @patch('holdntrade.fetch_order_status', return_value='closed')
+    @patch('holdntrade.cancel_current_buy_order')
+    def test_last_sell_executed(self, mock_cancel_current_buy_order, mock_fetch_order_status,
+                                mock_calculate_sell_order_amount, mock_create_buy_order, mock_create_sell_order,
+                                mock_adjust_leverage, mock_fetch_mayer, mock_shall_hibernate,
+                                mock_calculate_buy_order_amount, mock_get_current_price, mock_logging):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.CONF.base = 'BTC'
+        holdntrade.LOG = mock_logging
+        holdntrade.SELL_ORDERS = [holdntrade.Order({'side': 'sell', 'id': '1s', 'price': 10000, 'amount': 10,
+                                                    'datetime': datetime.datetime.today().isoformat()})]
+        holdntrade.sell_executed()
+
+        mock_logging.info.assert_called()
+        mock_create_sell_order.assert_called()
+        mock_create_buy_order.assert_called()
+
+    @patch('holdntrade.logging')
+    @patch('holdntrade.create_sell_order')
+    @patch('holdntrade.create_buy_order')
+    @patch('holdntrade.fetch_order_status', return_value='closed')
+    def test_last_sell_executed_close_on_stop(self, mock_fetch_order_status,mock_create_sell_order,
+                                              mock_create_buy_order, mock_logging):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.CONF.base = 'BTC'
+        holdntrade.CONF.stop_on_top = True
+        holdntrade.CONF.close_on_stop = True
+        holdntrade.LOG = mock_logging
+        holdntrade.SELL_ORDERS = [holdntrade.Order({'side': 'sell', 'id': '1s', 'price': 10000, 'amount': 10,
+                                                    'datetime': datetime.datetime.today().isoformat()})]
+
+        holdntrade.sell_executed()
+
+        mock_logging.info.assert_called()
+        mock_create_sell_order.assert_not_called()
+        mock_create_buy_order.assert_not_called()
 
     @patch('holdntrade.logging')
     @mock.patch.object(ccxt.bitmex, 'fetch_ticker')
@@ -1184,6 +1232,7 @@ class HoldntradeTest(unittest.TestCase):
         conf.auto_leverage_escape = True
         conf.trade_trials = 5
         conf.stop_on_top = False
+        conf.close_on_stop = False
         return conf
 
 

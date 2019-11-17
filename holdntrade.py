@@ -55,7 +55,7 @@ class ExchangeConfig:
         try:
             props = config['config']
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.18"
+            self.bot_version = "1.14.19"
             self.exchange = str(props['exchange']).strip('"').lower()
             self.api_key = str(props['api_key']).strip('"')
             self.api_secret = str(props['api_secret']).strip('"')
@@ -81,6 +81,7 @@ class ExchangeConfig:
             self.mm_stop_buy = abs(float(props['mm_stop_buy']))
             self.trade_trials = abs(int(props['trade_trials']))
             self.stop_on_top = bool(str(props['stop_on_top']).strip('"').lower() == 'true')
+            self.close_on_stop = bool(str(props['close_on_stop']).strip('"').lower() == 'true')
             currency = self.pair.split("/")
             self.base = currency[0]
             self.quote = currency[1]
@@ -264,6 +265,8 @@ def sell_executed():
             if order in SELL_ORDERS:
                 SELL_ORDERS.remove(order)
             LOG.info('Sell executed %s', str(order))
+            if CONF.stop_on_top and CONF.close_on_stop and not SELL_ORDERS:
+                return
             mamu = fetch_mayer()
             adjust_leverage(mamu)
             HIBERNATE = shall_hibernate(mamu)
@@ -1340,7 +1343,8 @@ def create_report_part_settings():
                      "Mayer multiple floor: {:>13}".format(str(CONF.mm_floor)),
                      "Mayer multiple ceil: {:>14}".format(str(CONF.mm_ceil)),
                      "Mayer multiple stop buy: {:>10}".format(str(CONF.mm_stop_buy)),
-                     "Stop_on top: {:>22}".format(str('Y' if CONF.stop_on_top is True else 'N'))],
+                     "Stop on top: {:>22}".format(str('Y' if CONF.stop_on_top is True else 'N' if CONF.close_on_stop is False else '(!) N')),
+                     "Close on stop: {:>20}".format(str('Y' if CONF.close_on_stop is True and CONF.stop_on_top is True else '(!) Y' if CONF.close_on_stop is True and CONF.stop_on_top is False else 'N'))],
             'csv': ["Rate change:;{:.1f}%".format(float(CONF.change * 100)),
                     "Quota:;'1/{}'".format(str(CONF.quota)),
                     "Auto quota:;{}".format(str('Y' if CONF.auto_quota is True else 'N')),
@@ -1354,7 +1358,8 @@ def create_report_part_settings():
                     "Mayer multiple floor:;{}".format(str(CONF.mm_floor)),
                     "Mayer multiple ceil:;{}".format(str(CONF.mm_ceil)),
                     "Mayer multiple stop buy:;{}".format(str(CONF.mm_stop_buy)),
-                    "Stop on top:;{}".format(str('Y' if CONF.stop_on_top is True else 'N'))]}
+                    "Stop on top:;{}".format(str('Y' if CONF.stop_on_top is True else 'N' if CONF.close_on_stop is False else '(!) N')),
+                    "Close on stop:;{}".format(str('Y' if CONF.close_on_stop is True and CONF.stop_on_top is True else '(!) Y' if CONF.close_on_stop is True and CONF.stop_on_top is False else 'N'))]}
 
 
 def create_mail_part_general():
@@ -1451,15 +1456,13 @@ def append_interest_rate(part: dict):
         part['csv'].append("Interest rate:;{}".format('n/a'))
 
 
-def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance: float, price: float = None,
+def append_balances(part: dict, margin_balance: dict, poi: dict, wallet_balance: float, price: float,
                     all_sold_balance: float = None):
     """
     Appends liquidation price, wallet balance, margin balance (including stats), used margin and leverage information
     """
     part['mail'].append("Wallet balance {}: {:>18.4f}".format(CONF.base, wallet_balance))
     part['csv'].append("Wallet balance {}:;{:.4f}".format(CONF.base, wallet_balance))
-    if price is None:
-        price = get_current_price()
     today = calculate_daily_statistics(margin_balance['total'], price)
     append_margin_change(part, today, CONF.base)
     part['mail'].append("Available balance {}: {:>15.4f}".format(CONF.base, margin_balance['free']))
@@ -1883,6 +1886,8 @@ if __name__ == '__main__':
     LOOP = init_orders(False, AUTO_CONF)
 
     while True:
+        if not SELL_ORDERS and CONF.stop_on_top and CONF.close_on_stop:
+            HIBERNATE = True
         if not HIBERNATE:
             if LOOP:
                 daily_report()
@@ -1894,6 +1899,8 @@ if __name__ == '__main__':
                         LOOP = init_orders(True, False)
                     else:
                         HIBERNATE = True
+                        if CONF.stop_on_top and CONF.close_on_stop:
+                            close_position(CONF.symbol)
                 else:
                     spread(get_current_price())
             if not LOOP:
