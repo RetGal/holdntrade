@@ -55,7 +55,7 @@ class ExchangeConfig:
         try:
             props = config['config']
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.19"
+            self.bot_version = "1.14.20"
             self.exchange = str(props['exchange']).strip('"').lower()
             self.api_key = str(props['api_key']).strip('"')
             self.api_secret = str(props['api_secret']).strip('"')
@@ -1295,6 +1295,7 @@ def daily_report(immediately: bool = False):
         if (immediately and datetime.datetime(2012, 1, 17, 12, 30).time() < now.time()) \
                 or datetime.datetime(2012, 1, 17, 12, 30).time() > now.time() \
                 > datetime.datetime(2012, 1, 17, 12, 10).time() and EMAIL_SENT != now.day:
+            compact_position()
             subject = "Daily report for {}".format(CONF.bot_instance)
             content = create_mail_content()
             filename_csv = CONF.bot_instance + '.csv'
@@ -1835,6 +1836,19 @@ def calculate_quota(price: float = None):
         price = get_current_price()
     quota = round((math.sqrt(margin_balance * price) / 15) * 0.8 + (CONF.change * 200))
     return 2 if quota < 2 else 20 if quota > 20 else quota
+
+
+def compact_position():
+    """
+    Optimizes a position by adjusting the leverage in order to maximize the used margin ratio and
+    minimize the liquidation price
+    """
+    if calculate_used_margin_percentage() < 95:
+        LOG.info('Compacting position')
+        leverage = round(get_relevant_leverage(), 1)
+        while set_leverage(round(leverage, 1)):
+            sleep_for(0, 1)
+            leverage -= 0.1
 
 
 def deactivate_bot():

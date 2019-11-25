@@ -4,7 +4,7 @@ import math
 import time
 import unittest
 from unittest import mock
-from unittest.mock import patch
+from unittest.mock import patch, call
 import ccxt
 import holdntrade
 
@@ -1179,6 +1179,33 @@ class HoldntradeTest(unittest.TestCase):
         holdntrade.compensate()
         mock_get_balance.assert_not_called()
         mock_get_margin_balance.assert_not_called()
+
+    @patch('holdntrade.logging')
+    @patch('holdntrade.set_leverage')
+    @patch('holdntrade.sleep_for', return_value=None)
+    @patch('holdntrade.get_relevant_leverage')
+    @patch('holdntrade.calculate_used_margin_percentage', return_value=77)
+    def test_compact_position(self, mock_calculate_used_margin_percentage, mock_get_relevant_leverage, mock_sleep_for,
+                              mock_set_leverage, mock_logging):
+        holdntrade.LOG = mock_logging
+        holdntrade.CONF = self.create_default_conf()
+
+        mock_get_relevant_leverage.return_value = 3.321
+        mock_set_leverage.side_effect = [True, True, True, True, False]
+        first_call = call(3.3)
+        last_call = call(2.9)
+
+        holdntrade.compact_position()
+
+        self.assertEqual(first_call, mock_set_leverage.mock_calls[0])
+        self.assertEqual(last_call, mock_set_leverage.mock_calls[-1])
+
+    @patch('holdntrade.set_leverage')
+    @patch('holdntrade.calculate_used_margin_percentage', return_value=95)
+    def test_compact_position_percentage_too_high(self, mock_calculate_used_margin_percentage, mock_set_leverage):
+        holdntrade.compact_position()
+
+        mock_set_leverage.assert_not_called()
 
     def test_config_parse(self):
         holdntrade.INSTANCE = 'test'
