@@ -55,7 +55,7 @@ class ExchangeConfig:
         try:
             props = config['config']
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.20"
+            self.bot_version = "1.14.21"
             self.exchange = str(props['exchange']).strip('"').lower()
             self.api_key = str(props['api_key']).strip('"')
             self.api_secret = str(props['api_secret']).strip('"')
@@ -950,7 +950,13 @@ def get_current_price():
     :return last bid price: float
     """
     try:
-        return EXCHANGE.fetch_ticker(CONF.pair)['bid']
+        price = EXCHANGE.fetch_ticker(CONF.pair)['bid']
+        if not price:
+            LOG.warning('Price was None')
+            sleep_for(1, 2)
+            get_current_price()
+        else:
+            return price
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
         if "key is disabled" in str(error.args):

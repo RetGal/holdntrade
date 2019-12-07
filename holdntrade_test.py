@@ -1147,7 +1147,20 @@ class HoldntradeTest(unittest.TestCase):
 
         holdntrade.get_current_price()
 
+        mock_logging.warning.assert_called_with('Key is disabled')
         mock_deactivate_bot.assert_called()
+
+    @patch('holdntrade.logging')
+    @patch('ccxt.bitmex.fetch_ticker', side_effect=[{'bid': None}, {'bid': 1111}])
+    def test_get_current_price_should_call_itself_again_if_return_value_is_None(self, mock_fetch_ticker, mock_logging):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.LOG = mock_logging
+        holdntrade.EXCHANGE = holdntrade.connect_to_exchange()
+
+        holdntrade.get_current_price()
+
+        mock_logging.warning.assert_called_with('Price was None')
+        self.assertEqual(2, mock_fetch_ticker.call_count)
 
     def test_keep_buying(self):
         holdntrade.CONF = self.create_default_conf()
