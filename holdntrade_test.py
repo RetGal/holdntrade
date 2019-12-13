@@ -931,6 +931,31 @@ class HoldntradeTest(unittest.TestCase):
         mock_logging.info.assert_called()
 
     @patch('holdntrade.logging')
+    def test_buy_executed_no_buy_order(self, mock_logging):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.LOG = mock_logging
+        holdntrade.CURR_BUY_ORDER = None
+
+        holdntrade.buy_executed()
+
+        mock_logging.warning.assert_called_with('Current buy order is None')
+
+    @patch('holdntrade.logging')
+    @patch('holdntrade.fetch_order_status', return_value='open')
+    @patch('holdntrade.get_current_price', return_value=9000)
+    def test_buy_executed_order_still_open(self, mock_get_current_price, mock_fetch_order_status, mock_logging):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.LOG = mock_logging
+        holdntrade.CURR_BUY_ORDER = holdntrade.Order({'side': 'buy', 'id': '1s', 'price': 10000, 'amount': 10,
+                                                    'datetime': datetime.datetime.today().isoformat()})
+
+        holdntrade.buy_executed()
+
+        mock_logging.debug.assert_called()
+        mock_logging.info.assert_not_called()
+        mock_logging.warning.assert_not_called()
+
+    @patch('holdntrade.logging')
     @patch('holdntrade.set_leverage')
     @patch('holdntrade.set_initial_leverage')
     @patch('holdntrade.sleep_for', return_value=None)
@@ -966,6 +991,70 @@ class HoldntradeTest(unittest.TestCase):
         mock_set_initial_leverage.assert_not_called()
         mock_create_limit_sell_order.assert_called_with(holdntrade.CONF.pair, 222, sell_price)
         mock_create_limit_buy_order.assert_called_with(holdntrade.CONF.pair, 100, buy_price)
+
+    @patch('holdntrade.logging')
+    @patch('holdntrade.sleep_for', return_value=None)
+    @patch('holdntrade.daily_report')
+    @patch('holdntrade.calculate_buy_order_amount')
+    @patch('holdntrade.update_price', return_value=100080)
+    @patch('holdntrade.is_order_below_limit', return_value=False)
+    @patch('holdntrade.create_buy_order')
+    @patch('holdntrade.boost_leverage')
+    def test_delay_buy_order_should_create_buy_order(self, mock_boost_leverage, mock_create_buy_order,
+                                                     mock_is_order_below_limit, mock_update_price,
+                                                     mock_calculate_buy_order_amount, mock_daily_report,
+                                                     mock_sleep_for, mock_logging):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.LOG = mock_logging
+
+        holdntrade.delay_buy_order(10000, 100050)
+
+        mock_daily_report.assert_called
+        mock_boost_leverage.assert_not_called
+        mock_create_buy_order.assert_called
+
+    @patch('holdntrade.logging')
+    @patch('holdntrade.sleep_for', return_value=None)
+    @patch('holdntrade.daily_report')
+    @patch('holdntrade.calculate_buy_order_amount')
+    @patch('holdntrade.update_price', return_value=100080)
+    @patch('holdntrade.is_order_below_limit', return_value=True)
+    @patch('holdntrade.create_buy_order')
+    @patch('holdntrade.boost_leverage')
+    def test_delay_buy_order_should_boost_leverage(self, mock_boost_leverage, mock_create_buy_order,
+                                                   mock_is_order_below_limit, mock_update_price,
+                                                   mock_calculate_buy_order_amount, mock_daily_report,
+                                                   mock_sleep_for, mock_logging):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.LOG = mock_logging
+
+        holdntrade.delay_buy_order(10000, 100050)
+
+        mock_daily_report.assert_called
+        mock_boost_leverage.assert_called
+        mock_create_buy_order.assert_called
+
+    @patch('holdntrade.logging')
+    @patch('holdntrade.sleep_for', return_value=None)
+    @patch('holdntrade.daily_report')
+    @patch('holdntrade.calculate_buy_order_amount')
+    @patch('holdntrade.update_price', return_value=100080)
+    @patch('holdntrade.is_order_below_limit', return_value=True)
+    @patch('holdntrade.create_buy_order')
+    @patch('holdntrade.adjust_leverage')
+    def test_delay_buy_order_should_adjust_leverage(self, mock_adjust_leverage, mock_create_buy_order,
+                                                    mock_is_order_below_limit, mock_update_price,
+                                                    mock_calculate_buy_order_amount, mock_daily_report,
+                                                    mock_sleep_for, mock_logging):
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.CONF.auto_leverage_escape = False
+        holdntrade.LOG = mock_logging
+
+        holdntrade.delay_buy_order(10000, 100050)
+
+        mock_daily_report.assert_called
+        mock_adjust_leverage.assert_called
+        mock_create_buy_order.assert_called
 
     @patch('holdntrade.logging')
     @patch('holdntrade.get_position_balance')

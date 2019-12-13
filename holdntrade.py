@@ -39,6 +39,7 @@ STATS = None
 HIBERNATE = False
 INITIAL_LEVERAGE_SET = False
 STOP_ERRORS = ['insufficient', 'too low', 'not_enough_free_balance', 'margin_below', 'liquidation price']
+RETRY_MESSAGE = 'Got an error %s %s, retrying in about 5 seconds...'
 
 # ------------------------------------------------------------------------------
 
@@ -55,7 +56,7 @@ class ExchangeConfig:
         try:
             props = config['config']
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.21"
+            self.bot_version = "1.14.22"
             self.exchange = str(props['exchange']).strip('"').lower()
             self.api_key = str(props['api_key']).strip('"')
             self.api_secret = str(props['api_secret']).strip('"')
@@ -392,7 +393,7 @@ def create_sell_order(fixed_order_size: int = None):
         if any(e in str(error.args) for e in STOP_ERRORS):
             LOG.error('Insufficient funds - not selling %d', order_size)
             return False
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         SELL_PRICE = round(get_current_price() * (1 + CONF.change))
         create_sell_order(fixed_order_size)
 
@@ -410,7 +411,7 @@ def fetch_order_status(order_id: str):
         LOG.error('Order status not found  %s %s', order_id, str(error.args))
         return 'not found'
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         fetch_order_status(order_id)
 
@@ -431,7 +432,7 @@ def cancel_order(order: Order):
         LOG.error('Order to be canceled not found %s %s', order.id, str(error.args))
         return
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         cancel_order(order)
 
@@ -490,7 +491,7 @@ def create_buy_order(price: float, buy_amount: int, fixed_price: bool = False):
 
             LOG.warning('Could not create buy order over %d, insufficient margin', buy_amount)
             return False
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         create_buy_order(update_price(curr_price, price), buy_amount, fixed_price)
 
@@ -566,7 +567,7 @@ def create_market_sell_order(amount_crypto: float):
         if any(e in str(error.args) for e in STOP_ERRORS):
             LOG.error('Insufficient balance/funds - not selling %d', amount_fiat)
             return
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         create_market_sell_order(amount_crypto)
 
@@ -603,7 +604,7 @@ def create_market_buy_order(amount_crypto: float):
             LOG.error('Not enough free margin/balance %s %s', type(error).__name__, str(error.args))
             return
 
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         create_market_buy_order(amount_crypto)
 
@@ -624,7 +625,7 @@ def get_margin_leverage():
         return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_margin_leverage()
 
@@ -664,7 +665,7 @@ def get_wallet_balance():
         return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_wallet_balance()
 
@@ -697,7 +698,7 @@ def get_balance():
         return bal
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_balance()
 
@@ -718,7 +719,7 @@ def get_position_balance():
         return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_position_balance()
 
@@ -746,7 +747,7 @@ def get_net_deposits():
         return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_net_deposits()
 
@@ -773,7 +774,7 @@ def get_position_info():
         return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_position_info()
 
@@ -792,7 +793,7 @@ def get_interest_rate():
         return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_interest_rate()
 
@@ -911,7 +912,7 @@ def get_margin_balance():
         return bal
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_margin_balance()
 
@@ -962,7 +963,7 @@ def get_current_price():
         if "key is disabled" in str(error.args):
             LOG.warning('Key is disabled')
             return deactivate_bot()
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_current_price()
 
@@ -1044,7 +1045,7 @@ def init_orders(force_close: bool, auto_conf: bool):
                 close_position(CONF.symbol)
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return init_orders(force_close, auto_conf)
 
@@ -1099,7 +1100,7 @@ def cancel_orders(orders: [Order]):
         LOG.error('Cancel %s not found : %s', str(order), str(error.args))
         return
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         cancel_orders(orders)
 
@@ -1125,7 +1126,7 @@ def close_position(symbol: str):
         if "overloaded" in str(error.args):
             LOG.info('Exchange is overloaded, close position is postponed')
             return
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         close_position(symbol)
 
@@ -1154,7 +1155,7 @@ def get_open_position(symbol: str):
         return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_open_position(symbol)
 
@@ -1172,7 +1173,7 @@ def get_open_orders(tries: int = 0):
             LOG.warning('Key is disabled')
             return deactivate_bot()
 
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         if tries < 20000:
             get_open_orders(tries+1)
@@ -1191,7 +1192,7 @@ def get_unrealised_pnl(symbol: str):
         return 0.0
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_unrealised_pnl(symbol)
 
@@ -1704,7 +1705,7 @@ def fetch_mayer(tries: int = 0):
         return {'current': float(mayer['current_mayer_multiple']), 'average': float(mayer['average_mayer_multiple'])}
 
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, requests.exceptions.ReadTimeout) as error:
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         if tries < 4:
             return fetch_mayer(tries+1)
@@ -1813,7 +1814,7 @@ def get_leverage():
         return None
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_leverage()
 
@@ -1829,7 +1830,7 @@ def set_leverage(new_leverage: float):
         if any(e in str(error.args) for e in STOP_ERRORS):
             LOG.warning('Insufficient available balance - not lowering leverage to {:.1f}'.format(new_leverage))
             return False
-        LOG.error('Got an error %s %s, retrying in about 5 seconds...', type(error).__name__, str(error.args))
+        LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         set_leverage(new_leverage)
 
