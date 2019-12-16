@@ -12,10 +12,10 @@ import ccxt
 
 
 class ExchangeConfig:
-    def __init__(self, filename: str):
+    def __init__(self):
 
         config = configparser.RawConfigParser()
-        config.read(filename + ".txt")
+        config.read(CONF_NAME + ".txt")
 
         try:
             props = dict(config.items('config'))
@@ -23,7 +23,7 @@ class ExchangeConfig:
             self.api_secret = props['api_secret'].strip('"')
             self.exchange = props['exchange'].strip('"').lower()
         except (configparser.NoSectionError, KeyError):
-            raise SystemExit('Invalid configuration for ' + filename)
+            raise SystemExit('Invalid configuration for ' + CONF_NAME)
 
 
 class Stats:
@@ -34,19 +34,14 @@ class Stats:
     def add_day(self, day_of_year: int, data: dict):
         existing = self.get_day(day_of_year)
         if existing is not None:
-            rate = existing['rate']
-            count = existing['count']
-            total = rate * count
-            rate_new = data['rate']
-            count_new = data['count']
-            total_new = rate_new * count_new
-            rate_avg = (total + total_new) / (count + count_new)
-            data['rate'] = rate_avg
-            data['count'] = count + count_new
+            total = existing['rate'] * existing['count']
+            total_new = data['rate'] * data['count']
+            data['rate'] = (total + total_new) / (existing['count'] + data['count'])
+            data['count'] = existing['count'] + data['count']
             self.days.remove(existing)
         data['day'] = day_of_year
         if len(self.days) > 150:
-            self.days = sorted(self.days, key=lambda data: data['day'], reverse=True)  # desc
+            self.days = sorted(self.days, key=lambda dat: dat['day'], reverse=True)  # desc
             self.days.pop()
         self.days.append(data)
 
@@ -62,9 +57,9 @@ class Stats:
         scope = self.days[:amount]
         size = len(scope)
         if size != amount:
-            log.warning('Not enough historical data, requested %d, found %d', amount, size)
+            LOG.warning('Not enough historical data, requested %d, found %d', amount, size)
         if scope[-1]['day'] != int(datetime.date.today().strftime("%Y%j")) - (size - 1):
-            log.warning('Incomplete historical data, earliest day requested %d, found %d',
+            LOG.warning('Incomplete historical data, earliest day requested %d, found %d',
                         int(datetime.date.today().strftime("%Y%j")) - (size - 1), scope[-1]['day'])
         avg = 0
         for day in scope:
@@ -81,33 +76,29 @@ def function_logger(console_level: int, filename: str, file_level: int = None):
     # StreamHandler logs to console
     ch = logging.StreamHandler()
     ch.setLevel(console_level)
-    ch_format = logging.Formatter('%(message)s')
-    ch.setFormatter(ch_format)
+    ch.setFormatter(logging.Formatter('%(message)s'))
     logger.addHandler(ch)
 
     if file_level is not None:
         fh = RotatingFileHandler("{}.log".format(filename), mode='a', maxBytes=5 * 1024 * 1024, backupCount=4,
                                  encoding=None, delay=0)
         fh.setLevel(file_level)
-        fh_format = logging.Formatter('%(asctime)s - %(lineno)4d - %(levelname)-8s - %(message)s')
-        fh.setFormatter(fh_format)
+        fh.setFormatter(logging.Formatter('%(asctime)s - %(lineno)4d - %(levelname)-8s - %(message)s'))
         logger.addHandler(fh)
 
     return logger
 
 
 def load_history():
-    content = None
-    stats_file = 'moav.pkl'
-    if os.path.isfile(stats_file):
-        with open(stats_file, "rb") as f:
-            content = pickle.load(f)
-    return content
+    if os.path.isfile(STATS_FILE):
+        with open(STATS_FILE, "rb") as file:
+            return pickle.load(file)
+    return None
 
 
 def persist_history(stats):
-    with open('moav.pkl', "wb") as f:
-        pickle.dump(stats, f)
+    with open(STATS_FILE, "wb") as file:
+        pickle.dump(stats, file)
 
 
 def update_history():
@@ -147,34 +138,30 @@ def advise(stats: Stats, parts: [str]):
             write_since(action, since)
         advice = "{} {} {} = {} (since {})".format(ma144, sign, ma21, action, since)
         write_result(advice)
-        log.info(advice)
+        LOG.info(advice)
         return True
-    log.error('Unable to update advise')
+    LOG.error('Unable to update advise')
     return False
 
 
 def write_result(text: str):
-    with open('maverage', 'wt') as f:
-        f.write(text)
+    with open('maverage', 'wt') as file:
+        file.write(text)
 
 
 def read_since():
-    since_file = 'since'
-    if os.path.isfile(since_file):
-        with open(since_file, "rt") as f:
-            content = f.read()
-            parts = content.split(' ')
-        return parts
+    if os.path.isfile(SINCE_FILE):
+        with open(SINCE_FILE, "rt") as file:
+            return file.read().content.split(' ')
     return ['SNAFU', '1929-10-25']
 
 
 def write_since(action: str, date: str):
-    since_file = 'since'
-    with open(since_file, "wt") as f:
-        f.write(action + ' ' + date)
+    with open(SINCE_FILE, "wt") as file:
+        file.write(action + ' ' + date)
 
 
-def connect_to_exchange(conf: ExchangeConfig):
+def connect_to_exchange():
     exchanges = {'binance': ccxt.binance,
                  'bitfinex': ccxt.bitfinex,
                  'bitmex': ccxt.bitmex,
@@ -182,33 +169,35 @@ def connect_to_exchange(conf: ExchangeConfig):
                  'kraken': ccxt.kraken,
                  'liquid': ccxt.liquid}
 
-    exchange = exchanges[conf.exchange]({
+    exchange = exchanges[CONF.exchange]({
         'enableRateLimit': True,
-        'apiKey': conf.api_key,
-        'secret': conf.api_secret,
+        'apiKey': CONF.api_key,
+        'secret': CONF.api_secret,
     })
     return exchange
 
 
 def get_current_price(tries: int = 0):
     if tries > 9:
-        log.error('Failed fetching current price, giving up after 10 attempts')
+        LOG.error('Failed fetching current price, giving up after 10 attempts')
         return None
     try:
-        return exchange.fetch_ticker('BTC/USD')['bid']
+        return EXCHANGE.fetch_ticker('BTC/USD')['bid']
 
     except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
-        log.debug('Got an error %s %s, retrying in 5 seconds...', type(error).__name__, str(error.args))
+        LOG.debug('Got an error %s %s, retrying in 5 seconds...', type(error).__name__, str(error.args))
         sleep(5)
-        return get_current_price(tries+1)
+        get_current_price(tries+1)
 
 
 if __name__ == "__main__":
-    filename = 'moav'
+    CONF_NAME = 'moav'
+    SINCE_FILE = 'since'
+    STATS_FILE = 'moav.pkl'
 
-    log = function_logger(logging.DEBUG, filename, logging.INFO)
-    log.info('-------------------------------')
-    conf = ExchangeConfig(filename)
-    exchange = connect_to_exchange(conf)
+    LOG = function_logger(logging.DEBUG, CONF_NAME, logging.INFO)
+    LOG.info('-------------------------------')
+    CONF = ExchangeConfig()
+    EXCHANGE = connect_to_exchange()
 
     do_work()
