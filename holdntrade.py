@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = config['config']
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.22"
+            self.bot_version = "1.14.23"
             self.exchange = str(props['exchange']).strip('"').lower()
             self.api_key = str(props['api_key']).strip('"')
             self.api_secret = str(props['api_secret']).strip('"')
@@ -476,7 +476,7 @@ def create_buy_order(price: float, buy_amount: int, fixed_price: bool = False):
             return True
         if SELL_ORDERS:
             LOG.info('Could not create buy order, waiting for a sell order to be realised')
-            delay_buy_order(curr_price, price)
+            return delay_buy_order(curr_price, price)
 
         LOG.warning('Could not create buy order over %d and there are no open sell orders, reset required', buy_amount)
         return False
