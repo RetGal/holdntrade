@@ -1309,6 +1309,57 @@ class HoldntradeTest(unittest.TestCase):
 
         mock_set_leverage.assert_not_called()
 
+    @patch('holdntrade.logging')
+    @patch('holdntrade.get_open_orders')
+    @patch('holdntrade.print_position_info')
+    @patch('holdntrade.auto_configure')
+    @patch('holdntrade.calculate_used_margin_percentage', return_value=50)
+    def test_init_orders_woith_auto_conf(self, mock_calculate_used_margin_percentage, mock_auto_configure,
+                                         mock_print_position_info, mock_get_open_orders, mock_logging):
+        holdntrade.LOG = mock_logging
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.CONF.exchange == 'bitmex'
+        holdntrade.EXCHANGE = 'bitmex'
+
+        orders = [{'side': 'sell', 'id': '12345abcde', 'price': 10000, 'amount': 50,
+                   'datetime': datetime.datetime.today().isoformat()},
+                  {'side': 'buy', 'id': '12345abcdh', 'price': 10000, 'amount': 50,
+                   'datetime': datetime.datetime.today().isoformat()}]
+
+        open_orders_summary = holdntrade.OpenOrdersSummary(orders)
+        mock_get_open_orders.return_value = open_orders_summary
+
+        holdntrade.init_orders(False, True)
+
+        mock_logging.warning.assert_called_with('Bot was resurrected by hades')
+        mock_auto_configure.assert_called()
+
+    @patch('holdntrade.logging')
+    @patch('holdntrade.get_open_orders')
+    @patch('holdntrade.print_position_info')
+    @patch('holdntrade.cancel_orders')
+    @patch('holdntrade.get_unrealised_pnl', return_value=0.1)
+    @patch('holdntrade.calculate_used_margin_percentage', return_value=50)
+    def test_init_orders_woith_force_close(self, mock_calculate_used_margin_percentage, mock_get_unrealised_pnl,
+                                           mock_cancel_orders, mock_print_position_info, mock_get_open_orders,
+                                           mock_logging):
+        holdntrade.LOG = mock_logging
+        holdntrade.CONF = self.create_default_conf()
+        holdntrade.CONF.exchange == 'bitmex'
+        holdntrade.EXCHANGE = 'bitmex'
+
+        orders = [{'side': 'sell', 'id': '12345abcde', 'price': 10000, 'amount': 50,
+                   'datetime': datetime.datetime.today().isoformat()},
+                  {'side': 'buy', 'id': '12345abcdh', 'price': 10000, 'amount': 50,
+                   'datetime': datetime.datetime.today().isoformat()}]
+
+        open_orders_summary = holdntrade.OpenOrdersSummary(orders)
+        mock_get_open_orders.return_value = open_orders_summary
+
+        holdntrade.init_orders(True, False)
+
+        mock_cancel_orders.assert_called()
+
     def test_config_parse(self):
         holdntrade.INSTANCE = 'test'
         conf = holdntrade.ExchangeConfig()
@@ -1346,6 +1397,7 @@ class HoldntradeTest(unittest.TestCase):
         conf.quota = 4
         conf.spread_factor = 2
         conf.order_crypto_min = 0.0025
+        conf.satoshi_factor = 0.00000001
         conf.bot_instance = 'test'
         conf.api_key = '1234'
         conf.api_secret = 'secret'
@@ -1362,6 +1414,9 @@ class HoldntradeTest(unittest.TestCase):
         conf.trade_trials = 5
         conf.stop_on_top = False
         conf.close_on_stop = False
+        currency = conf.pair.split("/")
+        conf.base = currency[0]
+        conf.quote = currency[1]
         return conf
 
 

@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = config['config']
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.23"
+            self.bot_version = "1.14.24"
             self.exchange = str(props['exchange']).strip('"').lower()
             self.api_key = str(props['api_key']).strip('"')
             self.api_secret = str(props['api_secret']).strip('"')
@@ -997,7 +997,6 @@ def init_orders(force_close: bool, auto_conf: bool):
         RESET_COUNTER += 1
 
     try:
-        init = ''
         if auto_conf:
             LOG.warning("Bot was resurrected by hades")
 
@@ -1014,18 +1013,22 @@ def init_orders(force_close: bool, auto_conf: bool):
             LOG.info("No. of sell orders: {:>10}".format(len(oos.sell_orders)))
             LOG.info('----------------------------------')
 
+            cancel_existing_orders = False
             if not force_close and not auto_conf:
-                init = input('There are open orders! Would you like to load them? (y/n) ')
-            if not force_close and (auto_conf or init.lower() in ['y', 'yes']):
+                keep_existing_orders = input('There are open orders! Would you like to load them? (y/n) ')
+                cancel_existing_orders = keep_existing_orders.lower() not in ['y', 'yes']
+
+            if not force_close and (auto_conf or not cancel_existing_orders):
                 auto_configure(oos)
                 LOG.info('Initialization complete (using existing orders)')
                 # No "compensate" in auto configuration
                 return True
 
             LOG.info('Unrealised PNL: %s %s', str(get_unrealised_pnl(CONF.symbol) * CONF.satoshi_factor), CONF.base)
-            if force_close:
+            if force_close or cancel_existing_orders:
                 cancel_orders(oos.get_orders())
-            else:
+
+            if not force_close:
                 clear_position = input('There is an open ' + CONF.base + ' position! Would you like to close it? (y/n) ')
                 if clear_position.lower() in ['y', 'yes']:
                     cancel_orders(oos.get_orders())
@@ -1049,10 +1052,9 @@ def init_orders(force_close: bool, auto_conf: bool):
         sleep_for(4, 6)
         return init_orders(force_close, auto_conf)
 
-    else:
-        del oos
-        # compensate
-        return False
+    del oos
+    # compensate
+    return False
 
 
 def auto_configure(oos: OpenOrdersSummary):
