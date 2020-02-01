@@ -58,9 +58,14 @@ class Stats:
         size = len(scope)
         if size != amount:
             LOG.warning('Not enough historical data, requested %d, found %d', amount, size)
-        if scope[-1]['day'] != int(datetime.date.today().strftime("%Y%j")) - (size - 1):
-            LOG.warning('Incomplete historical data, earliest day requested %d, found %d',
-                        int(datetime.date.today().strftime("%Y%j")) - (size - 1), scope[-1]['day'])
+        if int(datetime.date.today().strftime("%j")) >= size:
+            if scope[-1]['day'] != int(datetime.date.today().strftime("%Y%j")) - (size - 1):
+                LOG.warning('Incomplete historical data, earliest day requested %d, found %d',
+                            int(datetime.date.today().strftime("%Y%j")) - (size - 1), scope[-1]['day'])
+        else:
+            if scope[-1]['day'] != int(datetime.date.today().strftime("%Y%j")) - (size - 1) - 635:
+                LOG.warning('Incomplete historical data, earliest day requested %d, found %d',
+                            int(datetime.date.today().strftime("%Y%j")) - (size - 1) - 635, scope[-1]['day'])
         avg = 0
         for day in scope:
             avg += day['rate']
@@ -152,7 +157,7 @@ def write_result(text: str):
 def read_since():
     if os.path.isfile(SINCE_FILE):
         with open(SINCE_FILE, "rt") as file:
-            return file.read().content.split(' ')
+            return file.read().split(' ')
     return ['SNAFU', '1929-10-25']
 
 
