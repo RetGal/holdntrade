@@ -1321,7 +1321,7 @@ def create_mail_content():
     """
     price = get_current_price()
     performance_part = create_report_part_performance(price)
-    advice_part = create_report_part_advice(price)
+    advice_part = create_report_part_advice()
     settings_part = create_report_part_settings(price)
     general_part = create_mail_part_general()
 
@@ -1348,36 +1348,56 @@ def create_mail_content():
 
 def create_report_part_settings(price: float):
     quota = calculate_quota(price) if CONF.auto_quota else CONF.quota
-    return {'mail': ["Rate change: {:>22.1f}%".format(CONF.change * 100),
-                     "Quota: {:>28}".format('1/' + str(quota)),
-                     "Auto quota: {:>23}".format(str('Y' if CONF.auto_quota is True else 'N')),
-                     "Spread factor: {:>20}".format(str(CONF.spread_factor)),
-                     "Leverage default: {:>17}x".format(str(CONF.leverage_default)),
-                     "Auto leverage: {:>20}".format(str('Y' if CONF.auto_leverage is True else 'N')),
-                     "Auto leverage escape: {:>13}".format(str('Y' if CONF.auto_leverage_escape is True else 'N')),
-                     "Leverage low: {:>21}x".format(str(CONF.leverage_low)),
-                     "Leverage high: {:>20}x".format(str(CONF.leverage_high)),
-                     "Leverage escape: {:>18}x".format(str(CONF.leverage_high)),
-                     "Mayer multiple floor: {:>13}".format(str(CONF.mm_floor)),
-                     "Mayer multiple ceil: {:>14}".format(str(CONF.mm_ceil)),
-                     "Mayer multiple stop buy: {:>10}".format(str(CONF.mm_stop_buy)),
-                     "Stop on top: {:>22}".format(str('Y' if CONF.stop_on_top is True else 'N' if CONF.close_on_stop is False else '(!) N')),
-                     "Close on stop: {:>20}".format(str('Y' if CONF.close_on_stop is True and CONF.stop_on_top is True else '(!) Y' if CONF.close_on_stop is True and CONF.stop_on_top is False else 'N'))],
-            'csv': ["Rate change:;{:.1f}%".format(float(CONF.change * 100)),
-                    "Quota:;'1/{}'".format(str(quota)),
-                    "Auto quota:;{}".format(str('Y' if CONF.auto_quota is True else 'N')),
-                    "Spread factor:;{}".format(str(CONF.spread_factor)),
-                    "Leverage default:;{}".format(str(CONF.leverage_default)),
-                    "Auto leverage:;{}".format(str('Y' if CONF.auto_leverage is True else 'N')),
-                    "Auto leverage escape:;{}".format(str('Y' if CONF.auto_leverage_escape is True else 'N')),
-                    "Leverage low:;{}".format(str(CONF.leverage_low)),
-                    "Leverage high:;{}".format(str(CONF.leverage_high)),
-                    "Leverage escape:;{}".format(str(CONF.leverage_escape)),
-                    "Mayer multiple floor:;{}".format(str(CONF.mm_floor)),
-                    "Mayer multiple ceil:;{}".format(str(CONF.mm_ceil)),
-                    "Mayer multiple stop buy:;{}".format(str(CONF.mm_stop_buy)),
-                    "Stop on top:;{}".format(str('Y' if CONF.stop_on_top is True else 'N' if CONF.close_on_stop is False else '(!) N')),
-                    "Close on stop:;{}".format(str('Y' if CONF.close_on_stop is True and CONF.stop_on_top is True else '(!) Y' if CONF.close_on_stop is True and CONF.stop_on_top is False else 'N'))]}
+    part = {'mail': [], 'csv': []}
+    append_settings_mail(part, quota)
+    append_settings_csv(part, quota)
+    return part
+
+
+def append_settings_mail(part: dict, quota: int):
+    part['mail'] = ["Rate change: {:>22.1f}%".format(CONF.change * 100),
+                    "Quota: {:>28}".format('1/' + str(quota)),
+                    "Auto quota: {:>23}".format(str('Y' if CONF.auto_quota is True else 'N')),
+                    "Spread factor: {:>20}".format(str(CONF.spread_factor)),
+                    "Leverage default: {:>17}x".format(str(CONF.leverage_default)),
+                    "Auto leverage: {:>20}".format(str('Y' if CONF.auto_leverage is True else 'N')),
+                    "Auto leverage escape: {:>13}".format(str('Y' if CONF.auto_leverage_escape is True else 'N')),
+                    "Leverage low: {:>21}x".format(str(CONF.leverage_low)),
+                    "Leverage high: {:>20}x".format(str(CONF.leverage_high)),
+                    "Leverage escape: {:>18}x".format(str(CONF.leverage_high)),
+                    "Mayer multiple floor: {:>13}".format(str(CONF.mm_floor)),
+                    "Mayer multiple ceil: {:>14}".format(str(CONF.mm_ceil)),
+                    "Mayer multiple stop buy: {:>10}".format(str(CONF.mm_stop_buy)),
+                    "Stop on top: {:>22}".format(str('Y' if CONF.stop_on_top is True else 'N' if CONF.close_on_stop is False else '(!) N')),
+                    "Close on stop: {:>20}".format(get_close_on_top_value())]
+    return part
+
+
+def append_settings_csv(part: dict, quota: int):
+    part['csv'] = ["Rate change:;{:.1f}%".format(float(CONF.change * 100)),
+                   "Quota:;'1/{}'".format(str(quota)),
+                   "Auto quota:;{}".format(str('Y' if CONF.auto_quota is True else 'N')),
+                   "Spread factor:;{}".format(str(CONF.spread_factor)),
+                   "Leverage default:;{}".format(str(CONF.leverage_default)),
+                   "Auto leverage:;{}".format(str('Y' if CONF.auto_leverage is True else 'N')),
+                   "Auto leverage escape:;{}".format(str('Y' if CONF.auto_leverage_escape is True else 'N')),
+                   "Leverage low:;{}".format(str(CONF.leverage_low)),
+                   "Leverage high:;{}".format(str(CONF.leverage_high)),
+                   "Leverage escape:;{}".format(str(CONF.leverage_escape)),
+                   "Mayer multiple floor:;{}".format(str(CONF.mm_floor)),
+                   "Mayer multiple ceil:;{}".format(str(CONF.mm_ceil)),
+                   "Mayer multiple stop buy:;{}".format(str(CONF.mm_stop_buy)),
+                   "Stop on top:;{}".format(str('Y' if CONF.stop_on_top is True else 'N' if CONF.close_on_stop is False else '(!) N')),
+                   "Close on stop:;{}".format(get_close_on_top_value())]
+    return part
+
+
+def get_close_on_top_value():
+    if CONF.close_on_stop is True and CONF.stop_on_top is True:
+        return 'Y'
+    if CONF.close_on_stop is True and CONF.stop_on_top is False:
+        return '(!)Y'
+    return 'N'
 
 
 def create_mail_part_general():
@@ -1392,7 +1412,7 @@ def create_mail_part_general():
     return general
 
 
-def create_report_part_advice(price: float):
+def create_report_part_advice():
     moving_average = read_moving_average()
     if moving_average is not None:
         padding = 6 + len(moving_average)
