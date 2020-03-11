@@ -1358,6 +1358,44 @@ class HoldntradeTest(unittest.TestCase):
 
         mock_cancel_orders.assert_called()
 
+    def test_get_stop_on_top_value(self):
+        holdntrade.CONF = self.create_default_conf()
+
+        value = holdntrade.get_stop_on_top_value()
+
+        self.assertEqual('N', value)
+
+        holdntrade.CONF.close_on_stop = True
+
+        value = holdntrade.get_stop_on_top_value()
+
+        self.assertEqual('(!) N', value)
+
+        holdntrade.CONF.stop_on_top = True
+
+        value = holdntrade.get_stop_on_top_value()
+
+        self.assertEqual('Y', value)
+
+    def test_get_close_on_top_value(self):
+        holdntrade.CONF = self.create_default_conf()
+
+        value = holdntrade.get_close_on_top_value()
+
+        self.assertEqual('N', value)
+
+        holdntrade.CONF.close_on_stop = True
+
+        value = holdntrade.get_close_on_top_value()
+
+        self.assertEqual('(!) Y', value)
+
+        holdntrade.CONF.stop_on_top = True
+
+        value = holdntrade.get_close_on_top_value()
+
+        self.assertEqual('Y', value)
+
     def test_config_parse(self):
         holdntrade.INSTANCE = 'test'
         conf = holdntrade.ExchangeConfig()
