@@ -372,8 +372,6 @@ class HoldntradeTest(unittest.TestCase):
         self.assertEqual(8800.0, today['price'])
         self.assertEqual(100.0, today['mBalChan24'])
         self.assertEqual(10.0, today['priceChan24'])
-        self.assertEqual(33.33, today['mBalChan48'])
-        self.assertEqual(100.0, today['priceChan48'])
 
     def test_calculate_statistics_negative_change(self):
         holdntrade.CONF = self.create_default_conf()

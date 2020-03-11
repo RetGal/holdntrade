@@ -1324,7 +1324,7 @@ def create_mail_content():
     settings_part = create_report_part_settings()
     general_part = create_mail_part_general()
 
-    performance = ["Performance", "-----------", '\n'.join(performance_part['mail']) + '\n* (change within 24 hours, 48 hours)', '\n\n']
+    performance = ["Performance", "-----------", '\n'.join(performance_part['mail']) + '\n* (change within 24 hours)', '\n\n']
     advice = ["Assessment / advice", "-------------------", '\n'.join(advice_part['mail']), '\n\n']
     settings = ["Your settings", "-------------", '\n'.join(settings_part['mail']), '\n\n']
     general = ["General", "-------", '\n'.join(general_part), '\n\n']
@@ -1541,11 +1541,7 @@ def append_margin_change(part: dict, today: dict, currency: str):
     formatter = 18.4 if currency == CONF.base else 16.2
     m_bal = "Margin balance " + currency + ": {:>{}f}".format(today['mBal'], formatter)
     if 'mBalChan24' in today:
-        m_bal += " (" if currency == CONF.base else "   ("
-        m_bal += "{:+.2f}%".format(today['mBalChan24'])
-        if 'mBalChan48' in today:
-            m_bal += ", {:+.2f}%".format(today['mBalChan48'])
-        m_bal += ")*"
+        m_bal += " (" if currency == CONF.base else "   ({:+.2f}%)*".format(today['mBalChan24'])
     part['mail'].append(m_bal)
     formatter = .4 if currency == CONF.base else .2
     if 'mBalChan24' in today:
@@ -1561,11 +1557,7 @@ def append_price_change(part: dict, today: dict, price: float):
     """
     rate = "{} price {}: {:>20.1f}".format(CONF.base, CONF.quote, price)
     if 'priceChan24' in today:
-        rate += "    ("
-        rate += "{:+.2f}%".format(today['priceChan24'])
-        if 'priceChan48' in today:
-            rate += ", {:+.2f}%".format(today['priceChan48'])
-        rate += ")*"
+        rate += "    ({:+.2f}%)*".format(today['priceChan24'])
     part['mail'].append(rate)
     if 'priceChan24' in today:
         part['csv'].append("{} price {}:;{:.1f};{:+.2f}%".format(CONF.base, CONF.quote, price, today['priceChan24']))
@@ -1651,7 +1643,7 @@ def calculate_daily_statistics(m_bal: float, price: float):
     Calculates, updates and persists the change in the margin balance compared with yesterday
     :param m_bal: todays margin balance
     :param price: the current rate
-    :return todays statistics including price and margin balance changes compared with 24 and 48 hours ago
+    :return todays statistics including price and margin balance changes compared with 24 hours ago
     """
     global STATS
 
@@ -1668,11 +1660,6 @@ def calculate_daily_statistics(m_bal: float, price: float):
         today['mBalChan24'] = round((today['mBal']/before_24h['mBal']-1) * 100, 2)
         if 'price' in before_24h:
             today['priceChan24'] = round((today['price']/before_24h['price']-1) * 100, 2)
-        before_48h = STATS.get_day(int(datetime.date.today().strftime("%Y%j")) - 2)
-        if before_48h is not None:
-            today['mBalChan48'] = round((today['mBal']/before_48h['mBal']-1) * 100, 2)
-            if 'price' in before_48h:
-                today['priceChan48'] = round((today['price']/before_48h['price']-1) * 100, 2)
     return today
 
 
