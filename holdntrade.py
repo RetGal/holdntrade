@@ -813,10 +813,10 @@ def compensate():
     if used < 40 or used > 60:
         amount_crypto = float(bal['total'] / 2 - bal['used'])
         if amount_crypto > 0:
-            LOG.info("Need to buy {} {} in order to reach 50% margin".format(amount_crypto, CONF.base))
+            LOG.info("Need to buy %s %s in order to reach %s margin", amount_crypto, CONF.base, '50%')
             do_buy(amount_crypto)
         else:
-            LOG.info("Need to sell {} {} in order to reach 50% margin".format(abs(amount_crypto), CONF.base))
+            LOG.info("Need to sell %s %s in order to reach %s margin", abs(amount_crypto), CONF.base, '50%')
             do_sell(abs(amount_crypto))
 
 
@@ -1321,7 +1321,7 @@ def create_mail_content():
     price = get_current_price()
     performance_part = create_report_part_performance(price)
     advice_part = create_report_part_advice(price)
-    settings_part = create_report_part_settings()
+    settings_part = create_report_part_settings(price)
     general_part = create_mail_part_general()
 
     performance = ["Performance", "-----------", '\n'.join(performance_part['mail']) + '\n* (change within 24 hours)', '\n\n']
@@ -1339,9 +1339,10 @@ def create_mail_content():
     return {'text': text, 'csv': csv}
 
 
-def create_report_part_settings():
+def create_report_part_settings(price: float):
+    quota = calculate_quota(price) if CONF.auto_quota else CONF.quota
     return {'mail': ["Rate change: {:>22.1f}%".format(CONF.change * 100),
-                     "Quota: {:>28}".format('1/' + str(CONF.quota)),
+                     "Quota: {:>28}".format('1/' + str(quota)),
                      "Auto quota: {:>23}".format(str('Y' if CONF.auto_quota is True else 'N')),
                      "Spread factor: {:>20}".format(str(CONF.spread_factor)),
                      "Leverage default: {:>17}x".format(str(CONF.leverage_default)),
@@ -1356,7 +1357,7 @@ def create_report_part_settings():
                      "Stop on top: {:>22}".format(str('Y' if CONF.stop_on_top is True else 'N' if CONF.close_on_stop is False else '(!) N')),
                      "Close on stop: {:>20}".format(str('Y' if CONF.close_on_stop is True and CONF.stop_on_top is True else '(!) Y' if CONF.close_on_stop is True and CONF.stop_on_top is False else 'N'))],
             'csv': ["Rate change:;{:.1f}%".format(float(CONF.change * 100)),
-                    "Quota:;'1/{}'".format(str(CONF.quota)),
+                    "Quota:;'1/{}'".format(str(quota)),
                     "Auto quota:;{}".format(str('Y' if CONF.auto_quota is True else 'N')),
                     "Spread factor:;{}".format(str(CONF.spread_factor)),
                     "Leverage default:;{}".format(str(CONF.leverage_default)),
@@ -1394,7 +1395,6 @@ def create_report_part_advice(price: float):
         part = {'mail': ["Moving average 144d/21d: {:>10}".format('n/a')],
                 'csv': ["Moving average 144d/21d:;n/a;n/a;n/a"]}
     append_mayer(part)
-    append_suggested_quota(part, price)
     return part
 
 
@@ -1721,16 +1721,6 @@ def append_mayer(part: dict):
     else:
         part['mail'].append("Mayer multiple: {:>19}".format('n/a'))
         part['csv'].append("Mayer multiple:;n/a;n/a")
-
-
-def append_suggested_quota(part: dict, price: float):
-    quota = "1/{}".format(calculate_quota(price))
-    if CONF.auto_quota:
-        part['mail'].append("Current quota: {:>20}".format(quota))
-        part['csv'].append("Current quota:;'{}'".format(quota))
-    else:
-        part['mail'].append("Suggested quota: {:>18}".format(quota))
-        part['csv'].append("Suggested quota:;'{}'".format(quota))
 
 
 def boost_leverage():
