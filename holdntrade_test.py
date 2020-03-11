@@ -97,7 +97,7 @@ class HoldntradeTest(unittest.TestCase):
 
     def test_read_last_line(self):
         last_line = holdntrade.read_last_line('test.txt')
-        self.assertEqual('mail_server = "mail.example.com"\n', last_line)
+        self.assertEqual('info = ""\n', last_line)
 
     def test_is_order_below_limit_true(self):
         price = 8000
@@ -1415,6 +1415,7 @@ class HoldntradeTest(unittest.TestCase):
         currency = conf.pair.split("/")
         conf.base = currency[0]
         conf.quote = currency[1]
+        conf.info = ""
         return conf
 
 

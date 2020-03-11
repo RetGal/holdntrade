@@ -56,7 +56,7 @@ class ExchangeConfig:
         try:
             props = config['config']
             self.bot_instance = INSTANCE
-            self.bot_version = "1.14.24"
+            self.bot_version = "1.15.0"
             self.exchange = str(props['exchange']).strip('"').lower()
             self.api_key = str(props['api_key']).strip('"')
             self.api_secret = str(props['api_secret']).strip('"')
@@ -91,6 +91,7 @@ class ExchangeConfig:
             self.sender_address = str(props['sender_address']).strip('"')
             self.sender_password = str(props['sender_password']).strip('"')
             self.mail_server = str(props['mail_server']).strip('"')
+            self.info = str(props['info']).strip('"')
         except (configparser.NoSectionError, KeyError):
             raise SystemExit('invalid configuration for ' + INSTANCE)
 
@@ -1331,10 +1332,16 @@ def create_mail_content():
 
     bcs_url = 'https://bitcoin-schweiz.ch/bot/'
     explanation = 'Erläuterungen zu diesem Rapport: https://bitcoin-schweiz.ch/wp-content/uploads/2019/07/Tagesrapport.pdf'
-    text = '\n'.join(performance) + '\n'.join(advice) + '\n'.join(settings) + '\n'.join(general) + bcs_url + '\n\n' + explanation + '\n'
+    if not CONF.info:
+        text = '\n'.join(performance) + '\n'.join(advice) + '\n'.join(settings) + '\n'.join(general) + bcs_url \
+               + '\n\n' + explanation + '\n'
+    else:
+        text = '\n'.join(performance) + '\n'.join(advice) + '\n'.join(settings) + '\n'.join(general) + bcs_url \
+               + '\n\n' + CONF.info + '\n\n' + explanation + '\n'
 
-    csv = CONF.bot_instance + ';' + str(datetime.datetime.utcnow().replace(microsecond=0)) + ' UTC;' + (';'.join(performance_part['csv']) + ';' + ';'.join(
-        advice_part['csv']) + ';' + ';'.join(settings_part['csv']) + '\n')
+    csv = CONF.bot_instance + ';' + str(datetime.datetime.utcnow().replace(microsecond=0)) + ' UTC;' \
+                            + (';'.join(performance_part['csv']) + ';' + ';'.join(advice_part['csv']) + ';'
+                               + ';'.join(settings_part['csv']) + ';' + CONF.info + '\n')
 
     return {'text': text, 'csv': csv}
 
