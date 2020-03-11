@@ -390,7 +390,7 @@ def create_sell_order(fixed_order_size: int = None):
         LOG.info('Created %s', str(order))
         return True
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         if any(e in str(error.args) for e in STOP_ERRORS):
             LOG.error('Insufficient funds - not selling %d', order_size)
             return False
@@ -411,7 +411,7 @@ def fetch_order_status(order_id: str):
     except ccxt.OrderNotFound as error:
         LOG.error('Order status not found  %s %s', order_id, str(error.args))
         return 'not found'
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         fetch_order_status(order_id)
@@ -432,7 +432,7 @@ def cancel_order(order: Order):
     except ccxt.OrderNotFound as error:
         LOG.error('Order to be canceled not found %s %s', order.id, str(error.args))
         return
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         cancel_order(order)
@@ -482,7 +482,7 @@ def create_buy_order(price: float, buy_amount: int, fixed_price: bool = False):
         LOG.warning('Could not create buy order over %d and there are no open sell orders, reset required', buy_amount)
         return False
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         if any(e in str(error.args) for e in STOP_ERRORS):
             if SELL_ORDERS:
                 LOG.info(
@@ -564,7 +564,7 @@ def create_market_sell_order(amount_crypto: float):
             order = Order(new_order)
             LOG.info('Created market %s', str(order))
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         if any(e in str(error.args) for e in STOP_ERRORS):
             LOG.error('Insufficient balance/funds - not selling %d', amount_fiat)
             return
@@ -600,7 +600,7 @@ def create_market_buy_order(amount_crypto: float):
             order = Order(new_order)
             LOG.info('Created market %s', str(order))
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         if "not_enough_free" or "free_margin_below" in str(error.args):
             LOG.error('Not enough free margin/balance %s %s', type(error).__name__, str(error.args))
             return
@@ -625,7 +625,7 @@ def get_margin_leverage():
             LOG.error("get_margin_leverage() not yet implemented for %s", CONF.exchange)
         return None
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_margin_leverage()
@@ -665,7 +665,7 @@ def get_wallet_balance():
                         return float(balance['balance'])
         return None
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_wallet_balance()
@@ -698,7 +698,7 @@ def get_balance():
                         bal = {'used': 0, 'free': float(wallet['balance']), 'total': float(wallet['balance'])}
         return bal
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_balance()
@@ -719,7 +719,7 @@ def get_position_balance():
             return round(get_balance()['used'] * get_current_price())
         return None
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_position_balance()
@@ -747,7 +747,7 @@ def get_net_deposits():
         LOG.error("get_net_deposit() not yet implemented for %s", CONF.exchange)
         return None
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_net_deposits()
@@ -774,7 +774,7 @@ def get_position_info():
                     return pos
         return None
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_position_info()
@@ -793,7 +793,7 @@ def get_interest_rate():
         LOG.error("get_interest_rate() not yet implemented for %s", CONF.exchange)
         return None
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_interest_rate()
@@ -912,7 +912,7 @@ def get_margin_balance():
             bal = get_balance()
         return bal
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_margin_balance()
@@ -960,7 +960,7 @@ def get_current_price():
         else:
             return price
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         if "key is disabled" in str(error.args):
             LOG.warning('Key is disabled')
             return deactivate_bot()
@@ -1048,7 +1048,7 @@ def init_orders(force_close: bool, auto_conf: bool):
             if init.lower() in ['y', 'yes']:
                 close_position(CONF.symbol)
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         return init_orders(force_close, auto_conf)
@@ -1102,7 +1102,7 @@ def cancel_orders(orders: [Order]):
     except ccxt.OrderNotFound as error:
         LOG.error('Cancel %s not found : %s', str(order), str(error.args))
         return
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         cancel_orders(orders)
@@ -1121,7 +1121,7 @@ def close_position(symbol: str):
         elif CONF.exchange == 'liquid':
             EXCHANGE.private_put_trades_close_all()
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         # no retry in case of "no volume to close position" (kraken specific error)
         if "volume to close position" in str(error.args):
             return
@@ -1157,7 +1157,7 @@ def get_open_position(symbol: str):
                     return model
         return None
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_open_position(symbol)
@@ -1171,7 +1171,7 @@ def get_open_orders(tries: int = 0):
     try:
         return OpenOrdersSummary(EXCHANGE.fetch_open_orders(CONF.pair, since=None, limit=None, params={}))
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         if "key is disabled" in str(error.args):
             LOG.warning('Key is disabled')
             return deactivate_bot()
@@ -1194,7 +1194,7 @@ def get_unrealised_pnl(symbol: str):
             return float(get_open_position(symbol)['unrealisedPnl'])
         return 0.0
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_unrealised_pnl(symbol)
@@ -1827,7 +1827,7 @@ def get_leverage():
         LOG.error("get_leverage() not yet implemented for %s", CONF.exchange)
         return None
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         LOG.error(RETRY_MESSAGE, type(error).__name__, str(error.args))
         sleep_for(4, 6)
         get_leverage()
@@ -1840,7 +1840,7 @@ def set_leverage(new_leverage: float):
             LOG.info('New leverage is {:.1f}'.format(new_leverage))
         return True
 
-    except (ccxt.ExchangeError, ccxt.AuthenticationError, ccxt.ExchangeNotAvailable, ccxt.RequestTimeout) as error:
+    except (ccxt.ExchangeError, ccxt.NetworkError) as error:
         if any(e in str(error.args) for e in STOP_ERRORS):
             LOG.warning('Insufficient available balance - not lowering leverage to {:.1f}'.format(new_leverage))
             return False
