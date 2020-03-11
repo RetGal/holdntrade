@@ -1368,7 +1368,7 @@ def append_settings_mail(part: dict, quota: int):
                     "Mayer multiple floor: {:>13}".format(str(CONF.mm_floor)),
                     "Mayer multiple ceil: {:>14}".format(str(CONF.mm_ceil)),
                     "Mayer multiple stop buy: {:>10}".format(str(CONF.mm_stop_buy)),
-                    "Stop on top: {:>22}".format(str('Y' if CONF.stop_on_top is True else 'N' if CONF.close_on_stop is False else '(!) N')),
+                    "Stop on top: {:>22}".format(get_stop_on_top_value()),
                     "Close on stop: {:>20}".format(get_close_on_top_value())]
     return part
 
@@ -1387,16 +1387,24 @@ def append_settings_csv(part: dict, quota: int):
                    "Mayer multiple floor:;{}".format(str(CONF.mm_floor)),
                    "Mayer multiple ceil:;{}".format(str(CONF.mm_ceil)),
                    "Mayer multiple stop buy:;{}".format(str(CONF.mm_stop_buy)),
-                   "Stop on top:;{}".format(str('Y' if CONF.stop_on_top is True else 'N' if CONF.close_on_stop is False else '(!) N')),
+                   "Stop on top:;{}".format(get_stop_on_top_value()),
                    "Close on stop:;{}".format(get_close_on_top_value())]
     return part
+
+
+def get_stop_on_top_value():
+    if CONF.stop_on_top is True:
+        return 'Y'
+    if CONF.close_on_stop is False:
+        return 'N'
+    return '(!) N'
 
 
 def get_close_on_top_value():
     if CONF.close_on_stop is True and CONF.stop_on_top is True:
         return 'Y'
     if CONF.close_on_stop is True and CONF.stop_on_top is False:
-        return '(!)Y'
+        return '(!) Y'
     return 'N'
 
 
