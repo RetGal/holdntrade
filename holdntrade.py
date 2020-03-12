@@ -1320,9 +1320,14 @@ def create_mail_content():
     :return dict: text: str, csv: str
     """
     price = get_current_price()
-    performance_part = create_report_part_performance(price)
+    oos = get_open_orders()
+    performance_part = create_report_part_performance(price, oos)
     advice_part = create_report_part_advice()
-    settings_part = create_report_part_settings(price)
+    if oos.sell_orders:
+        highest_sell_order_price = sorted(oos.sell_orders, key=lambda order: order.price, reverse=True)[0].price
+    else:
+        highest_sell_order_price = None
+    settings_part = create_report_part_settings(price, highest_sell_order_price )
     general_part = create_mail_part_general()
 
     performance = ["Performance", "-----------", '\n'.join(performance_part['mail']) + '\n* (change within 24 hours)', '\n\n']
@@ -1346,15 +1351,15 @@ def create_mail_content():
     return {'text': text, 'csv': csv}
 
 
-def create_report_part_settings(price: float):
+def create_report_part_settings(price: float, highest_sell_order_price: float):
     quota = calculate_quota(price) if CONF.auto_quota else CONF.quota
     part = {'mail': [], 'csv': []}
-    append_settings_mail(part, quota)
-    append_settings_csv(part, quota)
+    append_settings_mail(part, quota, highest_sell_order_price)
+    append_settings_csv(part, quota, highest_sell_order_price)
     return part
 
 
-def append_settings_mail(part: dict, quota: int):
+def append_settings_mail(part: dict, quota: int, highest_sell_order_price: float):
     part['mail'] = ["Rate change: {:>22.1f}%".format(CONF.change * 100),
                     "Quota: {:>28}".format('1/' + str(quota)),
                     "Auto quota: {:>23}".format(str('Y' if CONF.auto_quota is True else 'N')),
@@ -1368,12 +1373,13 @@ def append_settings_mail(part: dict, quota: int):
                     "Mayer multiple floor: {:>13}".format(str(CONF.mm_floor)),
                     "Mayer multiple ceil: {:>14}".format(str(CONF.mm_ceil)),
                     "Mayer multiple stop buy: {:>10}".format(str(CONF.mm_stop_buy)),
-                    "Stop on top: {:>22}".format(get_stop_on_top_value()),
+                    "Stop on top: {:>22}".format(get_stop_on_top_value() if highest_sell_order_price is None
+                                                 else str(highest_sell_order_price) + ' ' + get_stop_on_top_value()),
                     "Close on stop: {:>20}".format(get_close_on_top_value())]
     return part
 
 
-def append_settings_csv(part: dict, quota: int):
+def append_settings_csv(part: dict, quota: int, highest_sell_order_price: float):
     part['csv'] = ["Rate change:;{:.1f}%".format(float(CONF.change * 100)),
                    "Quota:;'1/{}'".format(str(quota)),
                    "Auto quota:;{}".format(str('Y' if CONF.auto_quota is True else 'N')),
@@ -1387,7 +1393,8 @@ def append_settings_csv(part: dict, quota: int):
                    "Mayer multiple floor:;{}".format(str(CONF.mm_floor)),
                    "Mayer multiple ceil:;{}".format(str(CONF.mm_ceil)),
                    "Mayer multiple stop buy:;{}".format(str(CONF.mm_stop_buy)),
-                   "Stop on top:;{}".format(get_stop_on_top_value()),
+                   "Stop on top:;{}".format(';' + get_stop_on_top_value() if highest_sell_order_price is None
+                                            else str(highest_sell_order_price) + ';' + get_stop_on_top_value()),
                    "Close on stop:;{}".format(get_close_on_top_value())]
     return part
 
@@ -1433,7 +1440,7 @@ def create_report_part_advice():
     return part
 
 
-def create_report_part_performance(price: float):
+def create_report_part_performance(price: float, oos: OpenOrdersSummary):
     part = {'mail': [], 'csv': []}
     margin_balance = get_margin_balance()
     net_deposits = get_net_deposits()
@@ -1442,7 +1449,6 @@ def create_report_part_performance(price: float):
     poi = get_position_info()
     wallet_balance = get_wallet_balance()
     sleep_for(0, 1)
-    oos = get_open_orders()
     all_sold_balance = calculate_all_sold_balance(poi, oos.sell_orders, margin_balance['total'])
     append_balances(part, margin_balance, poi, wallet_balance, price, all_sold_balance)
     append_orders(part, oos, price)
