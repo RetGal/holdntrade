@@ -1582,7 +1582,8 @@ def append_margin_change(part: dict, today: dict, currency: str):
     formatter = 18.4 if currency == CONF.base else 16.2
     m_bal = "Margin balance " + currency + ": {:>{}f}".format(today['mBal'], formatter)
     if 'mBalChan24' in today:
-        m_bal += " (" if currency == CONF.base else "   ({:+.2f}%)*".format(today['mBalChan24'])
+        m_bal += " (" if currency == CONF.base else "   ("
+        m_bal += "{:+.2f}%)*".format(today['mBalChan24'])
     part['mail'].append(m_bal)
     formatter = .4 if currency == CONF.base else .2
     if 'mBalChan24' in today:
