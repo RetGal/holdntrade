@@ -28,19 +28,19 @@ Alternativ kann die zu verwendete Konfigurationsdatei auch als Parameter überge
 
 `./holdntrade.py test1`
 
-Mit Hilfe des Watchdog-Scrpits *hades.sh* lässt sich eine beliebige Anzahl Botinstanzen überwachen.
-Sollte eine Instanz nicht mehr laufen, wird sie automatisch neu gestartet.
+Mit Hilfe des Watchdog-Scrpits *[osiris](https://github.com/RetGal/osiris)* lässt sich eine beliebige Anzahl Botinstanzen überwachen. 
+Sollte eine Instanz nicht mehr laufen, wird sie automatisch neu gestartet. Daneben stellt der Watchdog auch sicher, dass stets genügend freier Speicher vorhanden ist.
 
-Dazu sollte der Variable *holdntradeDir* der absolute Pfad zum *holdntrade.py* Script angegeben werden.
+Dazu sollte der Variable workingDir der absolute Pfad zum *holdntrade.py* Script angegeben werden. Der scriptName sollte *holdntrade.py* lauten und der Wert von parms sollte *-ac* sein. 
 Voraussetzung ist, dass die *holdntrade.py* Instanzen innerhalb von *tmux* Sessions ausgeführt werden, welche gleich heissen wie die entsprechende Konfigurationsdatei:
 
 Wenn also eine Konfigurationsdatei beispielsweise *test1.txt* heisst, dann sollte *holdntrade.py test1* innerhalb einer *tmux* Session namens *test1* laufen.
 
-Damit *hades.sh* die *holdntrade*  Instanzen kontinuierlich überwachen kann, muss ein entsprechender *Cronjob* eingerichtet werden:
+Damit *osiris.sh* die *holdntrade*  Instanzen kontinuierlich überwachen kann, muss ein entsprechender *Cronjob* eingerichtet werden:
 
-`*/5 *   *   *   *   /home/bit/trader/hades.sh`
+`*/5 *   *   *   *   /home/bit/trader/osiris.sh`
 
-Die beiden Dateien *holdntrade.py* und *hades.sh* müssen vor dem ersten Start mittels `chmod +x` ausführbar gemacht werden.
+Die beiden Dateien *holdntrade.py* und *osiris.sh* müssen vor dem ersten Start mittels `chmod +x` ausführbar gemacht werden.
 
 
 ## Unterbrechen
