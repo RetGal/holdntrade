@@ -45,7 +45,7 @@ Die beiden Dateien *holdntrade.py* und *osiris.sh* müssen vor dem ersten Start 
 
 ## Unterbrechen
 
-Wenn die *holdntrade* Instanzen via *hades* überwacht werden, steht man vor dem Problem, dass eine gestoppte Instanz nach spätestens 5 Minuten automatisch neu gestartet wird. Will man eine *holdntrade* Instanz für längere Zeit unterbrechen, muss man vor oder nach dessen Terminierung die entsprechende *.pid* Datei umbenennen:
+Wenn die *holdntrade* Instanzen via *osiris* überwacht werden, steht man vor dem Problem, dass eine gestoppte Instanz nach spätestens 5 Minuten automatisch neu gestartet wird. Will man eine *holdntrade* Instanz für längere Zeit unterbrechen, muss man vor oder nach dessen Terminierung die entsprechende *.pid* Datei umbenennen:
 
 `mv test1.pid test1.did`
 
